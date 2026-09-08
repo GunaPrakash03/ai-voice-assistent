@@ -49,6 +49,16 @@
   pre{background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:12px;
     font-size:12px;line-height:1.6;max-height:220px;overflow:auto;margin:8px 0 0;
     font-family:ui-monospace,Menlo,monospace}
+  .alone{display:flex;gap:14px;align-items:center;justify-content:space-between;
+    flex-wrap:wrap;background:color-mix(in srgb,var(--warn) 12%,transparent);
+    border:1px solid var(--warn);border-radius:5px;padding:12px 15px;margin-bottom:14px;
+    font-size:13.5px}
+  .warn-hp{color:var(--soft);font-size:12.5px;margin-top:3px}
+  .transcript{margin-top:8px;min-height:96px;max-height:240px;overflow:auto;
+    background:var(--ground);border:1px solid var(--rule);border-radius:4px;
+    padding:12px;font-size:15px;line-height:1.6}
+  .transcript p{margin:0 0 7px}
+  .transcript .interim{color:var(--faint);font-style:italic}
   .hint{background:color-mix(in srgb,var(--accent) 10%,transparent);
     border:1px solid var(--accent);border-radius:5px;padding:12px 15px;font-size:13.5px}
 </style>
@@ -67,6 +77,13 @@
 
   <div class="panel" style="margin-top:14px">
     <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
+    <div id="alone" class="alone" hidden>
+      <div>
+        <strong>You are alone in this room.</strong> Audio needs two participants.
+        <div class="warn-hp">Use headphones, or the two tabs will screech at each other.</div>
+      </div>
+      <button id="second" class="ghost" style="white-space:nowrap">Open second tab</button>
+    </div>
     <div class="row">
       <div><label for="room">Room</label><input id="room" value="test-room"></div>
       <div><label for="who">Your name</label><input id="who" style="width:150px"></div>
@@ -80,6 +97,11 @@
     <div class="meter"><div id="level"></div></div>
     <label style="margin-top:16px">In this room</label>
     <ul id="people"><li><span style="color:var(--faint)">nobody yet</span></li></ul>
+  </div>
+
+  <div class="panel">
+    <label>Live transcript</label>
+    <div id="tx" class="transcript"><span style="color:var(--faint)">Speak once connected. Grey text is Deepgram&rsquo;s running guess; it goes solid when the result is final.</span></div>
   </div>
 
   <div class="panel">
@@ -112,6 +134,11 @@
     log("The CDN script did not load. Check your network, then reload.");
     $("go").disabled = true;
     return;
+  }
+
+  function checkAlone() {
+    var alone = !!room && room.remoteParticipants.size === 0;
+    $("alone").hidden = !alone;
   }
 
   function renderPeople(speaking) {
@@ -159,21 +186,55 @@
 
       room.on(LK.RoomEvent.Connected, function () {
         setState("Connected to " + cfg.room, "on");
-        log("connected — sid " + room.name);
+        checkAlone();
+        log("connected as " + cfg.identity + " in " + room.name);
         renderPeople([]);
       });
       room.on(LK.RoomEvent.Disconnected, function (r) {
-        setState("Disconnected", ""); log("disconnected" + (r ? " (" + r + ")" : ""));
+        // A bare numeric code tells nobody anything. Name it.
+        var WHY = {
+          0: "unknown", 1: "you left", 2: "duplicate identity",
+          3: "server shutdown", 4: "removed by server", 5: "room deleted",
+          6: "state mismatch", 7: "join failed", 8: "migrating",
+          9: "signal connection closed", 10: "room closed",
+          11: "user unavailable", 12: "call rejected"
+        };
+        var why = WHY[r] !== undefined ? WHY[r] : "code " + r;
+        setState("Disconnected", r === 1 || r === undefined ? "" : "err");
+        log("disconnected — " + why);
       });
       room.on(LK.RoomEvent.ParticipantConnected, function (p) {
-        log("joined: " + p.identity); renderPeople([]);
+        log("joined: " + p.identity); renderPeople([]); checkAlone();
       });
       room.on(LK.RoomEvent.ParticipantDisconnected, function (p) {
-        log("left: " + p.identity); renderPeople([]);
+        log("left: " + p.identity); renderPeople([]); checkAlone();
       });
       room.on(LK.RoomEvent.ActiveSpeakersChanged, function (list) {
         renderPeople(list.map(function (p) { return p.identity; }));
       });
+      // Transcripts arrive from the agent worker as data messages.
+      room.on(LK.RoomEvent.DataReceived, function (payload, participant, kind, topic) {
+        if (topic !== "transcript") return;
+        var msg;
+        try { msg = JSON.parse(new TextDecoder().decode(payload)); }
+        catch (e) { return; }
+
+        var box = $("tx");
+        if (box.dataset.empty !== "no") { box.innerHTML = ""; box.dataset.empty = "no"; }
+
+        // One live line, replaced as it is revised, committed when final.
+        var live = box.querySelector("p.interim");
+        if (!msg.is_final) {
+          if (!live) { live = document.createElement("p"); live.className = "interim"; box.appendChild(live); }
+          live.textContent = msg.text;
+        } else {
+          if (live) { live.className = ""; live.textContent = msg.text; }
+          else { var p = document.createElement("p"); p.textContent = msg.text; box.appendChild(p); }
+          log("final: " + msg.text);
+        }
+        box.scrollTop = box.scrollHeight;
+      });
+
       room.on(LK.RoomEvent.TrackSubscribed, function (track, pub, participant) {
         if (track.kind !== "audio") return;
         // Attaching the element is what actually plays the far side.
@@ -203,8 +264,20 @@
     $("level").style.width = "0";
     if (room) { await room.disconnect(); room = null; }
     renderPeople([]);
+    $("alone").hidden = true;
     $("go").disabled = false;
   }
+
+  $("second").addEventListener("click", function () {
+    var u = location.origin + location.pathname + "?room=" +
+            encodeURIComponent($("room").value);
+    window.open(u, "_blank");
+    log("second tab opened — click Join and speak in it");
+  });
+
+  // Let a room name arrive by URL so the second tab lands in the same room.
+  var fromUrl = new URLSearchParams(location.search).get("room");
+  if (fromUrl) $("room").value = fromUrl;
 
   $("go").addEventListener("click", join);
   $("stop").addEventListener("click", leave);

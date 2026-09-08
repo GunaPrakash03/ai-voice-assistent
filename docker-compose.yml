@@ -26,3 +26,20 @@ services:
       - "127.0.0.1:7880:7880"      # HTTP + WebSocket signalling
       - "127.0.0.1:7881:7881"      # TCP fallback for restrictive networks
       - "50000-50100:50000-50100/udp"  # RTP media
+
+  agent:
+    build: .
+    image: voice-agent:dev
+    container_name: voice-agent-worker
+    depends_on:
+      - livekit
+    environment:
+      # The worker reaches LiveKit on the compose network, not localhost.
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
+      STT_MODEL: ${STT_MODEL:-nova-3}
+    volumes:
+      - ./agent:/app/agent:ro
+    restart: unless-stopped

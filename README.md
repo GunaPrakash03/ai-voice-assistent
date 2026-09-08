@@ -11,7 +11,7 @@ See `../ai voice assistent/` for the estimation, stack and cost documents.
 | Task | State |
 |------|-------|
 | 1.1 Media server setup | Local stack running, acceptance check passing. Cloud deploy pending. |
-| 1.2 Streaming STT | Not started — needs `DEEPGRAM_API_KEY` |
+| 1.2 Streaming STT | Done — `verify_stt.py` 5/5, speech transcribed end to end. |
 | 1.3 VAD & barge-in | Not started |
 | 1.4 LLM dialogue manager | Not started |
 | 1.5 Streaming TTS | Not started — needs `CARTESIA_API_KEY` |
@@ -31,6 +31,35 @@ management API works.
 docker compose logs -f livekit   # watch signalling
 docker compose down              # stop
 ```
+
+## Streaming STT (task 1.2)
+
+The worker joins the room, streams caller audio to Deepgram and publishes
+transcripts back as data messages on the `transcript` topic. The browser
+page renders interim results greyed out and solid once final.
+
+```bash
+python3 scripts/set_key.py <deepgram-key>   # validates, then writes .env
+docker compose up -d agent
+python3 scripts/verify_stt.py
+```
+
+`verify_stt.py` checks the key, the worker, its registration, and that real
+speech came back as text. For the last one, open the test page, join, and
+say a sentence.
+
+`scripts/publish_audio.py` does the same without a microphone: it publishes
+audio into the room and prints the transcripts that come back, which is what
+the browser does. Given a 16-bit mono WAV of speech it proves the whole
+round trip; with no argument it publishes a tone, which exercises dispatch
+and the Deepgram socket but produces no transcript. Either way it tells a
+broken pipeline from a silent microphone.
+
+**Two SDK defaults do not work on a self-hosted server.** The default turn
+detector and the "adaptive" barge-in model are hosted services on
+`agent-gateway.livekit.cloud`; with self-hosted keys both answer 401 and
+retry in a loop. `agent/worker.py` pins `turn_detection="stt"` and turns
+interruption off — task 1.3 replaces the first with local Silero VAD.
 
 ## Ports
 
