@@ -42,4 +42,5 @@ services:
       STT_MODEL: ${STT_MODEL:-nova-3}
     volumes:
       - ./agent:/app/agent:ro
+      - ./samples:/app/samples:ro
     restart: unless-stopped

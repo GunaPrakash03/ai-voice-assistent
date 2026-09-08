@@ -89,12 +89,22 @@
       <div><label for="who">Your name</label><input id="who" style="width:150px"></div>
       <button id="go">Join and speak</button>
       <button id="stop" class="ghost" disabled>Leave</button>
+      <button id="test-barge" class="ghost" disabled style="white-space:nowrap" title="Agent speaks; talk over it to test barge-in">Test Agent Speech (Barge-in)</button>
     </div>
   </div>
 
   <div class="panel">
     <label>Your microphone</label>
     <div class="meter"><div id="level"></div></div>
+    <div style="margin-top:12px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+      <div>
+        <label style="margin-bottom:4px">Voice Activity (Silero VAD)</label>
+        <span id="vad-badge" style="display:inline-block;padding:3px 9px;border-radius:4px;font-size:12px;font-weight:600;background:var(--rule);color:var(--soft)">Silent (Listening)</span>
+      </div>
+      <div id="barge-banner" style="display:none;padding:3px 9px;border-radius:4px;font-size:12px;font-weight:600;background:color-mix(in srgb,var(--warn) 20%,transparent);border:1px solid var(--warn);color:var(--warn)">
+        ⚡ Barge-In Interrupted!
+      </div>
+    </div>
     <label style="margin-top:16px">In this room</label>
     <ul id="people"><li><span style="color:var(--faint)">nobody yet</span></li></ul>
   </div>
@@ -212,27 +222,48 @@
       room.on(LK.RoomEvent.ActiveSpeakersChanged, function (list) {
         renderPeople(list.map(function (p) { return p.identity; }));
       });
-      // Transcripts arrive from the agent worker as data messages.
+      // Transcripts, VAD state, and barge-in events arrive as data messages.
       room.on(LK.RoomEvent.DataReceived, function (payload, participant, kind, topic) {
-        if (topic !== "transcript") return;
         var msg;
         try { msg = JSON.parse(new TextDecoder().decode(payload)); }
         catch (e) { return; }
 
-        var box = $("tx");
-        if (box.dataset.empty !== "no") { box.innerHTML = ""; box.dataset.empty = "no"; }
+        if (topic === "transcript") {
+          var box = $("tx");
+          if (box.dataset.empty !== "no") { box.innerHTML = ""; box.dataset.empty = "no"; }
 
-        // One live line, replaced as it is revised, committed when final.
-        var live = box.querySelector("p.interim");
-        if (!msg.is_final) {
-          if (!live) { live = document.createElement("p"); live.className = "interim"; box.appendChild(live); }
-          live.textContent = msg.text;
-        } else {
-          if (live) { live.className = ""; live.textContent = msg.text; }
-          else { var p = document.createElement("p"); p.textContent = msg.text; box.appendChild(p); }
-          log("final: " + msg.text);
+          // One live line, replaced as it is revised, committed when final.
+          var live = box.querySelector("p.interim");
+          if (!msg.is_final) {
+            if (!live) { live = document.createElement("p"); live.className = "interim"; box.appendChild(live); }
+            live.textContent = msg.text;
+          } else {
+            if (live) { live.className = ""; live.textContent = msg.text; }
+            else { var p = document.createElement("p"); p.textContent = msg.text; box.appendChild(p); }
+            log("final: " + msg.text);
+          }
+          box.scrollTop = box.scrollHeight;
+        } else if (topic === "vad") {
+          var badge = $("vad-badge");
+          if (msg.state === "speaking") {
+            badge.textContent = "🗣️ Speaking (Active)";
+            badge.style.background = "var(--ok)";
+            badge.style.color = "#fff";
+            log("VAD speech start detected");
+          } else if (msg.state === "listening") {
+            badge.textContent = "Silent (Listening / Turn Endpointed)";
+            badge.style.background = "var(--rule)";
+            badge.style.color = "var(--soft)";
+            log("VAD speech end detected");
+          }
+        } else if (topic === "interruption") {
+          var banner = $("barge-banner");
+          banner.style.display = "inline-block";
+          log("⚡ Barge-in interruption triggered! Agent speech buffer truncated.");
+          setTimeout(function () { banner.style.display = "none"; }, 3500);
+        } else if (topic === "agent_state") {
+          log("agent state: " + msg.state);
         }
-        box.scrollTop = box.scrollHeight;
       });
 
       room.on(LK.RoomEvent.TrackSubscribed, function (track, pub, participant) {
@@ -250,6 +281,7 @@
       if (pub && pub.track) startMeter(pub.track);
 
       $("stop").disabled = false;
+      $("test-barge").disabled = false;
     } catch (e) {
       setState("Failed", "err");
       log("error: " + (e && e.message ? e.message : e));
@@ -259,6 +291,11 @@
 
   async function leave() {
     $("stop").disabled = true;
+    $("test-barge").disabled = true;
+    $("vad-badge").textContent = "Silent (Listening)";
+    $("vad-badge").style.background = "var(--rule)";
+    $("vad-badge").style.color = "var(--soft)";
+    $("barge-banner").style.display = "none";
     if (raf) cancelAnimationFrame(raf);
     if (audioCtx) { audioCtx.close(); audioCtx = null; }
     $("level").style.width = "0";
@@ -267,6 +304,19 @@
     $("alone").hidden = true;
     $("go").disabled = false;
   }
+
+  $("test-barge").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    log("Requesting agent test speech to verify barge-in...");
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_speech" })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error requesting test speech: " + err);
+    }
+  });
 
   $("second").addEventListener("click", function () {
     var u = location.origin + location.pathname + "?room=" +
