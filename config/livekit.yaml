@@ -1,0 +1,31 @@
+# LiveKit media server — local development configuration.
+# Mirrors the shape of the production config so the only difference
+# later is keys, TLS and external IP handling.
+port: 7880
+bind_addresses:
+  - 0.0.0.0
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  # Local only. On a cloud VM this becomes true so LiveKit advertises
+  # the public address in its ICE candidates.
+  use_external_ip: false
+
+redis:
+  address: redis:6379
+
+# Room defaults. empty_timeout closes a room shortly after the last
+# participant leaves so abandoned calls do not hold resources.
+room:
+  empty_timeout: 60
+  max_participants: 4
+
+logging:
+  level: info
+  json: false
+
+# Keys are NOT stored here — this file is committed. The server reads them
+# from the LIVEKIT_KEYS environment variable, which docker-compose fills
+# from .env (gitignored). Format: "<api-key>: <secret>".

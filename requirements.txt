@@ -1,0 +1,9 @@
+# Pin exact patch versions before deploying. The Agents SDK changed
+# breakingly between 0.x and 1.x — mixing import styles will not run.
+livekit-agents~=1.0
+livekit-plugins-silero~=1.0
+livekit-plugins-deepgram~=1.0
+livekit-plugins-cartesia~=1.0
+livekit-plugins-openai~=1.0
+python-dotenv~=1.0
+redis~=5.0

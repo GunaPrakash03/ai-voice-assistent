@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Media Server Test — Task 1.1</title>
+<style>
+  :root {
+    --ground:#F4F6F5; --panel:#fff; --ink:#10161B; --soft:#4B565C;
+    --faint:#78848A; --rule:#D8DEDB; --accent:#127C8E; --ok:#3F8F5B;
+    --warn:#B8791F; --bad:#A8412F;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:#0E1315; --panel:#171E21; --ink:#E8EDEB; --soft:#A6B2B4;
+      --faint:#748085; --rule:#29343A; --accent:#45B6C9; --ok:#6FBF87;
+      --warn:#E0A94E; --bad:#E08272;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);
+    font:15px/1.5 "IBM Plex Sans",system-ui,-apple-system,sans-serif;padding:28px 20px 60px}
+  .wrap{max-width:760px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--soft);font-size:14px;margin:0 0 22px}
+  .panel{background:var(--panel);border:1px solid var(--rule);border-radius:6px;
+    padding:18px 20px;margin-bottom:14px}
+  label{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:5px;font-family:ui-monospace,Menlo,monospace}
+  input{font:inherit;padding:8px 10px;border:1px solid var(--rule);border-radius:4px;
+    background:var(--ground);color:var(--ink);width:200px}
+  .row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+  button{font:inherit;font-weight:600;padding:9px 18px;border-radius:4px;cursor:pointer;
+    border:1px solid var(--accent);background:var(--accent);color:#fff}
+  button.ghost{background:transparent;color:var(--accent)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .status{display:flex;align-items:center;gap:9px;font-weight:600;margin-bottom:14px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--faint);flex:none}
+  .dot.on{background:var(--ok)} .dot.busy{background:var(--warn)} .dot.err{background:var(--bad)}
+  .meter{height:26px;background:var(--ground);border:1px solid var(--rule);
+    border-radius:4px;overflow:hidden;margin-top:6px}
+  .meter div{height:100%;width:0;background:var(--ok);transition:width .08s linear}
+  ul{list-style:none;padding:0;margin:8px 0 0}
+  li{padding:7px 10px;border:1px solid var(--rule);border-radius:4px;margin-bottom:6px;
+    display:flex;justify-content:space-between;font-size:14px}
+  li.speaking{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 10%,transparent)}
+  .tag{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--faint)}
+  pre{background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:12px;
+    font-size:12px;line-height:1.6;max-height:220px;overflow:auto;margin:8px 0 0;
+    font-family:ui-monospace,Menlo,monospace}
+  .hint{background:color-mix(in srgb,var(--accent) 10%,transparent);
+    border:1px solid var(--accent);border-radius:5px;padding:12px 15px;font-size:13.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Media Server Test</h1>
+  <p class="sub">Task 1.1 acceptance — browser to media server, real audio, no AI yet.</p>
+
+  <div class="hint">
+    <strong>The real test:</strong> open this page in <strong>two tabs</strong>, join the same
+    room in both, then talk. Hearing yourself in the other tab proves the full duplex
+    media path works end to end — the thing everything else is built on.
+  </div>
+
+  <div class="panel" style="margin-top:14px">
+    <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
+    <div class="row">
+      <div><label for="room">Room</label><input id="room" value="test-room"></div>
+      <div><label for="who">Your name</label><input id="who" style="width:150px"></div>
+      <button id="go">Join and speak</button>
+      <button id="stop" class="ghost" disabled>Leave</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <label>Your microphone</label>
+    <div class="meter"><div id="level"></div></div>
+    <label style="margin-top:16px">In this room</label>
+    <ul id="people"><li><span style="color:var(--faint)">nobody yet</span></li></ul>
+  </div>
+
+  <div class="panel">
+    <label>Event log</label>
+    <pre id="log">ready</pre>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  var LK = window.LivekitClient || window.LiveKitClient || window.livekit;
+  var room = null, audioCtx = null, raf = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  $("who").value = "tab-" + Math.random().toString(36).slice(2, 6);
+
+  function log(msg) {
+    var t = new Date().toTimeString().slice(0, 8);
+    $("log").textContent = t + "  " + msg + "\n" + $("log").textContent;
+  }
+  function setState(text, cls) {
+    $("state").textContent = text;
+    $("dot").className = "dot" + (cls ? " " + cls : "");
+  }
+
+  if (!LK) {
+    setState("livekit-client failed to load", "err");
+    log("The CDN script did not load. Check your network, then reload.");
+    $("go").disabled = true;
+    return;
+  }
+
+  function renderPeople(speaking) {
+    var list = $("people");
+    if (!room) { list.innerHTML = '<li><span style="color:var(--faint)">nobody yet</span></li>'; return; }
+    var all = [room.localParticipant].concat(Array.from(room.remoteParticipants.values()));
+    list.innerHTML = "";
+    all.forEach(function (p) {
+      var li = document.createElement("li");
+      var isMe = p === room.localParticipant;
+      li.className = (speaking || []).indexOf(p.identity) > -1 ? "speaking" : "";
+      li.innerHTML = '<span>' + p.identity + (isMe ? ' <span class="tag">you</span>' : '') +
+                     '</span><span class="tag">' + (li.className ? 'speaking' : 'quiet') + '</span>';
+      list.appendChild(li);
+    });
+  }
+
+  // Local mic level, straight from the published track.
+  function startMeter(track) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var src = audioCtx.createMediaStreamSource(new MediaStream([track.mediaStreamTrack]));
+    var analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    src.connect(analyser);
+    var buf = new Uint8Array(analyser.frequencyBinCount);
+    (function tick() {
+      analyser.getByteTimeDomainData(buf);
+      var peak = 0;
+      for (var i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
+      $("level").style.width = Math.min(100, (peak / 128) * 240) + "%";
+      raf = requestAnimationFrame(tick);
+    })();
+  }
+
+  async function join() {
+    $("go").disabled = true;
+    setState("Connecting…", "busy");
+    try {
+      var q = "?room=" + encodeURIComponent($("room").value) +
+              "&identity=" + encodeURIComponent($("who").value);
+      var cfg = await (await fetch("/token" + q)).json();
+      log("token issued for " + cfg.identity);
+
+      room = new LK.Room({ adaptiveStream: true, dynacast: true });
+
+      room.on(LK.RoomEvent.Connected, function () {
+        setState("Connected to " + cfg.room, "on");
+        log("connected — sid " + room.name);
+        renderPeople([]);
+      });
+      room.on(LK.RoomEvent.Disconnected, function (r) {
+        setState("Disconnected", ""); log("disconnected" + (r ? " (" + r + ")" : ""));
+      });
+      room.on(LK.RoomEvent.ParticipantConnected, function (p) {
+        log("joined: " + p.identity); renderPeople([]);
+      });
+      room.on(LK.RoomEvent.ParticipantDisconnected, function (p) {
+        log("left: " + p.identity); renderPeople([]);
+      });
+      room.on(LK.RoomEvent.ActiveSpeakersChanged, function (list) {
+        renderPeople(list.map(function (p) { return p.identity; }));
+      });
+      room.on(LK.RoomEvent.TrackSubscribed, function (track, pub, participant) {
+        if (track.kind !== "audio") return;
+        // Attaching the element is what actually plays the far side.
+        document.body.appendChild(track.attach());
+        log("hearing " + participant.identity);
+      });
+
+      await room.connect(cfg.url, cfg.token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+      log("microphone published");
+
+      var pub = Array.from(room.localParticipant.audioTrackPublications.values())[0];
+      if (pub && pub.track) startMeter(pub.track);
+
+      $("stop").disabled = false;
+    } catch (e) {
+      setState("Failed", "err");
+      log("error: " + (e && e.message ? e.message : e));
+      $("go").disabled = false;
+    }
+  }
+
+  async function leave() {
+    $("stop").disabled = true;
+    if (raf) cancelAnimationFrame(raf);
+    if (audioCtx) { audioCtx.close(); audioCtx = null; }
+    $("level").style.width = "0";
+    if (room) { await room.disconnect(); room = null; }
+    renderPeople([]);
+    $("go").disabled = false;
+  }
+
+  $("go").addEventListener("click", join);
+  $("stop").addEventListener("click", leave);
+})();
+</script>
+</body>
+</html>
