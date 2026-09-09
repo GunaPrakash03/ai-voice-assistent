@@ -16,7 +16,8 @@ See `../ai voice assistent/` for the estimation, stack and cost documents.
 | 1.4 LLM dialogue manager | Done — `verify_llm.py` 5/5, streaming model wrapper, clause boundary splitter, context buffer. |
 | 1.5 Streaming TTS | Done — `verify_tts.py` 5/5, Cartesia Sonic streaming TTS, 20ms chunking, sub-100ms TTFA, instant barge-in cut-off. |
 | 1.6 Mid-Call Function Calling & Retrieval Tools | Done — `verify_tools.py` 5/5, JSON Schema tool registry, async non-blocking dispatcher, <10ms filler speech engine, grounded response synthesis. |
-| 1.7 Browser WebRTC Client SDK | Next up — standalone browser SDK, microphone capture, audio visualizer, reconnect logic. |
+| 1.7 Browser WebRTC Client SDK | Done — `verify_sdk.py` 5/5, standalone browser SDK, UMD module, TypeScript definitions, audio visualizer, reconnect logic. |
+| 2.1 SIP Gateway & Telephony Integration | Next up — LiveKit SIP carrier trunk, inbound DID routing, outbound dialer API. |
 
 ## Run it
 
@@ -28,6 +29,7 @@ python3 scripts/verify_vad.py   # VAD & barge-in acceptance (1.3)
 python3 scripts/verify_llm.py   # streaming LLM dialogue manager acceptance (1.4)
 python3 scripts/verify_tts.py   # streaming TTS engine acceptance (1.5)
 python3 scripts/verify_tools.py # mid-call function calling & tools acceptance (1.6)
+python3 scripts/verify_sdk.py   # browser WebRTC client SDK acceptance (1.7)
 ```
 
 The verify script proves the four things task 1.1 promises: the server
@@ -124,6 +126,39 @@ Enables real-time CRM/database lookups, scheduling, order status checks, and kno
 
 ```bash
 python3 scripts/verify_tools.py # verifies all 5/5 checks for Task 1.6
+```
+
+## Browser WebRTC Client SDK (task 1.7)
+
+Provides a standalone, lightweight JavaScript / TypeScript SDK (`web/voice-client.js`, `web/voice-client.d.ts`) to embed real-time voice agent capabilities into any web frontend, React/Vue app, or embeddable widget:
+
+- **Universal Module (UMD & ESM)**: works via `<script src="/voice-client.js">`, CommonJS `require()`, or ES6 `import`.
+- **TypeScript Support**: full type safety and IDE autocomplete with `voice-client.d.ts`.
+- **Event-Driven Architecture**: typed EventEmitter pattern for `transcript`, `vad`, `agentState`, `llmStream`, `llmClause`, `agentReply`, `ttsMetrics`, `interruption`, `toolCall`, `fillerSpeech`, and `toolResult`.
+- **Microphone & Audio Controls**: automatic echo cancellation (AEC), noise suppression, automatic gain control (AGC), mute/unmute, and mic fallback handling.
+- **Real-Time Audio Visualizer**: built-in `AudioVisualizer` helper supporting canvas waveforms, frequency bars, and volume level meters (0.0 to 1.0).
+- **Exponential Backoff Reconnection**: automatically recovers from temporary network drops or room disconnects with configurable retry limits and jitter.
+
+### Basic SDK Usage:
+
+```javascript
+import VoiceAgentClient from './voice-client.js';
+
+const client = new VoiceAgentClient({
+  room: 'support-call-123',
+  tokenEndpoint: '/token',
+});
+
+client.on('transcript', ({ text, isFinal }) => console.log('User:', text));
+client.on('agentReply', ({ text }) => console.log('AI:', text));
+client.on('vad', ({ state }) => console.log('VAD state:', state));
+client.on('toolCall', ({ tool, arguments: args }) => console.log('Tool dispatched:', tool, args));
+
+await client.connect();
+```
+
+```bash
+python3 scripts/verify_sdk.py # verifies all 5/5 checks for Task 1.7
 ```
 
 

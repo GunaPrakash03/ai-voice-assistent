@@ -78,7 +78,7 @@
 <div class="wrap">
 
   <h1>AI Voice Assistant — Core Audio & Dialogue</h1>
-  <p class="sub">Task 1.6 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD Barge-in &bull; Streaming LLM &bull; Cartesia Sonic TTS &bull; Mid-Call Function Tools</p>
+  <p class="sub">Task 1.7 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD Barge-in &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser Client SDK</p>
 
   <div class="panel">
     <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
@@ -261,6 +261,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js"></script>
+<script src="/voice-client.js"></script>
 <script>
 (function () {
   "use strict";
@@ -277,6 +278,10 @@
   function setState(text, cls) {
     $("state").textContent = text;
     $("dot").className = "dot" + (cls ? " " + cls : "");
+  }
+
+  if (window.VoiceAgentClient) {
+    log("VoiceAgentClient SDK loaded & available on window.VoiceAgentClient");
   }
 
   if (!LK) {
