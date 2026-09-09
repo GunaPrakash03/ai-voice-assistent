@@ -1,0 +1,1839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Voice Assistant — Task 1.6 Mid-Call Function Calling & Retrieval</title>
+<style>
+  :root {
+    --ground:#F4F6F5; --panel:#fff; --ink:#10161B; --soft:#4B565C;
+    --faint:#78848A; --rule:#D8DEDB; --accent:#127C8E; --ok:#3F8F5B;
+    --warn:#B8791F; --bad:#A8412F; --chip:#E9F1F3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:#0E1315; --panel:#171E21; --ink:#E8EDEB; --soft:#A6B2B4;
+      --faint:#748085; --rule:#29343A; --accent:#45B6C9; --ok:#6FBF87;
+      --warn:#E0A94E; --bad:#E08272; --chip:#1A262B;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);
+    font:15px/1.5 "IBM Plex Sans",system-ui,-apple-system,sans-serif;padding:28px 20px 60px}
+  .wrap{max-width:820px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--soft);font-size:14px;margin:0 0 22px}
+  .panel{background:var(--panel);border:1px solid var(--rule);border-radius:6px;
+    padding:18px 20px;margin-bottom:14px}
+  label{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:5px;font-family:ui-monospace,Menlo,monospace}
+  input{font:inherit;padding:8px 10px;border:1px solid var(--rule);border-radius:4px;
+    background:var(--ground);color:var(--ink);width:200px}
+  .row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+  button{font:inherit;font-weight:600;padding:9px 18px;border-radius:4px;cursor:pointer;
+    border:1px solid var(--accent);background:var(--accent);color:#fff}
+  button.ghost{background:transparent;color:var(--accent)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  .status{display:flex;align-items:center;gap:9px;font-weight:600;margin-bottom:14px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--faint);flex:none}
+  .dot.on{background:var(--ok)} .dot.busy{background:var(--warn)} .dot.err{background:var(--bad)}
+  .meter{height:26px;background:var(--ground);border:1px solid var(--rule);
+    border-radius:4px;overflow:hidden;margin-top:6px}
+  .meter div{height:100%;width:0;background:var(--ok);transition:width .08s linear}
+  ul{list-style:none;padding:0;margin:8px 0 0}
+  li{padding:7px 10px;border:1px solid var(--rule);border-radius:4px;margin-bottom:6px;
+    display:flex;justify-content:space-between;font-size:14px}
+  li.speaking{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 10%,transparent)}
+  .tag{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--faint)}
+  pre{background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:12px;
+    font-size:12px;line-height:1.6;max-height:220px;overflow:auto;margin:8px 0 0;
+    font-family:ui-monospace,Menlo,monospace}
+  .alone{display:flex;gap:14px;align-items:center;justify-content:space-between;
+    flex-wrap:wrap;background:color-mix(in srgb,var(--warn) 12%,transparent);
+    border:1px solid var(--warn);border-radius:5px;padding:12px 15px;margin-bottom:14px;
+    font-size:13.5px}
+  .warn-hp{color:var(--soft);font-size:12.5px;margin-top:3px}
+  .transcript{margin-top:8px;min-height:80px;max-height:200px;overflow:auto;
+    background:var(--ground);border:1px solid var(--rule);border-radius:4px;
+    padding:12px;font-size:14.5px;line-height:1.6}
+  .transcript p{margin:0 0 7px}
+  .transcript .interim{color:var(--faint);font-style:italic}
+  .hint{background:color-mix(in srgb,var(--accent) 10%,transparent);
+    border:1px solid var(--accent);border-radius:5px;padding:12px 15px;font-size:13.5px}
+  .badge{display:inline-block;padding:3px 9px;border-radius:4px;font-size:11.5px;font-weight:600;font-family:ui-monospace,Menlo,monospace}
+  .metrics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px}
+  .metric-card{background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:9px 12px}
+  .metric-label{font-size:10.5px;text-transform:uppercase;color:var(--faint);font-family:ui-monospace,monospace}
+  .metric-val{font-size:18px;font-weight:700;color:var(--accent);margin-top:2px}
+  .clause-chip{display:inline-block;padding:4px 9px;background:var(--chip);border:1px solid var(--rule);border-radius:4px;font-size:12.5px;margin:3px 4px 3px 0}
+  .clause-chip.final{border-color:var(--accent)}
+  .chat-turn{padding:8px 12px;border-radius:5px;margin-bottom:8px;font-size:13.5px}
+  .chat-turn.user{background:color-mix(in srgb,var(--accent) 12%,transparent);border-left:3px solid var(--accent)}
+  .chat-turn.assistant{background:var(--ground);border-left:3px solid var(--ok)}
+  .chat-turn.interrupted{border-left-color:var(--warn)}
+  .keypad-btn{width:44px;height:40px;background:var(--ground);border:1px solid var(--rule);border-radius:4px;
+    font-size:16px;font-weight:700;font-family:ui-monospace,monospace;color:var(--text);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;transition:background .1s,transform .05s}
+  .keypad-btn:hover{background:var(--chip);border-color:var(--accent)}
+  .keypad-btn:active{background:var(--accent);color:#fff;transform:scale(0.95)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>AI Voice Assistant — Core Audio & Dialogue</h1>
+  <p class="sub">Task 2.6 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser SDK &bull; SIP Gateway &bull; Call Transfer &bull; DTMF/IVR &bull; AMD &bull; Dual-Channel Recording &bull; <a href="/softphone.html" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:underline">Web Softphone &rarr;</a> &bull; <a href="/call-desk.html" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:underline">Call Desk &rarr;</a> &bull; <a href="/code-walkthrough.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Walkthrough &rarr;</a> &bull; <a href="/task-plan.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Task Plan &rarr;</a></p>
+
+  <div class="panel">
+    <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
+    <div id="alone" class="alone" hidden>
+      <div>
+        <strong>You are alone in this room.</strong> Audio needs the agent or another participant.
+        <div class="warn-hp">Ensure the worker container is running: <code>docker compose up -d</code></div>
+      </div>
+      <button id="second" class="ghost" style="white-space:nowrap">Open second tab</button>
+    </div>
+    <div class="row">
+      <div><label for="room">Room</label><input id="room" value="test-room"></div>
+      <div><label for="who">Your name</label><input id="who" style="width:150px"></div>
+      <button id="go">Join and speak</button>
+      <button id="stop" class="ghost" disabled>Leave</button>
+      <button id="test-tts-btn" class="ghost" disabled style="white-space:nowrap" title="Agent speaks using Cartesia Streaming TTS">Test Cartesia TTS</button>
+      <button id="test-barge" class="ghost" disabled style="white-space:nowrap" title="Agent speaks; talk over it to test barge-in">Test Tone (Barge-in)</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <label>Voice Activity & Interruption State</label>
+    <div class="meter"><div id="level"></div></div>
+    <div style="margin-top:12px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+      <div>
+        <label style="margin-bottom:4px">Caller VAD (Silero)</label>
+        <span id="vad-badge" class="badge" style="background:var(--rule);color:var(--soft)">Silent (Listening)</span>
+      </div>
+      <div>
+        <label style="margin-bottom:4px">Agent State</label>
+        <span id="agent-badge" class="badge" style="background:var(--rule);color:var(--soft)">Idle</span>
+      </div>
+      <div id="barge-banner" style="display:none;padding:3px 9px;border-radius:4px;font-size:12px;font-weight:600;background:color-mix(in srgb,var(--warn) 20%,transparent);border:1px solid var(--warn);color:var(--warn)">
+        ⚡ Instant Barge-In Cut-Off!
+      </div>
+    </div>
+    <label style="margin-top:16px">Participants in room</label>
+    <ul id="people"><li><span style="color:var(--faint)">nobody yet</span></li></ul>
+  </div>
+
+  <div class="panel">
+    <label>Live Caller Transcript (Deepgram STT)</label>
+    <div id="tx" class="transcript"><span style="color:var(--faint)">Speak once connected. Deepgram streams interim tokens and commits final transcripts.</span></div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label>Streaming LLM Dialogue Response (Task 1.4)</label>
+      <span id="llm-status" class="badge" style="background:var(--rule);color:var(--soft)">Awaiting user speech</span>
+    </div>
+
+    <!-- Live streaming text -->
+    <div id="llm-stream-box" class="transcript" style="margin-top:8px;min-height:75px">
+      <span style="color:var(--faint)">Agent response tokens will stream here in real time with sub-200ms TTFT...</span>
+    </div>
+
+    <!-- Clause Boundary Splitter Chunks (Task 1.5 TTS preparation) -->
+    <label style="margin-top:14px">Clause Boundary Splitter (sub-200ms chunks for TTS)</label>
+    <div id="clause-box" style="margin-top:6px;min-height:36px;padding:6px;background:var(--ground);border:1px solid var(--rule);border-radius:4px">
+      <span style="color:var(--faint);font-size:12.5px">Completed clauses will appear here as tokens stream...</span>
+    </div>
+
+    <!-- Live LLM Performance Metrics -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">TTFT (First Token)</div>
+        <div class="metric-val" id="m-ttft">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Total Duration</div>
+        <div class="metric-val" id="m-dur">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Tokens Emitted</div>
+        <div class="metric-val" id="m-tok">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Clauses Split</div>
+        <div class="metric-val" id="m-clauses">—</div>
+      </div>
+    </div>
+
+    <!-- Manual Prompt Test without Microphone -->
+    <div style="margin-top:16px;border-top:1px solid var(--rule);padding-top:14px">
+      <label for="prompt-input">Test Dialogue Directly (without microphone)</label>
+      <div class="row">
+        <input id="prompt-input" style="flex:1;min-width:240px" placeholder="Type a message, e.g. 'Hello, how can you help me?'">
+        <button id="send-prompt" disabled>Send Prompt</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label>Streaming TTS Engine (Cartesia Sonic & Opus RTP Packetizer — Task 1.5)</label>
+      <span id="tts-status" class="badge" style="background:var(--rule);color:var(--soft)">TTS Idle</span>
+    </div>
+
+    <!-- Live TTS Metrics -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">TTFA (First Audio)</div>
+        <div class="metric-val" id="m-ttfa">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Audio Duration</div>
+        <div class="metric-val" id="m-audio-dur">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Sample Rate</div>
+        <div class="metric-val" id="m-sample-rate">24 kHz</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Engine Provider</div>
+        <div class="metric-val" style="font-size:14px" id="m-tts-engine">Cartesia Sonic</div>
+      </div>
+    </div>
+
+    <!-- Direct TTS synthesis test -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <label for="tts-phrase">Test Streaming TTS Audio Synthesis</label>
+      <div class="row">
+        <input id="tts-phrase" style="flex:1;min-width:240px" value="Cartesia Sonic delivers crystal-clear speech with sub-100 millisecond response time.">
+        <button id="speak-phrase-btn" disabled>Speak Phrase</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label>Mid-Call Function Calling & Retrieval Tools (Task 1.6)</label>
+      <span id="tool-status" class="badge" style="background:var(--rule);color:var(--soft)">5 Tools Active</span>
+    </div>
+
+    <!-- Live Tool Execution Metrics -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Invoked Tool</div>
+        <div class="metric-val" style="font-size:15px" id="m-tool-name">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Execution Latency</div>
+        <div class="metric-val" id="m-tool-dur">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Filler Speech</div>
+        <div class="metric-val" style="font-size:14px" id="m-filler-status">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Tool Status</div>
+        <div class="metric-val" style="font-size:15px" id="m-tool-status">Ready</div>
+      </div>
+    </div>
+
+    <!-- Direct Tool Trigger Buttons -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <label>Test Spoken Mid-Call Inquiries</label>
+      <div class="row">
+        <button id="btn-tool-avail" class="ghost" disabled style="font-size:13px;padding:6px 12px">Check Availability (Dental)</button>
+        <button id="btn-tool-order" class="ghost" disabled style="font-size:13px;padding:6px 12px">Lookup Order #1042</button>
+        <button id="btn-tool-kb" class="ghost" disabled style="font-size:13px;padding:6px 12px">Query KB (Return Policy)</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label>SIP Gateway &amp; Telephony Integration (Task 2.1)</label>
+      <span id="tel-status-badge" class="badge" style="background:var(--rule);color:var(--soft)">SIP Trunks Ready</span>
+    </div>
+
+    <!-- Live Telephony Metrics / Call Info -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Active Call ID</div>
+        <div class="metric-val" style="font-size:13px;word-break:break-all" id="m-call-id">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Call State</div>
+        <div class="metric-val" style="font-size:15px" id="m-call-state">Idle</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Destination (PSTN)</div>
+        <div class="metric-val" style="font-size:14px" id="m-call-dest">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Assigned Room</div>
+        <div class="metric-val" style="font-size:13px;word-break:break-all" id="m-call-room">—</div>
+      </div>
+    </div>
+
+    <!-- Outbound Dialing Form -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <label for="tel-dest">Outbound Phone Number (E.164 format)</label>
+      <div class="row">
+        <input id="tel-dest" style="flex:1;min-width:200px" value="+18005550199" placeholder="+1 (555) 000-0000">
+        <button id="btn-dial-phone">Dial Outbound PSTN</button>
+        <button id="btn-sim-inbound" class="ghost">Simulate Inbound DID</button>
+        <button id="btn-hangup-phone" class="ghost" disabled style="color:var(--warn)">Hangup</button>
+      </div>
+    </div>
+
+    <!-- Call Transfer & Hold Controller (Task 2.2) -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="margin-bottom:0">Call Transfer Engine (SIP REFER &amp; Warm Consultation — Task 2.2)</label>
+        <span id="xfer-badge" class="badge" style="background:var(--rule);color:var(--soft)">Transfer Idle</span>
+      </div>
+      <div class="row" style="align-items:flex-end">
+        <div style="flex:1;min-width:180px">
+          <label for="xfer-dest" style="font-size:12px">Transfer Target (E.164)</label>
+          <input id="xfer-dest" value="+18885550142" placeholder="+1 (888) 555-0142">
+        </div>
+        <div>
+          <label for="xfer-mode" style="font-size:12px">Mode</label>
+          <select id="xfer-mode" style="padding:6px 8px;border-radius:4px;border:1px solid var(--rule);background:var(--ground);color:var(--text)">
+            <option value="warm">Warm (Attended / Briefing)</option>
+            <option value="blind">Blind (Cold / Immediate)</option>
+          </select>
+        </div>
+        <div>
+          <label for="xfer-dept" style="font-size:12px">Department</label>
+          <select id="xfer-dept" style="padding:6px 8px;border-radius:4px;border:1px solid var(--rule);background:var(--ground);color:var(--text)">
+            <option value="billing">Billing &amp; Payments</option>
+            <option value="technical support">Technical Support</option>
+            <option value="sales">Sales &amp; Upgrades</option>
+          </select>
+        </div>
+        <button id="btn-do-xfer">Transfer Call</button>
+        <button id="btn-toggle-hold" class="ghost">Hold Call</button>
+      </div>
+
+      <!-- Live Transfer & Hold Status Card -->
+      <div id="xfer-timeline" style="margin-top:10px;padding:8px 12px;background:var(--ground);border:1px solid var(--rule);border-radius:4px;font-size:12.5px;color:var(--soft);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div><strong>Transfer:</strong> <span id="xfer-state-text">Ready</span></div>
+        <div>&bull;</div>
+        <div><strong>Hold:</strong> <span id="xfer-hold-text">Active (Talking)</span></div>
+        <div>&bull;</div>
+        <div><strong>Briefing:</strong> <span id="xfer-briefing-text" style="font-style:italic">—</span></div>
+      </div>
+    </div>
+
+    <!-- DTMF Keypad & IVR Phone Tree (Task 2.3) -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="margin-bottom:0">DTMF Keypad &amp; IVR Navigation (Task 2.3)</label>
+        <span id="ivr-badge" class="badge" style="background:var(--rule);color:var(--soft)">IVR: Main Menu</span>
+      </div>
+
+      <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+        <!-- 3x4 Telephone Keypad -->
+        <div style="display:grid;grid-template-columns:repeat(3,44px);gap:6px">
+          <button class="keypad-btn" data-key="1">1</button>
+          <button class="keypad-btn" data-key="2">2</button>
+          <button class="keypad-btn" data-key="3">3</button>
+          <button class="keypad-btn" data-key="4">4</button>
+          <button class="keypad-btn" data-key="5">5</button>
+          <button class="keypad-btn" data-key="6">6</button>
+          <button class="keypad-btn" data-key="7">7</button>
+          <button class="keypad-btn" data-key="8">8</button>
+          <button class="keypad-btn" data-key="9">9</button>
+          <button class="keypad-btn" data-key="*">*</button>
+          <button class="keypad-btn" data-key="0">0</button>
+          <button class="keypad-btn" data-key="#">#</button>
+        </div>
+
+        <!-- IVR State Card & Buffer -->
+        <div style="flex:1;min-width:240px">
+          <div style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:9px 12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:11px;font-family:ui-monospace,monospace;color:var(--faint);text-transform:uppercase">Keypad Digits Buffer</span>
+              <div>
+                <button id="btn-clear-dtmf" class="ghost" style="padding:2px 6px;font-size:11px">Clear</button>
+                <button id="btn-reset-ivr" class="ghost" style="padding:2px 6px;font-size:11px">Reset IVR</button>
+              </div>
+            </div>
+            <div id="dtmf-display" style="font-family:ui-monospace,monospace;font-size:18px;font-weight:700;color:var(--accent);letter-spacing:2px;min-height:24px">—</div>
+          </div>
+
+          <div style="margin-top:8px;background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:9px 12px;font-size:12.5px;line-height:1.5">
+            <div style="font-size:11px;font-family:ui-monospace,monospace;color:var(--faint);text-transform:uppercase;margin-bottom:2px">Active IVR Prompt</div>
+            <div id="ivr-prompt-text" style="color:var(--text)">Thanks for calling Northgate Support. Press 1 for Sales, 2 for Technical Support, 3 for Billing, or 9 for a live operator.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Answering Machine Detection (AMD) & Voicemail Drop (Task 2.4) -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="margin-bottom:0">Answering Machine Detection (AMD) &amp; Voicemail Drop (Task 2.4)</label>
+        <span id="amd-badge" class="badge" style="background:var(--rule);color:var(--soft)">AMD: Monitoring</span>
+      </div>
+
+      <div style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:9px 12px;font-size:12px;line-height:1.6">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div><strong>Classification:</strong> <span id="amd-state-text" style="color:var(--accent);font-weight:600">Detecting</span></div>
+          <div><strong>Confidence:</strong> <span id="amd-conf-text" style="font-family:ui-monospace,monospace">0%</span></div>
+          <div><strong>Speech / Pause:</strong> <span id="amd-cadence-text" style="font-family:ui-monospace,monospace">0.0s / 0.0s</span></div>
+          <div><strong>Action:</strong> <span id="amd-action-text" style="font-weight:600">Continue Dialogue</span></div>
+        </div>
+        <div style="margin-top:4px"><strong>Reason:</strong> <span id="amd-reason-text" style="font-style:italic;color:var(--soft)">Listening for initial greeting cadence and tones...</span></div>
+      </div>
+
+      <div style="margin-top:8px">
+        <label style="font-size:11px;text-transform:uppercase;color:var(--faint);margin-bottom:3px">Voicemail Drop Message Template</label>
+        <input id="amd-drop-msg" type="text" value="Hello, this is Northgate Support calling regarding your inquiry. Please call us back at 800-555-0199 at your convenience. Thank you!" style="width:100%;font-size:12px;padding:6px 9px" />
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button id="btn-sim-human" class="ghost" style="flex:1;min-width:130px;font-size:11.5px">Simulate Human ("Hello?")</button>
+        <button id="btn-sim-machine" class="ghost" style="flex:1;min-width:140px;font-size:11.5px">Simulate Voicemail Prompt</button>
+        <button id="btn-sim-beep" class="ghost" style="flex:1;min-width:130px;font-size:11.5px">Simulate 1kHz Beep</button>
+        <button id="btn-drop-voicemail" style="flex:1;min-width:140px;font-size:11.5px;background:var(--accent);color:#fff">Drop Voicemail Message</button>
+      </div>
+    </div>
+
+    <!-- Real-Time Call Recording, Dual-Channel Stereo & Compliance (Task 2.5) -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="margin-bottom:0">Call Recording &amp; Dual-Channel Compliance (Task 2.5)</label>
+        <span id="rec-badge" class="badge" style="background:var(--rule);color:var(--soft)">REC: Idle</span>
+      </div>
+
+      <div style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:9px 12px;font-size:12px;line-height:1.6">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div><strong>Channels:</strong> <span style="color:var(--accent)">Dual-Channel Stereo (L: Caller, R: Agent)</span></div>
+          <div><strong>Duration:</strong> <span id="rec-duration-text" style="font-family:ui-monospace,monospace;font-weight:700">00:00</span></div>
+          <div><strong>Status:</strong> <span id="rec-status-text" style="font-weight:600">IDLE</span></div>
+          <div><strong>Compliance:</strong> <span id="rec-compliance-text" style="color:var(--ok)">2-Party (1.4kHz Beep + Disclosure)</span></div>
+        </div>
+        <div style="margin-top:4px" id="rec-file-info"><strong>Storage:</strong> <span id="rec-path-text" style="font-style:italic;color:var(--soft)">WAV container ready (16-bit PCM @ 16kHz)</span></div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button id="btn-start-rec" style="flex:1;min-width:130px;font-size:11.5px;background:var(--danger);color:#fff">&#x23FA; Start Recording</button>
+        <button id="btn-pause-rec" class="ghost" style="flex:1;min-width:140px;font-size:11.5px" disabled>&#x23F8; Pause (PCI Redact)</button>
+        <button id="btn-resume-rec" class="ghost" style="flex:1;min-width:120px;font-size:11.5px" disabled>&#x25B6; Resume</button>
+        <button id="btn-stop-rec" class="ghost" style="flex:1;min-width:130px;font-size:11.5px" disabled>&#x23F9; Stop &amp; Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label>Conversation Context Buffer (Multi-Turn History)</label>
+      <button id="clear-hist" class="ghost" style="padding:3px 8px;font-size:12px" disabled>Clear History</button>
+    </div>
+    <div id="chat-history" style="margin-top:8px;max-height:220px;overflow:auto">
+      <span style="color:var(--faint);font-size:13px">No conversation history yet.</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <label style="margin-bottom:0">Post-Call Processing, Analytics &amp; Schema Extraction (Tasks 3.1–3.3)</label>
+      <span id="pipeline-badge" class="badge" style="background:var(--rule);color:var(--soft)">Queue Idle</span>
+    </div>
+
+    <div class="metrics-grid" style="margin-top:10px">
+      <div class="metric-card">
+        <div class="metric-label">Latest Job</div>
+        <div class="metric-val" id="pipe-job-id" style="font-size:13.5px;font-family:ui-monospace,monospace">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Pipeline Status</div>
+        <div class="metric-val" id="pipe-status" style="font-size:16px">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Total Duration</div>
+        <div class="metric-val" id="pipe-dur" style="font-size:16px">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Talk-Time Ratios</div>
+        <div class="metric-val" id="pipe-ratios" style="font-size:13px;font-family:ui-monospace,monospace">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Sentiment Polarity</div>
+        <div class="metric-val" id="pipe-sentiment-polarity" style="font-size:16px">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Trajectory Trend</div>
+        <div class="metric-val" id="pipe-sentiment-trend" style="font-size:16px">—</div>
+      </div>
+    </div>
+
+    <div style="margin-top:10px;background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:10px 12px;font-size:12px;display:none" id="pipe-summary-card">
+      <div style="font-weight:600;margin-bottom:4px;font-size:12.5px">📋 Executive Summary &amp; CRM Entities</div>
+      <div id="pipe-exec-summary" style="color:var(--soft);line-height:1.5">—</div>
+      <div style="margin-top:6px;display:flex;gap:12px;flex-wrap:wrap">
+        <span style="font-size:11px"><b>Intent:</b> <span id="pipe-intent">—</span></span>
+        <span style="font-size:11px"><b>Resolution:</b> <span id="pipe-resolution">—</span></span>
+        <span style="font-size:11px"><b>Topics:</b> <span id="pipe-topics">—</span></span>
+      </div>
+      <div id="pipe-crm-entities" style="margin-top:8px;padding-top:6px;border-top:1px solid var(--rule);font-family:ui-monospace,monospace;font-size:11px;color:var(--accent);display:none"></div>
+    </div>
+
+    <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+      <div id="stg-mixdown" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
+        <div style="font-weight:600">1. Audio Mixdown</div>
+        <div id="stg-mixdown-st" style="color:var(--soft);font-size:11px">Pending</div>
+      </div>
+      <div id="stg-norm" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
+        <div style="font-weight:600">2. Transcript Norm</div>
+        <div id="stg-norm-st" style="color:var(--soft);font-size:11px">Pending</div>
+      </div>
+      <div id="stg-metrics" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
+        <div style="font-weight:600">3. Metrics Calc</div>
+        <div id="stg-metrics-st" style="color:var(--soft);font-size:11px">Pending</div>
+      </div>
+      <div id="stg-sentiment" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
+        <div style="font-weight:600">4. Sentiment AI</div>
+        <div id="stg-sentiment-st" style="color:var(--soft);font-size:11px">Pending</div>
+      </div>
+      <div id="stg-extraction" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
+        <div style="font-weight:600">5. Schema Extract</div>
+        <div id="stg-extraction-st" style="color:var(--soft);font-size:11px">Pending</div>
+      </div>
+      <div id="stg-archive" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
+        <div style="font-weight:600">6. Storage Archive</div>
+        <div id="stg-archive-st" style="color:var(--soft);font-size:11px">Pending</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button id="btn-trigger-pipeline" class="primary" style="font-size:12px;padding:6px 12px">Trigger Post-Call Pipeline</button>
+      <button id="btn-refresh-pipeline" class="ghost" style="font-size:12px;padding:6px 10px">Refresh Queue Stats</button>
+      <span id="pipe-storage-url" style="font-size:11.5px;color:var(--soft);font-family:ui-monospace,monospace"></span>
+    </div>
+  </div>
+
+
+  <div class="panel">
+    <label>Event Log</label>
+    <pre id="log">ready</pre>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js"></script>
+<script src="/voice-client.js"></script>
+<script>
+(function () {
+  "use strict";
+  var LK = window.LivekitClient || window.LiveKitClient || window.livekit;
+  var room = null, audioCtx = null, raf = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  $("who").value = "caller-" + Math.random().toString(36).slice(2, 6);
+
+  function log(msg) {
+    var t = new Date().toTimeString().slice(0, 8);
+    $("log").textContent = t + "  " + msg + "\n" + $("log").textContent;
+  }
+  function setState(text, cls) {
+    $("state").textContent = text;
+    $("dot").className = "dot" + (cls ? " " + cls : "");
+  }
+
+  if (window.VoiceAgentClient) {
+    log("VoiceAgentClient SDK loaded & available on window.VoiceAgentClient");
+  }
+
+  if (!LK) {
+    setState("livekit-client failed to load", "err");
+    log("The CDN script did not load. Check network and reload.");
+    $("go").disabled = true;
+    return;
+  }
+
+  function checkAlone() {
+    var alone = !!room && room.remoteParticipants.size === 0;
+    $("alone").hidden = !alone;
+  }
+
+  function renderPeople(speaking) {
+    var list = $("people");
+    if (!room) { list.innerHTML = '<li><span style="color:var(--faint)">nobody yet</span></li>'; return; }
+    var all = [room.localParticipant].concat(Array.from(room.remoteParticipants.values()));
+    list.innerHTML = "";
+    all.forEach(function (p) {
+      var li = document.createElement("li");
+      var isMe = p === room.localParticipant;
+      li.className = (speaking || []).indexOf(p.identity) > -1 ? "speaking" : "";
+      li.innerHTML = '<span>' + p.identity + (isMe ? ' <span class="tag">you</span>' : '') +
+                     '</span><span class="tag">' + (li.className ? 'speaking' : 'quiet') + '</span>';
+      list.appendChild(li);
+    });
+  }
+
+  function startMeter(track) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var src = audioCtx.createMediaStreamSource(new MediaStream([track.mediaStreamTrack]));
+    var analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    src.connect(analyser);
+    var buf = new Uint8Array(analyser.frequencyBinCount);
+    (function tick() {
+      analyser.getByteTimeDomainData(buf);
+      var peak = 0;
+      for (var i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
+      var pct = Math.min(100, Math.round((peak / 128) * 160));
+      $("level").style.width = pct + "%";
+      raf = requestAnimationFrame(tick);
+    })();
+  }
+
+  function renderHistory(messages) {
+    var box = $("chat-history");
+    if (!messages || messages.length === 0) {
+      box.innerHTML = '<span style="color:var(--faint);font-size:13px">No conversation history yet.</span>';
+      return;
+    }
+    box.innerHTML = "";
+    messages.forEach(function (m) {
+      var div = document.createElement("div");
+      var isUser = m.role === "user";
+      div.className = "chat-turn " + (isUser ? "user" : "assistant") + (m.interrupted ? " interrupted" : "");
+      var timeStr = new Date(m.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+      div.innerHTML = '<strong>' + (isUser ? 'Caller' : 'AI Assistant') + '</strong> ' +
+                      '<span class="tag" style="float:right">' + timeStr + (m.interrupted ? ' [interrupted]' : '') + '</span>' +
+                      '<div style="margin-top:4px">' + m.content + '</div>';
+      box.appendChild(div);
+    });
+    box.scrollTop = box.scrollHeight;
+  }
+
+  async function join() {
+    $("go").disabled = true;
+    setState("Minting token...", "busy");
+    var r = $("room").value.trim() || "test-room";
+    var u = $("who").value.trim() || "caller";
+
+    try {
+      var res = await fetch("/token?room=" + encodeURIComponent(r) + "&user=" + encodeURIComponent(u));
+      if (!res.ok) throw new Error("token fetch HTTP " + res.status);
+      var cfg = await res.json();
+
+      setState("Connecting to LiveKit...", "busy");
+      room = new LK.Room({
+        adaptiveStream: true,
+        dynacast: true,
+        audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+
+      room.on(LK.RoomEvent.Connected, function () {
+        setState("Connected to " + room.name, "on");
+        log("connected to " + room.name);
+        checkAlone();
+        renderPeople([]);
+      });
+
+      room.on(LK.RoomEvent.Disconnected, function () {
+        setState("Disconnected", "");
+        log("disconnected");
+        leave();
+      });
+
+      room.on(LK.RoomEvent.ParticipantConnected, function (p) {
+        log("joined: " + p.identity);
+        checkAlone();
+        renderPeople();
+      });
+
+      room.on(LK.RoomEvent.ParticipantDisconnected, function (p) {
+        log("left: " + p.identity);
+        checkAlone();
+        renderPeople();
+      });
+
+      room.on(LK.RoomEvent.ActiveSpeakersChanged, function (speakers) {
+        renderPeople(speakers.map(function (s) { return s.identity; }));
+      });
+
+      var activeStreamingReply = "";
+
+      room.on(LK.RoomEvent.DataReceived, function (payload, participant, kind, topic) {
+        var msg;
+        try { msg = JSON.parse(new TextDecoder().decode(payload)); }
+        catch (e) { return; }
+
+        if (topic === "transcript") {
+          var box = $("tx");
+          if (box.dataset.empty !== "no") { box.innerHTML = ""; box.dataset.empty = "no"; }
+          var live = box.querySelector("p.interim");
+          if (!msg.is_final) {
+            if (!live) { live = document.createElement("p"); live.className = "interim"; box.appendChild(live); }
+            live.textContent = msg.text;
+          } else {
+            if (live) { live.className = ""; live.textContent = msg.text; }
+            else { var p = document.createElement("p"); p.textContent = msg.text; box.appendChild(p); }
+            log("caller: " + msg.text);
+          }
+          box.scrollTop = box.scrollHeight;
+        } else if (topic === "vad") {
+          var badge = $("vad-badge");
+          if (msg.state === "speaking") {
+            badge.textContent = "🗣️ Speaking (Active)";
+            badge.style.background = "var(--ok)";
+            badge.style.color = "#fff";
+            log("VAD: caller started speaking");
+          } else if (msg.state === "listening") {
+            badge.textContent = "Silent (Listening / Endpointed)";
+            badge.style.background = "var(--rule)";
+            badge.style.color = "var(--soft)";
+            log("VAD: caller stopped speaking (endpointed)");
+          }
+        } else if (topic === "agent_state") {
+          var ab = $("agent-badge");
+          var ls = $("llm-status");
+          var ttsBadge = $("tts-status");
+          ab.textContent = msg.state.toUpperCase();
+          if (msg.state === "thinking") {
+            ab.style.background = "var(--warn)"; ab.style.color = "#fff";
+            ls.textContent = "🧠 Thinking / Generating...";
+            ls.style.background = "var(--warn)"; ls.style.color = "#fff";
+            ttsBadge.textContent = "Awaiting LLM clauses...";
+            ttsBadge.style.background = "var(--rule)"; ttsBadge.style.color = "var(--soft)";
+            activeStreamingReply = "";
+            $("llm-stream-box").innerHTML = '<span style="color:var(--faint)">Generating response...</span>';
+            $("clause-box").innerHTML = "";
+          } else if (msg.state === "speaking") {
+            ab.style.background = "var(--ok)"; ab.style.color = "#fff";
+            ls.textContent = "🗣️ Streaming response...";
+            ls.style.background = "var(--ok)"; ls.style.color = "#fff";
+            ttsBadge.textContent = "🗣️ Streaming Audio Frames...";
+            ttsBadge.style.background = "var(--ok)"; ttsBadge.style.color = "#fff";
+          } else {
+            ab.style.background = "var(--rule)"; ab.style.color = "var(--soft)";
+            ls.textContent = "Listening";
+            ls.style.background = "var(--rule)"; ls.style.color = "var(--soft)";
+            ttsBadge.textContent = "TTS Idle";
+            ttsBadge.style.background = "var(--rule)"; ttsBadge.style.color = "var(--soft)";
+          }
+          log("agent_state: " + msg.state);
+        } else if (topic === "llm_stream") {
+          activeStreamingReply += msg.token;
+          $("llm-stream-box").textContent = activeStreamingReply;
+          $("llm-stream-box").scrollTop = $("llm-stream-box").scrollHeight;
+        } else if (topic === "llm_clause") {
+          var cb = $("clause-box");
+          if (cb.innerHTML.indexOf("Completed clauses") > -1) cb.innerHTML = "";
+          var chip = document.createElement("span");
+          chip.className = "clause-chip" + (msg.is_final ? " final" : "");
+          chip.textContent = "[" + msg.index + "] " + msg.clause;
+          cb.appendChild(chip);
+        } else if (topic === "agent_reply") {
+          $("llm-stream-box").textContent = msg.text;
+          if (msg.metrics) {
+            $("m-ttft").textContent = (msg.metrics.ttft_ms != null ? msg.metrics.ttft_ms + "ms" : "—");
+            $("m-dur").textContent = msg.metrics.duration_ms + "ms";
+            $("m-tok").textContent = msg.metrics.token_count;
+            $("m-clauses").textContent = msg.metrics.clause_count;
+          }
+          log("agent reply (" + (msg.metrics ? msg.metrics.ttft_ms + "ms TTFT" : "") + "): " + msg.text);
+        } else if (topic === "tts_metrics") {
+          if (msg.ttfa_ms != null) $("m-ttfa").textContent = msg.ttfa_ms + "ms";
+          if (msg.audio_duration_ms != null) $("m-audio-dur").textContent = msg.audio_duration_ms + "ms";
+          else if (msg.duration_ms != null) $("m-audio-dur").textContent = msg.duration_ms + "ms";
+          if (msg.provider) $("m-tts-engine").textContent = msg.provider + (msg.model ? " (" + msg.model + ")" : "");
+          var tb = $("tts-status");
+          if (msg.interrupted) {
+            tb.textContent = "⚡ Truncated (Barge-in)";
+            tb.style.background = "var(--warn)";
+            tb.style.color = "#fff";
+          } else {
+            tb.textContent = "✓ Playout Complete";
+            tb.style.background = "var(--ok)";
+            tb.style.color = "#fff";
+          }
+          log("TTS metrics: TTFA=" + msg.ttfa_ms + "ms, dur=" + (msg.audio_duration_ms || msg.duration_ms) + "ms, engine=" + msg.provider);
+        } else if (topic === "chat_history") {
+          renderHistory(msg.messages);
+        } else if (topic === "interruption") {
+          var banner = $("barge-banner");
+          banner.style.display = "inline-block";
+          var tb = $("tts-status");
+          tb.textContent = "⚡ Audio Cut-off (<50ms)";
+          tb.style.background = "var(--warn)";
+          tb.style.color = "#fff";
+          log("⚡ Barge-in cut-off triggered! Reason: " + msg.reason);
+          setTimeout(function () { banner.style.display = "none"; }, 3500);
+        } else if (topic === "tool_call") {
+          $("m-tool-name").textContent = msg.tool;
+          $("m-tool-status").textContent = "Executing...";
+          $("m-tool-status").style.color = "var(--warn)";
+          log("🔧 Tool call dispatched: " + msg.tool + " args=" + JSON.stringify(msg.arguments));
+        } else if (topic === "filler_speech") {
+          $("m-filler-status").textContent = msg.phrase;
+          $("m-filler-status").style.color = "var(--ok)";
+          log("🗣️ Filler phrase emitted: \"" + msg.phrase + "\"");
+        } else if (topic === "tool_result") {
+          $("m-tool-dur").textContent = (msg.duration_ms != null ? msg.duration_ms.toFixed(1) + "ms" : "—");
+          if (msg.status === "success") {
+            $("m-tool-status").textContent = "Success";
+            $("m-tool-status").style.color = "var(--ok)";
+          } else {
+            $("m-tool-status").textContent = "Fallback (" + (msg.error || "error") + ")";
+            $("m-tool-status").style.color = "var(--err)";
+          }
+          log("✅ Tool result for " + msg.tool + " (" + (msg.duration_ms != null ? msg.duration_ms.toFixed(1) : 0) + "ms): " + JSON.stringify(msg.result));
+        } else if (topic === "telephony_event") {
+          log("📞 Telephony event: " + msg.event + (msg.call ? " [" + msg.call.call_id + " -> " + msg.call.destination_number + "]" : ""));
+          if (msg.event === "outbound_call_initiated" && msg.call) {
+            currentActiveCallId = msg.call.call_id;
+            $("m-call-id").textContent = msg.call.call_id;
+            $("m-call-state").textContent = msg.call.state.toUpperCase();
+            $("m-call-state").style.color = "var(--ok)";
+            $("m-call-dest").textContent = msg.call.destination_number;
+            $("m-call-room").textContent = msg.call.room_name;
+            var tb = $("tel-status-badge");
+            tb.textContent = "📞 Call Active";
+            tb.style.background = "var(--ok)";
+            tb.style.color = "#fff";
+            $("btn-hangup-phone").disabled = false;
+          } else if (msg.event === "outbound_call_failed") {
+            var tb = $("tel-status-badge");
+            tb.textContent = "Call Failed";
+            tb.style.background = "var(--err)";
+            tb.style.color = "#fff";
+            log("❌ Telephony error: " + msg.error);
+          }
+        } else if (topic === "transfer_event") {
+          log("🔀 Transfer event: " + msg.event + (msg.transfer ? " [" + msg.transfer.mode + " -> " + msg.transfer.target_number + "]" : ""));
+          var xb = $("xfer-badge");
+          if (msg.event === "transfer_initiated") {
+            xb.textContent = "Transferring...";
+            xb.style.background = "var(--accent)";
+            xb.style.color = "#fff";
+            $("xfer-state-text").textContent = "Initiated (" + (msg.mode || "blind") + ")";
+          } else if (msg.event === "transfer_completed") {
+            xb.textContent = "✓ Transferred";
+            xb.style.background = "var(--ok)";
+            xb.style.color = "#fff";
+            $("xfer-state-text").textContent = "Completed (" + (msg.transfer ? msg.transfer.mode : "done") + ")";
+            if (msg.transfer && msg.transfer.briefing_summary) {
+              $("xfer-briefing-text").textContent = msg.transfer.briefing_summary;
+            }
+          } else if (msg.event === "transfer_failed") {
+            xb.textContent = "Transfer Failed";
+            xb.style.background = "var(--err)";
+            xb.style.color = "#fff";
+            $("xfer-state-text").textContent = "Failed: " + (msg.error || "Unknown");
+          }
+        } else if (topic === "hold_state") {
+          var isHeld = !!msg.is_held;
+          $("xfer-hold-text").textContent = isHeld ? "ON HOLD (Music Playing)" : "Active (Talking)";
+          $("xfer-hold-text").style.color = isHeld ? "var(--warn)" : "var(--ok)";
+          $("btn-toggle-hold").textContent = isHeld ? "Resume Call" : "Hold Call";
+          log("⏸️ Hold state changed: " + (isHeld ? "ON HOLD (" + msg.reason + ")" : "RESUMED"));
+        } else if (topic === "dtmf_event") {
+          log("🔢 DTMF Keypad: '" + msg.digit + "' -> " + msg.status + (msg.action ? " (" + msg.action + ")" : ""));
+          if (msg.buffered_digits) {
+            $("dtmf-display").textContent = msg.buffered_digits;
+          }
+          if (msg.prompt) {
+            $("ivr-prompt-text").textContent = msg.prompt;
+          }
+        } else if (topic === "ivr_state") {
+          if (msg.state && msg.state.active_node) {
+            $("ivr-badge").textContent = "IVR: " + msg.state.active_node.name;
+            $("ivr-prompt-text").textContent = msg.state.active_node.prompt;
+          }
+          if (msg.state && msg.state.buffered_digits !== undefined) {
+            $("dtmf-display").textContent = msg.state.buffered_digits || "—";
+          }
+        } else if (topic === "amd_event" || topic === "amd_state") {
+          var state = msg.state && msg.state.state ? msg.state.state : (msg.state || "detecting");
+          var conf = msg.confidence !== undefined ? Math.round(msg.confidence * 100) : (msg.state && msg.state.confidence !== undefined ? Math.round(msg.state.confidence * 100) : 50);
+          var reason = msg.reason || (msg.state && msg.state.reason) || "";
+          var action = msg.action || (msg.state && msg.state.action) || "";
+          var gDur = msg.greeting_duration_s !== undefined ? msg.greeting_duration_s : (msg.state && msg.state.greeting_duration_s !== undefined ? msg.state.greeting_duration_s : 0.0);
+          var sDur = msg.silence_duration_s !== undefined ? msg.silence_duration_s : (msg.state && msg.state.silence_duration_s !== undefined ? msg.state.silence_duration_s : 0.0);
+
+          var badgeColor = "var(--rule)";
+          var badgeText = "AMD: Monitoring";
+          if (state === "human") {
+            badgeColor = "var(--ok)";
+            badgeText = "AMD: Human (Active)";
+          } else if (state === "machine_greeting") {
+            badgeColor = "var(--warn)";
+            badgeText = "AMD: Machine Greeting";
+          } else if (state === "voicemail_beep") {
+            badgeColor = "var(--accent)";
+            badgeText = "AMD: Beep Detected";
+          } else if (state === "voicemail_dropping") {
+            badgeColor = "var(--accent)";
+            badgeText = "AMD: Dropping Message";
+          } else if (state === "voicemail_completed" || state === "hangup") {
+            badgeColor = "var(--chip)";
+            badgeText = "AMD: Voicemail Dropped (Call Ended)";
+          }
+
+          $("amd-badge").style.background = badgeColor;
+          $("amd-badge").textContent = badgeText;
+          $("amd-state-text").textContent = state.toUpperCase();
+          $("amd-conf-text").textContent = conf + "%";
+          $("amd-cadence-text").textContent = gDur.toFixed(1) + "s / " + sDur.toFixed(1) + "s";
+          $("amd-action-text").textContent = action.replace(/_/g, " ").toUpperCase();
+          if (reason) $("amd-reason-text").textContent = reason;
+
+          log("🤖 AMD: state=" + state + " conf=" + conf + "% (" + reason + ")");
+        } else if (topic === "recording_event" || topic === "recording_state") {
+          var rec = msg.recording || {};
+          var status = (rec.status || (msg.event ? msg.event.replace("recording_", "") : "idle")).toLowerCase();
+          var dur = rec.duration_s !== undefined ? rec.duration_s : 0.0;
+          var mins = Math.floor(dur / 60);
+          var secs = Math.floor(dur % 60);
+          var timeStr = (mins < 10 ? "0" : "") + mins + ":" + (secs < 10 ? "0" : "") + secs;
+
+          $("rec-status-text").textContent = status.toUpperCase();
+          $("rec-duration-text").textContent = timeStr;
+
+          if (status === "recording") {
+            $("rec-badge").style.background = "var(--danger)";
+            $("rec-badge").textContent = "● REC: Recording (Stereo)";
+            $("btn-start-rec").disabled = true;
+            $("btn-pause-rec").disabled = false;
+            $("btn-resume-rec").disabled = true;
+            $("btn-stop-rec").disabled = false;
+          } else if (status === "paused") {
+            $("rec-badge").style.background = "var(--warn)";
+            $("rec-badge").textContent = "⏸ REC: Paused (PCI Masking)";
+            $("btn-start-rec").disabled = true;
+            $("btn-pause-rec").disabled = true;
+            $("btn-resume-rec").disabled = false;
+            $("btn-stop-rec").disabled = false;
+          } else if (status === "stopped") {
+            $("rec-badge").style.background = "var(--ok)";
+            $("rec-badge").textContent = "✓ REC: Saved (" + dur.toFixed(1) + "s)";
+            $("btn-start-rec").disabled = false;
+            $("btn-pause-rec").disabled = true;
+            $("btn-resume-rec").disabled = true;
+            $("btn-stop-rec").disabled = true;
+            if (rec.file_path) {
+              $("rec-path-text").textContent = rec.file_path + " (" + (rec.file_size_bytes ? (rec.file_size_bytes / 1024).toFixed(1) + " KB" : "") + ")";
+            }
+          }
+          log("🎙️ Recording: " + status.toUpperCase() + (rec.recording_id ? " [" + rec.recording_id + "]" : ""));
+        } else if (topic === "pipeline_event") {
+          var pEv = msg.event || "unknown";
+          var job = msg.job || {};
+          log("📦 Pipeline: " + pEv + " (job=" + (job.job_id || msg.job_id || "unknown") + " status=" + (job.status || msg.status || "unknown") + ")");
+          if (typeof updatePipelineUI === "function") {
+            updatePipelineUI(job);
+          }
+        }
+      });
+
+      room.on(LK.RoomEvent.TrackSubscribed, function (track, pub, participant) {
+        if (track.kind !== "audio") return;
+        document.body.appendChild(track.attach());
+        log("hearing " + participant.identity);
+      });
+
+      await room.connect(cfg.url, cfg.token);
+      try {
+        await room.localParticipant.setMicrophoneEnabled(true);
+        log("microphone published");
+        var pub = Array.from(room.localParticipant.audioTrackPublications.values())[0];
+        if (pub && pub.track) startMeter(pub.track);
+      } catch (micErr) {
+        log("warning: microphone not enabled (" + (micErr && micErr.message ? micErr.message : micErr) + "). You can still listen and test TTS/tools.");
+      }
+
+      $("stop").disabled = false;
+      $("test-barge").disabled = false;
+      $("test-tts-btn").disabled = false;
+      $("speak-phrase-btn").disabled = false;
+      $("send-prompt").disabled = false;
+      $("clear-hist").disabled = false;
+      $("btn-tool-avail").disabled = false;
+      $("btn-tool-order").disabled = false;
+      $("btn-tool-kb").disabled = false;
+    } catch (e) {
+      setState("Failed", "err");
+      log("error: " + (e && e.message ? e.message : e));
+      $("go").disabled = false;
+    }
+  }
+
+  async function leave() {
+    $("stop").disabled = true;
+    $("test-barge").disabled = true;
+    $("test-tts-btn").disabled = true;
+    $("speak-phrase-btn").disabled = true;
+    $("send-prompt").disabled = true;
+    $("clear-hist").disabled = true;
+    $("btn-tool-avail").disabled = true;
+    $("btn-tool-order").disabled = true;
+    $("btn-tool-kb").disabled = true;
+    $("vad-badge").textContent = "Silent (Listening)";
+    $("vad-badge").style.background = "var(--rule)";
+    $("vad-badge").style.color = "var(--soft)";
+    $("agent-badge").textContent = "Idle";
+    $("agent-badge").style.background = "var(--rule)";
+    $("agent-badge").style.color = "var(--soft)";
+    $("tts-status").textContent = "TTS Idle";
+    $("tts-status").style.background = "var(--rule)";
+    $("tts-status").style.color = "var(--soft)";
+    $("m-tool-name").textContent = "—";
+    $("m-tool-dur").textContent = "—";
+    $("m-filler-status").textContent = "—";
+    $("m-tool-status").textContent = "Ready";
+    $("m-tool-status").style.color = "";
+    $("m-call-id").textContent = "—";
+    $("m-call-state").textContent = "Idle";
+    $("m-call-state").style.color = "";
+    $("m-call-dest").textContent = "—";
+    $("m-call-room").textContent = "—";
+    $("tel-status-badge").textContent = "SIP Trunks Ready";
+    $("tel-status-badge").style.background = "var(--rule)";
+    $("btn-hangup-phone").disabled = true;
+    $("xfer-badge").textContent = "Transfer Idle";
+    $("xfer-badge").style.background = "var(--rule)";
+    $("xfer-badge").style.color = "var(--soft)";
+    $("xfer-state-text").textContent = "Ready";
+    $("xfer-hold-text").textContent = "Active (Talking)";
+    $("xfer-hold-text").style.color = "";
+    $("xfer-briefing-text").textContent = "—";
+    $("btn-toggle-hold").textContent = "Hold Call";
+    isCallOnHold = false;
+    $("barge-banner").style.display = "none";
+    if (raf) cancelAnimationFrame(raf);
+    if (audioCtx) { audioCtx.close(); audioCtx = null; }
+    $("level").style.width = "0";
+    if (room) { await room.disconnect(); room = null; }
+    renderPeople([]);
+    $("alone").hidden = true;
+    $("go").disabled = false;
+  }
+
+  $("btn-tool-avail").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    log("Requesting availability check...");
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_prompt", text: "Can you check availability for dental cleaning tomorrow?" })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error testing tool: " + err);
+    }
+  });
+
+  $("btn-tool-order").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    log("Requesting order lookup...");
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_prompt", text: "What is the status of my order 1042?" })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error testing tool: " + err);
+    }
+  });
+
+  $("btn-tool-kb").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    log("Requesting KB query...");
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_prompt", text: "What is your return policy?" })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error testing tool: " + err);
+    }
+  });
+
+  $("send-prompt").addEventListener("click", async function () {
+    var txt = $("prompt-input").value.trim();
+    if (!txt || !room || !room.localParticipant) return;
+    log("Sending test prompt: " + txt);
+    $("prompt-input").value = "";
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_prompt", text: txt })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error sending prompt: " + err);
+    }
+  });
+
+  $("test-tts-btn").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    log("Requesting Cartesia Streaming TTS playback...");
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_tts", text: "Cartesia Sonic streaming speech synthesis with low latency." })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error requesting TTS: " + err);
+    }
+  });
+
+  $("speak-phrase-btn").addEventListener("click", async function () {
+    var txt = $("tts-phrase").value.trim();
+    if (!txt || !room || !room.localParticipant) return;
+    log("Speaking TTS phrase: " + txt);
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_tts", text: txt })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error speaking TTS phrase: " + err);
+    }
+  });
+
+  $("clear-hist").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "clear_history" })),
+        { reliable: true }
+      );
+      $("chat-history").innerHTML = '<span style="color:var(--faint);font-size:13px">Cleared.</span>';
+      log("Conversation history cleared.");
+    } catch (err) {
+      log("error clearing history: " + err);
+    }
+  });
+
+  $("test-barge").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    log("Requesting test speech to verify barge-in...");
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_speech" })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error requesting test speech: " + err);
+    }
+  });
+
+  $("second").addEventListener("click", function () {
+    var u = location.origin + location.pathname + "?room=" +
+            encodeURIComponent($("room").value);
+    window.open(u, "_blank");
+    log("second tab opened");
+  });
+
+  var fromUrl = new URLSearchParams(location.search).get("room");
+  if (fromUrl) $("room").value = fromUrl;
+
+  var currentActiveCallId = null;
+
+  async function dialPhone() {
+    var dest = $("tel-dest").value.trim();
+    if (!dest) {
+      log("Please enter a valid E.164 phone number (e.g. +18005550199)");
+      return;
+    }
+    log("Dialing outbound PSTN destination: " + dest + "...");
+    var tb = $("tel-status-badge");
+    tb.textContent = "Dialing...";
+    tb.style.background = "var(--accent)";
+    tb.style.color = "#fff";
+
+    // If connected to room, also notify via WebRTC data channel
+    if (room && room.localParticipant) {
+      try {
+        await room.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({ action: "dial_phone", destination: dest })),
+          { reliable: true }
+        );
+      } catch (e) {
+        log("Data channel dial notification warning: " + e);
+      }
+    }
+
+    // Call REST endpoint
+    try {
+      var resp = await fetch("/api/telephony/dial", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          destination: dest,
+          caller_id: "+18005550100",
+          room: $("room").value || "test-room"
+        })
+      });
+      var data = await resp.json();
+      if (resp.ok && data.call) {
+        currentActiveCallId = data.call.call_id;
+        $("m-call-id").textContent = data.call.call_id;
+        $("m-call-state").textContent = data.call.state.toUpperCase();
+        $("m-call-state").style.color = "var(--ok)";
+        $("m-call-dest").textContent = data.call.destination_number;
+        $("m-call-room").textContent = data.call.room_name;
+        tb.textContent = "📞 Call Active (" + data.call.state + ")";
+        tb.style.background = "var(--ok)";
+        $("btn-hangup-phone").disabled = false;
+        log("✅ Outbound call placed! Call ID: " + data.call.call_id + " -> room: " + data.call.room_name);
+      } else {
+        tb.textContent = "Dial Error";
+        tb.style.background = "var(--err)";
+        log("❌ Dialing failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      tb.textContent = "Connection Error";
+      tb.style.background = "var(--err)";
+      log("❌ Telephony server connection error: " + err);
+    }
+  }
+
+  async function simulateInboundDID() {
+    log("Simulating inbound carrier DID call (+18005550199)...");
+    try {
+      var resp = await fetch("/api/telephony/inbound/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "+15559876543",
+          to: "+18005550199"
+        })
+      });
+      var data = await resp.json();
+      if (resp.ok && data.route) {
+        log("📞 Inbound DID routed! Trunk: " + data.route.trunk + " -> Room: " + data.route.room);
+        $("m-call-id").textContent = "inbound-did-" + Date.now().toString().slice(-4);
+        $("m-call-state").textContent = "ROUTED";
+        $("m-call-state").style.color = "var(--ok)";
+        $("m-call-dest").textContent = data.route.caller_number;
+        $("m-call-room").textContent = data.route.room;
+        var tb = $("tel-status-badge");
+        tb.textContent = "Incoming Call Routed";
+        tb.style.background = "var(--ok)";
+        tb.style.color = "#fff";
+      } else {
+        log("❌ Inbound simulation failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      log("❌ Failed to simulate inbound: " + err);
+    }
+  }
+
+  function hangupPhone() {
+    log("Hanging up telephony call (" + (currentActiveCallId || "active") + ")...");
+    $("m-call-state").textContent = "COMPLETED";
+    $("m-call-state").style.color = "var(--soft)";
+    var tb = $("tel-status-badge");
+    tb.textContent = "Call Ended";
+    tb.style.background = "var(--rule)";
+    tb.style.color = "var(--soft)";
+    $("btn-hangup-phone").disabled = true;
+    currentActiveCallId = null;
+    log("Telephony call terminated.");
+  }
+
+  $("btn-dial-phone").addEventListener("click", dialPhone);
+  $("btn-sim-inbound").addEventListener("click", simulateInboundDID);
+  $("btn-hangup-phone").addEventListener("click", hangupPhone);
+
+  var isCallOnHold = false;
+
+  async function executeTransfer() {
+    var dest = $("xfer-dest").value.trim();
+    var mode = $("xfer-mode").value;
+    var dept = $("xfer-dept").value;
+    if (!dest) {
+      log("Please enter a valid transfer target phone number (e.g. +18885550142)");
+      return;
+    }
+    log("Executing " + mode.toUpperCase() + " transfer to " + dest + " (" + dept + ")...");
+    var xb = $("xfer-badge");
+    xb.textContent = "Transferring...";
+    xb.style.background = "var(--accent)";
+    xb.style.color = "#fff";
+    $("xfer-state-text").textContent = "Transferring to " + dept + "...";
+
+    // WebRTC data channel transfer request if in room
+    if (room && room.localParticipant) {
+      try {
+        await room.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({
+            action: "transfer_call",
+            target_number: dest,
+            mode: mode,
+            department: dept,
+            reason: "User requested transfer in web console"
+          })),
+          { reliable: true }
+        );
+      } catch (e) {
+        log("Data channel transfer notification warning: " + e);
+      }
+    }
+
+    // Call REST endpoint
+    try {
+      var resp = await fetch("/api/telephony/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          call_id: currentActiveCallId || $("room").value || "web-call",
+          target_number: dest,
+          mode: mode,
+          department: dept,
+          caller_name: $("who").value || "Web User",
+          reason: "User requested transfer in console"
+        })
+      });
+      var data = await resp.json();
+      if (resp.ok && data.transfer) {
+        xb.textContent = "✓ Transferred";
+        xb.style.background = "var(--ok)";
+        $("xfer-state-text").textContent = "Completed (" + data.transfer.mode + ")";
+        if (data.transfer.briefing_summary) {
+          $("xfer-briefing-text").textContent = data.transfer.briefing_summary;
+        }
+        log("✅ Transfer completed successfully! ID: " + data.transfer.transfer_id + " (dur=" + data.transfer.duration_seconds + "s)");
+      } else {
+        xb.textContent = "Transfer Failed";
+        xb.style.background = "var(--err)";
+        $("xfer-state-text").textContent = "Error: " + (data.error || "Unknown");
+        log("❌ Transfer failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      xb.textContent = "Transfer Error";
+      xb.style.background = "var(--err)";
+      log("❌ Failed to reach transfer service: " + err);
+    }
+  }
+
+  async function toggleHold() {
+    isCallOnHold = !isCallOnHold;
+    log((isCallOnHold ? "Holding" : "Resuming") + " call...");
+    var btn = $("btn-toggle-hold");
+    btn.textContent = isCallOnHold ? "Resume Call" : "Hold Call";
+    $("xfer-hold-text").textContent = isCallOnHold ? "ON HOLD (Music Playing)" : "Active (Talking)";
+    $("xfer-hold-text").style.color = isCallOnHold ? "var(--warn)" : "var(--ok)";
+
+    if (room && room.localParticipant) {
+      try {
+        await room.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({
+            action: "hold_call",
+            hold: isCallOnHold,
+            reason: isCallOnHold ? "manual_hold" : "resumed"
+          })),
+          { reliable: true }
+        );
+      } catch (e) {
+        log("Data channel hold notification warning: " + e);
+      }
+    }
+
+    try {
+      await fetch("/api/telephony/hold", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          call_id: currentActiveCallId || $("room").value || "web-call",
+          hold: isCallOnHold,
+          reason: isCallOnHold ? "manual_hold" : "resumed"
+        })
+      });
+      log("✅ Call hold state updated: " + (isCallOnHold ? "HELD" : "RESUMED"));
+    } catch (err) {
+      log("❌ Failed to update hold state: " + err);
+    }
+  }
+
+  $("btn-do-xfer").addEventListener("click", executeTransfer);
+  $("btn-toggle-hold").addEventListener("click", toggleHold);
+
+  // DTMF Keypad & IVR Navigation (Task 2.3)
+  var DTMF_FREQS = {
+    '1': [697, 1209], '2': [697, 1336], '3': [697, 1477],
+    '4': [770, 1209], '5': [770, 1336], '6': [770, 1477],
+    '7': [852, 1209], '8': [852, 1336], '9': [852, 1477],
+    '*': [941, 1209], '0': [941, 1336], '#': [941, 1477]
+  };
+
+  function playDTMFTone(digit) {
+    var freqs = DTMF_FREQS[digit];
+    if (!freqs) return;
+    try {
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      var ctx = new AudioCtx();
+      var osc1 = ctx.createOscillator();
+      var osc2 = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc1.frequency.value = freqs[0];
+      osc2.frequency.value = freqs[1];
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.16);
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+      osc1.start();
+      osc2.start();
+      osc1.stop(ctx.currentTime + 0.16);
+      osc2.stop(ctx.currentTime + 0.16);
+    } catch (e) {
+      // AudioContext might be muted or unavailable
+    }
+  }
+
+  async function sendDTMFDigit(digit) {
+    playDTMFTone(digit);
+    log("🔢 Keypad pressed: '" + digit + "'");
+
+    // 1. Send via WebRTC Data Channel if connected
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({
+          action: "send_dtmf",
+          digit: digit
+        }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {
+        log("Data channel DTMF error: " + e);
+      }
+    }
+
+    // 2. Also send via REST API for Telephony/SIP callers
+    try {
+      var callId = currentActiveCallId || $("room").value || "web-call";
+      var res = await fetch("/api/telephony/dtmf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          call_id: callId,
+          digit: digit
+        })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        if (data.session) {
+          $("dtmf-display").textContent = data.session.buffer || "—";
+          if (data.session.active_node) {
+            $("ivr-badge").textContent = "IVR: " + (data.session.active_node.name || "Active");
+            if (data.session.active_node.prompt) {
+              $("ivr-prompt-text").textContent = data.session.active_node.prompt;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // Offline / REST fallback
+    }
+  }
+
+  document.querySelectorAll(".keypad-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var key = btn.getAttribute("data-key");
+      sendDTMFDigit(key);
+    });
+  });
+
+  $("btn-clear-dtmf").addEventListener("click", function () {
+    $("dtmf-display").textContent = "—";
+    log("Keypad buffer cleared");
+  });
+
+  $("btn-reset-ivr").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({ action: "reset_ivr" }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+    try {
+      await fetch("/api/telephony/ivr/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId })
+      });
+      $("ivr-badge").textContent = "IVR: Main Menu";
+      $("ivr-prompt-text").textContent = "Thanks for calling Northgate Support. Press 1 for Sales, 2 for Technical Support, 3 for Billing, or 9 for a live operator.";
+      $("dtmf-display").textContent = "—";
+      log("🔄 IVR Phone tree reset to Main Menu");
+    } catch (e) {
+      log("Failed to reset IVR: " + e);
+    }
+  });
+
+  function playVoicemailBeepTone() {
+    try {
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      var ctx = new AudioCtx();
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.frequency.value = 1000.0;
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+    } catch (e) {}
+  }
+
+  // AMD & Voicemail Drop Controls (Task 2.4)
+  async function simulateAMDEvent(eventType) {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    if (eventType === "voicemail_beep") playVoicemailBeepTone();
+
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({
+          action: "simulate_amd",
+          event_type: eventType
+        }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+
+    try {
+      var res = await fetch("/api/telephony/amd/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId, event_type: eventType })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        if (data.amd) {
+          $("amd-state-text").textContent = data.amd.state.toUpperCase();
+          $("amd-conf-text").textContent = Math.round(data.amd.confidence * 100) + "%";
+          if (data.amd.reason) $("amd-reason-text").textContent = data.amd.reason;
+        }
+      }
+    } catch (e) {}
+  }
+
+  $("btn-sim-human").addEventListener("click", function () {
+    simulateAMDEvent("human_greeting");
+  });
+
+  $("btn-sim-machine").addEventListener("click", function () {
+    simulateAMDEvent("machine_greeting");
+  });
+
+  $("btn-sim-beep").addEventListener("click", function () {
+    simulateAMDEvent("voicemail_beep");
+  });
+
+  $("btn-drop-voicemail").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    var msg = $("amd-drop-msg").value || "Hello, please call us back.";
+    log("📞 Executing voicemail drop message...");
+
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({
+          action: "trigger_voicemail_drop",
+          message: msg
+        }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+
+    try {
+      var res = await fetch("/api/telephony/voicemail-drop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId, message: msg })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        $("amd-badge").style.background = "var(--chip)";
+        $("amd-badge").textContent = "AMD: Voicemail Dropped";
+        $("amd-state-text").textContent = "VOICEMAIL_COMPLETED";
+        $("amd-action-text").textContent = "CALL HUNG UP";
+        $("amd-reason-text").textContent = "Voicemail audio streamed successfully (" + (data.drop ? data.drop.audio_duration_s + "s" : "") + ")";
+        log("✅ Voicemail drop completed (" + (data.drop ? data.drop.audio_duration_s + "s" : "") + "). Call disconnected.");
+      }
+    } catch (e) {
+      log("❌ Failed to drop voicemail: " + e);
+    }
+  });
+
+  // Real-Time Call Recording Controls (Task 2.5)
+  var recTimerInterval = null;
+  var recStartTimestamp = null;
+  var recPausedAccum = 0;
+
+  $("btn-start-rec").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    log("🎙️ Initiating dual-channel stereo call recording...");
+
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({
+          action: "start_recording",
+          compliance_mode: "two_party"
+        }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+
+    try {
+      var res = await fetch("/api/telephony/recording/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId, compliance_mode: "two_party", beep_on_start: true })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        $("rec-badge").style.background = "var(--danger)";
+        $("rec-badge").textContent = "● REC: Recording (Stereo)";
+        $("rec-status-text").textContent = "RECORDING";
+        $("btn-start-rec").disabled = true;
+        $("btn-pause-rec").disabled = false;
+        $("btn-resume-rec").disabled = true;
+        $("btn-stop-rec").disabled = false;
+
+        recStartTimestamp = Date.now();
+        recPausedAccum = 0;
+        if (recTimerInterval) clearInterval(recTimerInterval);
+        recTimerInterval = setInterval(function () {
+          if ($("rec-status-text").textContent === "RECORDING") {
+            var elapsed = Math.floor((Date.now() - recStartTimestamp - recPausedAccum) / 1000);
+            var m = Math.floor(elapsed / 60);
+            var s = elapsed % 60;
+            $("rec-duration-text").textContent = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+          }
+        }, 1000);
+
+        log("✅ Recording started [" + (data.recording ? data.recording.recording_id : "") + "] (Stereo, 2-party compliance)");
+      }
+    } catch (e) {
+      log("❌ Failed to start recording: " + e);
+    }
+  });
+
+  $("btn-pause-rec").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({
+          action: "pause_recording",
+          reason: "pci_compliance"
+        }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+    try {
+      await fetch("/api/telephony/recording/pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId, reason: "pci_compliance" })
+      });
+      $("rec-badge").style.background = "var(--warn)";
+      $("rec-badge").textContent = "⏸ REC: Paused (PCI Masking)";
+      $("rec-status-text").textContent = "PAUSED";
+      $("btn-pause-rec").disabled = true;
+      $("btn-resume-rec").disabled = false;
+      log("⏸️ Recording paused (silence padding active for PCI/HIPAA redaction)");
+    } catch (e) {}
+  });
+
+  $("btn-resume-rec").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({ action: "resume_recording" }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+    try {
+      await fetch("/api/telephony/recording/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId })
+      });
+      $("rec-badge").style.background = "var(--danger)";
+      $("rec-badge").textContent = "● REC: Recording (Stereo)";
+      $("rec-status-text").textContent = "RECORDING";
+      $("btn-pause-rec").disabled = false;
+      $("btn-resume-rec").disabled = true;
+      log("▶️ Recording resumed");
+    } catch (e) {}
+  });
+
+  $("btn-stop-rec").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    if (recTimerInterval) clearInterval(recTimerInterval);
+
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({ action: "stop_recording" }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+    try {
+      var res = await fetch("/api/telephony/recording/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        var rec = data.recording || {};
+        $("rec-badge").style.background = "var(--ok)";
+        $("rec-badge").textContent = "✓ REC: Saved (" + (rec.duration_s || 0).toFixed(1) + "s)";
+        $("rec-status-text").textContent = "STOPPED";
+        $("btn-start-rec").disabled = false;
+        $("btn-pause-rec").disabled = true;
+        $("btn-resume-rec").disabled = true;
+        $("btn-stop-rec").disabled = true;
+        if (rec.file_path) {
+          $("rec-path-text").textContent = rec.file_path + " (" + ((rec.file_size_bytes || 0) / 1024).toFixed(1) + " KB)";
+        }
+        log("💾 Recording stopped and saved to " + rec.file_path + " (" + (rec.duration_s || 0).toFixed(1) + "s)");
+      }
+    } catch (e) {
+      log("❌ Failed to stop recording: " + e);
+    }
+  });
+
+  // Tasks 3.1+3.2: Post-Call Processing & Analytics Pipeline UI
+  function updatePipelineUI(job) {
+    if (!job || !job.job_id) return;
+    $("pipe-job-id").textContent = job.job_id;
+    var st = (job.status || "queued").toUpperCase();
+    $("pipe-status").textContent = st;
+    $("pipe-status").style.color = st === "COMPLETED" ? "var(--ok)" : (st === "FAILED" ? "var(--bad)" : "var(--warn)");
+    $("pipeline-badge").style.background = st === "COMPLETED" ? "var(--ok)" : (st === "FAILED" ? "var(--bad)" : "var(--warn)");
+    $("pipeline-badge").textContent = "Pipeline: " + st;
+
+    if (job.total_duration_ms) {
+      $("pipe-dur").textContent = job.total_duration_ms.toFixed(1) + " ms";
+    }
+
+    var m = job.metrics || {};
+    if (m.caller_talk_ratio !== undefined) {
+      $("pipe-ratios").textContent = "Caller: " + Math.round(m.caller_talk_ratio * 100) + "% / Agent: " + Math.round(m.agent_talk_ratio * 100) + "%";
+    }
+
+    var stages = job.stages || {};
+    var stageMapping = {
+      "audio_mixdown": "stg-mixdown-st",
+      "transcript_normalization": "stg-norm-st",
+      "metrics_calculation": "stg-metrics-st",
+      "sentiment_analysis": "stg-sentiment-st",
+      "schema_extraction": "stg-extraction-st",
+      "storage_archive": "stg-archive-st"
+    };
+
+    for (var key in stageMapping) {
+      var elId = stageMapping[key];
+      var stageInfo = stages[key] || {};
+      var stStatus = (stageInfo.status || "pending").toLowerCase();
+      var dur = stageInfo.duration_ms ? " (" + stageInfo.duration_ms.toFixed(1) + "ms)" : "";
+      var el = $(elId);
+      if (el) {
+        el.textContent = stStatus.toUpperCase() + dur;
+        el.style.color = stStatus === "completed" ? "var(--ok)" : (stStatus === "failed" ? "var(--bad)" : "var(--warn)");
+      }
+    }
+
+    // Sentiment Analytics (Task 3.2) & Schema Extraction (Task 3.3)
+    var meta = job.metadata || {};
+    var sentiment = meta.sentiment || {};
+    var summary = meta.summary || {};
+    var crmPayloads = meta.crm_payloads || {};
+
+    if (sentiment.overall_polarity) {
+      var polarityEmoji = sentiment.overall_polarity === "positive" ? "😊" :
+                          sentiment.overall_polarity === "negative" ? "😞" : "😐";
+      $("pipe-sentiment-polarity").textContent = polarityEmoji + " " + sentiment.overall_polarity.toUpperCase();
+      $("pipe-sentiment-polarity").style.color = sentiment.overall_polarity === "positive" ? "var(--ok)" :
+                                                   (sentiment.overall_polarity === "negative" ? "var(--bad)" : "var(--soft)");
+    }
+    if (sentiment.trajectory_trend) {
+      var trendEmoji = sentiment.trajectory_trend === "improving" ? "↗" :
+                       sentiment.trajectory_trend === "declining" ? "↘" : "→";
+      $("pipe-sentiment-trend").textContent = trendEmoji + " " + sentiment.trajectory_trend;
+    }
+
+    if (summary.executive_summary) {
+      $("pipe-summary-card").style.display = "block";
+      $("pipe-exec-summary").textContent = summary.executive_summary;
+      $("pipe-intent").textContent = summary.key_intent || "—";
+      $("pipe-resolution").textContent = (summary.resolution_status || "—").replace(/_/g, " ");
+      $("pipe-topics").textContent = (summary.topics || []).join(", ") || "—";
+
+      var crmKeys = Object.keys(crmPayloads);
+      if (crmKeys.length > 0) {
+        var crmEl = $("pipe-crm-entities");
+        if (crmEl) {
+          crmEl.style.display = "block";
+          var crmTexts = [];
+          for (var i = 0; i < crmKeys.length; i++) {
+            var sName = crmKeys[i];
+            var payload = crmPayloads[sName];
+            crmTexts.push("<b>[" + sName + "]</b> " + JSON.stringify(payload));
+          }
+          crmEl.innerHTML = "🎯 <b>CRM Extracted Data:</b><br>" + crmTexts.join("<br>");
+        }
+      }
+    }
+
+    if (job.archive_url) {
+      $("pipe-storage-url").textContent = "Archive: " + job.archive_url;
+    }
+  }
+
+  $("btn-trigger-pipeline").addEventListener("click", async function () {
+    var callId = $("room").value || ("call-" + Date.now());
+    log("🚀 Triggering post-call processing pipeline for " + callId + "...");
+    $("pipeline-badge").textContent = "Processing...";
+    $("pipeline-badge").style.background = "var(--warn)";
+    try {
+      var res = await fetch("/api/pipeline/enqueue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          call_id: callId,
+          transcript_turns: [
+            { role: "caller", text: "Hello, I am following up on my legal consultation intake." },
+            { role: "agent", text: "Certainly, I have your file open and your consultation is confirmed." }
+          ],
+          execute_now: true
+        })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        updatePipelineUI(data.job);
+        log("✅ Post-call pipeline completed for " + callId + " in " + (data.job.total_duration_ms || 0).toFixed(1) + "ms");
+      }
+    } catch (e) {
+      log("❌ Pipeline trigger failed: " + e);
+    }
+  });
+
+  $("btn-refresh-pipeline").addEventListener("click", async function () {
+    try {
+      var res = await fetch("/api/pipeline/stats");
+      if (res.ok) {
+        var data = await res.json();
+        var s = data.stats || {};
+        log("📊 Pipeline Queue Stats: Total=" + s.total_jobs + ", Done=" + s.completed + ", Avg=" + s.avg_processing_time_ms + "ms");
+      }
+    } catch (e) {}
+  });
+
+  $("go").addEventListener("click", join);
+  $("stop").addEventListener("click", leave);
+})();
+</script>
+</body>
+</html>

@@ -44,6 +44,33 @@
       "rate_limit_rpm": 150,
       "metadata": {},
       "active": true
+    },
+    {
+      "workspace_id": "ws-9f77f09e",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1788944985.182127,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
+    },
+    {
+      "workspace_id": "ws-10e614dd",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1788945083.8122308,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
+    },
+    {
+      "workspace_id": "ws-9ab86771",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1788945604.1568544,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
     }
   ],
   "users": [
@@ -85,6 +112,30 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1788944794.3913898,
+      "active": true
+    },
+    {
+      "user_id": "usr-78ae09c7",
+      "workspace_id": "ws-9f77f09e",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1788944985.194766,
+      "active": true
+    },
+    {
+      "user_id": "usr-6f25d849",
+      "workspace_id": "ws-10e614dd",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1788945083.824647,
+      "active": true
+    },
+    {
+      "user_id": "usr-fc5a87f9",
+      "workspace_id": "ws-9ab86771",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1788945604.1684535,
       "active": true
     }
   ],
@@ -270,9 +321,147 @@
       "is_test": false,
       "created_at": 1788944794.455518,
       "expires_at": null,
+      "last_used_at": 1788944794.4598684,
+      "revoked": false
+    },
+    {
+      "key_id": "key-cc95c2bd3134",
+      "workspace_id": "ws-9f77f09e",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_FUju...",
+      "key_hash": "95eda11d034eacbfc58132d439ef246cabedfc054fecd9ac18c31941d22d5476",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1788944985.186023,
+      "expires_at": null,
+      "last_used_at": 1788944985.191403,
+      "revoked": true
+    },
+    {
+      "key_id": "key-8fc579657621",
+      "workspace_id": "ws-9f77f09e",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live_pMFn...",
+      "key_hash": "fb42d3a81bc1b2a539ee805ff7576c93029a863e93734d39bb014a704a3d3ef5",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1788944985.2059958,
+      "expires_at": null,
+      "last_used_at": 1788944985.2109132,
+      "revoked": false
+    },
+    {
+      "key_id": "key-17271333e9f2",
+      "workspace_id": "ws-9f77f09e",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_IoTR...",
+      "key_hash": "56ce6e7417941399a4364465a7d43ca503023cceb9ec57cb4883fbe36d5633a2",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1788944985.2643287,
+      "expires_at": null,
+      "last_used_at": 1788944985.2675967,
+      "revoked": false
+    },
+    {
+      "key_id": "key-04c904fb4e3a",
+      "workspace_id": "ws-10e614dd",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_vKKD...",
+      "key_hash": "964940eed4ae1e713edf4756df0820ff6d034233e8ecf6b8a3dd6fe4dbe5fbc3",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1788945083.8152177,
+      "expires_at": null,
+      "last_used_at": 1788945083.820785,
+      "revoked": true
+    },
+    {
+      "key_id": "key-18925721b0e4",
+      "workspace_id": "ws-10e614dd",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live_1FPK...",
+      "key_hash": "57f200003cba822360516ad28d5def35f445b902553b593f0b0c23cf2959d3b9",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1788945083.8353426,
+      "expires_at": null,
+      "last_used_at": 1788945083.8412025,
+      "revoked": false
+    },
+    {
+      "key_id": "key-080b55fe391a",
+      "workspace_id": "ws-10e614dd",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_9_e6...",
+      "key_hash": "5dac01dc4c2907ca295bb10e1399759fe89099db459d9650e369b4d7484a364b",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1788945083.8979764,
+      "expires_at": null,
+      "last_used_at": 1788945083.901433,
+      "revoked": false
+    },
+    {
+      "key_id": "key-a0c10fe65118",
+      "workspace_id": "ws-9ab86771",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_Zm9x...",
+      "key_hash": "9285bef43b7ce9d3e9f69a292b62a07d0d53cece3152f438684c9c96785a08a5",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1788945604.1599512,
+      "expires_at": null,
+      "last_used_at": 1788945604.164706,
+      "revoked": true
+    },
+    {
+      "key_id": "key-6cd83ed10169",
+      "workspace_id": "ws-9ab86771",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live__aYz...",
+      "key_hash": "9d0b2bdebf1be631614b94152cc9a5bdb2f41144d5b7ad2a1b4a1b4e29a813ee",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1788945604.1764858,
+      "expires_at": null,
+      "last_used_at": 1788945604.1799276,
+      "revoked": false
+    },
+    {
+      "key_id": "key-6f0395d50beb",
+      "workspace_id": "ws-9ab86771",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_k7lC...",
+      "key_hash": "0942f8d4dfa29b0bfdae765c3a185f87e6dd0d31dba5ff2a54f305c47e9d5f9a",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1788945604.2328763,
+      "expires_at": null,
       "last_used_at": null,
       "revoked": false
     }
   ],
-  "updated_at": 1788944794.4560792
+  "updated_at": 1788945604.2333615
 }
