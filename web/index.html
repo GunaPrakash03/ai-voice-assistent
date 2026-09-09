@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI Voice Assistant — Task 1.5 Streaming TTS Engine</title>
+<title>AI Voice Assistant — Task 1.6 Mid-Call Function Calling & Retrieval</title>
 <style>
   :root {
     --ground:#F4F6F5; --panel:#fff; --ink:#10161B; --soft:#4B565C;
@@ -78,7 +78,7 @@
 <div class="wrap">
 
   <h1>AI Voice Assistant — Core Audio & Dialogue</h1>
-  <p class="sub">Task 1.5 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD Barge-in &bull; Streaming LLM &bull; Cartesia Sonic Streaming TTS</p>
+  <p class="sub">Task 1.6 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD Barge-in &bull; Streaming LLM &bull; Cartesia Sonic TTS &bull; Mid-Call Function Tools</p>
 
   <div class="panel">
     <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
@@ -203,6 +203,43 @@
       <div class="row">
         <input id="tts-phrase" style="flex:1;min-width:240px" value="Cartesia Sonic delivers crystal-clear speech with sub-100 millisecond response time.">
         <button id="speak-phrase-btn" disabled>Speak Phrase</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label>Mid-Call Function Calling & Retrieval Tools (Task 1.6)</label>
+      <span id="tool-status" class="badge" style="background:var(--rule);color:var(--soft)">5 Tools Active</span>
+    </div>
+
+    <!-- Live Tool Execution Metrics -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Invoked Tool</div>
+        <div class="metric-val" style="font-size:15px" id="m-tool-name">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Execution Latency</div>
+        <div class="metric-val" id="m-tool-dur">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Filler Speech</div>
+        <div class="metric-val" style="font-size:14px" id="m-filler-status">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Tool Status</div>
+        <div class="metric-val" style="font-size:15px" id="m-tool-status">Ready</div>
+      </div>
+    </div>
+
+    <!-- Direct Tool Trigger Buttons -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <label>Test Spoken Mid-Call Inquiries</label>
+      <div class="row">
+        <button id="btn-tool-avail" class="ghost" disabled style="font-size:13px;padding:6px 12px">Check Availability (Dental)</button>
+        <button id="btn-tool-order" class="ghost" disabled style="font-size:13px;padding:6px 12px">Lookup Order #1042</button>
+        <button id="btn-tool-kb" class="ghost" disabled style="font-size:13px;padding:6px 12px">Query KB (Return Policy)</button>
       </div>
     </div>
   </div>
@@ -461,6 +498,25 @@
           tb.style.color = "#fff";
           log("⚡ Barge-in cut-off triggered! Reason: " + msg.reason);
           setTimeout(function () { banner.style.display = "none"; }, 3500);
+        } else if (topic === "tool_call") {
+          $("m-tool-name").textContent = msg.tool;
+          $("m-tool-status").textContent = "Executing...";
+          $("m-tool-status").style.color = "var(--warn)";
+          log("🔧 Tool call dispatched: " + msg.tool + " args=" + JSON.stringify(msg.arguments));
+        } else if (topic === "filler_speech") {
+          $("m-filler-status").textContent = msg.phrase;
+          $("m-filler-status").style.color = "var(--ok)";
+          log("🗣️ Filler phrase emitted: \"" + msg.phrase + "\"");
+        } else if (topic === "tool_result") {
+          $("m-tool-dur").textContent = (msg.duration_ms != null ? msg.duration_ms.toFixed(1) + "ms" : "—");
+          if (msg.status === "success") {
+            $("m-tool-status").textContent = "Success";
+            $("m-tool-status").style.color = "var(--ok)";
+          } else {
+            $("m-tool-status").textContent = "Fallback (" + (msg.error || "error") + ")";
+            $("m-tool-status").style.color = "var(--err)";
+          }
+          log("✅ Tool result for " + msg.tool + " (" + (msg.duration_ms != null ? msg.duration_ms.toFixed(1) : 0) + "ms): " + JSON.stringify(msg.result));
         }
       });
 
@@ -483,6 +539,9 @@
       $("speak-phrase-btn").disabled = false;
       $("send-prompt").disabled = false;
       $("clear-hist").disabled = false;
+      $("btn-tool-avail").disabled = false;
+      $("btn-tool-order").disabled = false;
+      $("btn-tool-kb").disabled = false;
     } catch (e) {
       setState("Failed", "err");
       log("error: " + (e && e.message ? e.message : e));
@@ -497,6 +556,9 @@
     $("speak-phrase-btn").disabled = true;
     $("send-prompt").disabled = true;
     $("clear-hist").disabled = true;
+    $("btn-tool-avail").disabled = true;
+    $("btn-tool-order").disabled = true;
+    $("btn-tool-kb").disabled = true;
     $("vad-badge").textContent = "Silent (Listening)";
     $("vad-badge").style.background = "var(--rule)";
     $("vad-badge").style.color = "var(--soft)";
@@ -506,6 +568,11 @@
     $("tts-status").textContent = "TTS Idle";
     $("tts-status").style.background = "var(--rule)";
     $("tts-status").style.color = "var(--soft)";
+    $("m-tool-name").textContent = "—";
+    $("m-tool-dur").textContent = "—";
+    $("m-filler-status").textContent = "—";
+    $("m-tool-status").textContent = "Ready";
+    $("m-tool-status").style.color = "";
     $("barge-banner").style.display = "none";
     if (raf) cancelAnimationFrame(raf);
     if (audioCtx) { audioCtx.close(); audioCtx = null; }
@@ -515,6 +582,45 @@
     $("alone").hidden = true;
     $("go").disabled = false;
   }
+
+  $("btn-tool-avail").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    log("Requesting availability check...");
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_prompt", text: "Can you check availability for dental cleaning tomorrow?" })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error testing tool: " + err);
+    }
+  });
+
+  $("btn-tool-order").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    log("Requesting order lookup...");
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_prompt", text: "What is the status of my order 1042?" })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error testing tool: " + err);
+    }
+  });
+
+  $("btn-tool-kb").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    log("Requesting KB query...");
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_prompt", text: "What is your return policy?" })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error testing tool: " + err);
+    }
+  });
 
   $("send-prompt").addEventListener("click", async function () {
     var txt = $("prompt-input").value.trim();

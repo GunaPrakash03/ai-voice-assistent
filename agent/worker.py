@@ -1,17 +1,21 @@
 """
-Task 1.4 — Streaming LLM Dialogue Manager.
+Task 1.6 — Mid-Call Function Calling & Retrieval Tools.
 
 Integrates:
 1. Speech-to-Text (STT) via Deepgram Nova-3.
 2. Local Silero VAD for speech boundary detection and dynamic turn endpointing.
 3. Streaming LLM Dialogue Manager with clause boundary splitter (sub-200ms TTFT)
    and multi-turn conversation history buffer.
-4. Instant barge-in interruption: when the caller speaks while the agent is generating
+4. Streaming TTS Engine (Cartesia Sonic, audio chunking, Opus RTP packetizer, clock sync).
+5. Mid-call function calling & retrieval tools (JSON Schema parser, async dispatcher,
+   filler speech engine to eliminate dead air, error fallback recovery).
+6. Instant barge-in interruption: when the caller speaks while the agent is generating
    or speaking, generation is immediately aborted, playback buffers truncated,
    and interruption events broadcast.
-5. Real-time WebRTC data broadcasting over topics:
+7. Real-time WebRTC data broadcasting over topics:
    `transcript`, `vad`, `interruption`, `agent_state`, `llm_stream`, `llm_clause`,
-   `agent_reply`, `chat_history`.
+   `agent_reply`, `chat_history`, `tts_metrics`, `tool_call`, `filler_speech`,
+   `tool_result`, `tools_list`.
 """
 
 import asyncio
@@ -202,6 +206,35 @@ async def entrypoint(ctx: agents.JobContext):
                 "timestamp": time.time(),
             }, topic="llm_clause", reliable=True)
 
+        async def on_tool_call_cb(tool_name: str, tool_args: dict):
+            log.info("Mid-call tool invoked: %s(%s)", tool_name, tool_args)
+            publish({
+                "type": "tool_call",
+                "tool": tool_name,
+                "arguments": tool_args,
+                "timestamp": time.time(),
+            }, topic="tool_call", reliable=True)
+
+        async def on_filler_cb(filler_phrase: str):
+            log.info("Conversational filler speech: '%s'", filler_phrase)
+            publish({
+                "type": "filler_speech",
+                "phrase": filler_phrase,
+                "timestamp": time.time(),
+            }, topic="filler_speech", reliable=True)
+
+        async def on_tool_result_cb(tool_name: str, tool_res: dict):
+            log.info("Tool '%s' result: status=%s (dur=%.2fms)", tool_name, tool_res.get("status"), tool_res.get("duration_ms", 0.0))
+            publish({
+                "type": "tool_result",
+                "tool": tool_name,
+                "status": tool_res.get("status"),
+                "result": tool_res.get("result"),
+                "duration_ms": tool_res.get("duration_ms"),
+                "error": tool_res.get("error"),
+                "timestamp": time.time(),
+            }, topic="tool_result", reliable=True)
+
         try:
             publish({
                 "type": "agent_state",
@@ -214,6 +247,9 @@ async def entrypoint(ctx: agents.JobContext):
                 user_text=user_input,
                 on_token=on_token_cb,
                 on_clause=on_clause_cb,
+                on_tool_call=on_tool_call_cb,
+                on_filler=on_filler_cb,
+                on_tool_result=on_tool_result_cb,
             )
 
             if not metrics["interrupted"]:
@@ -467,6 +503,45 @@ async def entrypoint(ctx: agents.JobContext):
             task = asyncio.create_task(run_measure())
             pending.add(task)
             task.add_done_callback(pending.discard)
+        elif action == "call_tool":
+            tool_name = data.get("tool", "check_availability")
+            tool_args = data.get("arguments", {"service_type": "consultation", "date": "tomorrow"})
+            log.info("Direct tool invocation requested: %s(%s)", tool_name, tool_args)
+            async def run_direct_tool():
+                filler = llm_manager.tool_registry.filler_engine.get_filler(tool_name, tool_args)
+                publish({
+                    "type": "filler_speech",
+                    "phrase": filler,
+                    "tool": tool_name,
+                    "timestamp": time.time(),
+                }, topic="filler_speech", reliable=True)
+                publish({
+                    "type": "tool_call",
+                    "tool": tool_name,
+                    "arguments": tool_args,
+                    "timestamp": time.time(),
+                }, topic="tool_call", reliable=True)
+                res = await llm_manager.tool_dispatcher.execute_tool(tool_name, tool_args)
+                publish({
+                    "type": "tool_result",
+                    "tool": tool_name,
+                    "status": res["status"],
+                    "result": res["result"],
+                    "duration_ms": res["duration_ms"],
+                    "error": res["error"],
+                    "timestamp": time.time(),
+                }, topic="tool_result", reliable=True)
+
+            task = asyncio.create_task(run_direct_tool())
+            pending.add(task)
+            task.add_done_callback(pending.discard)
+        elif action == "get_tools":
+            schemas = llm_manager.tool_registry.get_schemas()
+            publish({
+                "type": "tools_list",
+                "tools": schemas,
+                "timestamp": time.time(),
+            }, topic="tools_list", reliable=True)
         elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"
             log.info("Test speech requested by %s for barge-in verification", participant_id)

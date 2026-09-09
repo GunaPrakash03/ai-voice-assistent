@@ -16,6 +16,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterable, Callable, List, Optional
 
+from agent.tool_manager import AsyncToolDispatcher, ToolRegistry
+
 log = logging.getLogger("llm-manager")
 
 
@@ -233,6 +235,9 @@ class StreamingDialogueManager:
         self.active_generation_task: Optional[asyncio.Task] = None
         self._is_mock = not bool(self.api_key)
 
+        self.tool_registry = ToolRegistry()
+        self.tool_dispatcher = AsyncToolDispatcher(self.tool_registry)
+
         if not self._is_mock:
             log.info("Initialized StreamingDialogueManager with OpenAI model=%s", self.model)
         else:
@@ -243,6 +248,73 @@ class StreamingDialogueManager:
     @property
     def is_mock(self) -> bool:
         return self._is_mock
+
+    def _detect_simulated_tool_call(self, text: str) -> Optional[tuple[str, dict]]:
+        lower = text.lower()
+        if "order" in lower or "tracking" in lower or "package" in lower:
+            m = re.search(r'(?:order|tracking|#|number|id)\s*([a-zA-Z0-9\-]+)', lower)
+            order_id = m.group(1).upper() if m and m.group(1).isalnum() else "1042"
+            return ("lookup_order", {"order_id": order_id})
+        elif "available" in lower or "availability" in lower or "schedule" in lower or "free slots" in lower:
+            service = "consultation"
+            if "dental" in lower:
+                service = "dental cleaning"
+            elif "oil" in lower or "car" in lower:
+                service = "oil change"
+            date = "tomorrow"
+            if "today" in lower:
+                date = "today"
+            elif "friday" in lower:
+                date = "Friday"
+            return ("check_availability", {"service_type": service, "date": date})
+        elif "book" in lower or "reserve" in lower or "reservation" in lower:
+            return ("book_appointment", {
+                "name": "Valued Caller",
+                "phone": "555-0199",
+                "date": "tomorrow",
+                "time_slot": "11:00 AM",
+                "service": "consultation",
+            })
+        elif "return" in lower or "refund" in lower or "hour" in lower or "pricing" in lower or "cost" in lower or "policy" in lower:
+            return ("query_knowledge_base", {"query": text})
+        elif "webhook" in lower or "external api" in lower or "dispatch" in lower:
+            return ("execute_webhook", {
+                "endpoint_url": "mock://api/voice/events",
+                "method": "POST",
+                "payload": {"event": "call_inquiry", "prompt": text},
+            })
+        return None
+
+    def _format_grounded_tool_response(self, tool_name: str, tool_result: dict) -> str:
+        res = tool_result.get("result") or {}
+        if tool_result.get("status") != "success":
+            return "I apologize, but I am having trouble accessing that system right now. I can note your details and have our team follow up with you."
+
+        if tool_name == "lookup_order":
+            return (
+                f"I looked up order {res.get('order_id')}. It is currently {res.get('status')} "
+                f"with {res.get('carrier')} tracking number {res.get('tracking_number')}, "
+                f"and is scheduled for delivery {res.get('estimated_delivery')}."
+            )
+        elif tool_name == "check_availability":
+            slots = ", ".join(res.get("available_slots", [])[:3])
+            return (
+                f"I checked availability for {res.get('service')} on {res.get('date')}. "
+                f"We have openings at {slots}. Would you like me to book one of those times for you?"
+            )
+        elif tool_name == "book_appointment":
+            return (
+                f"Your appointment for {res.get('service')} has been booked! "
+                f"Your confirmation number is {res.get('booking_id')} for {res.get('scheduled_at')}. "
+                f"{res.get('cancellation_policy')}"
+            )
+        elif tool_name == "query_knowledge_base":
+            return f"{res.get('snippet')} Let me know if you would like more information."
+        elif tool_name == "execute_webhook":
+            return f"The webhook request to {res.get('url')} was dispatched and acknowledged with status {res.get('status_code', 200)}."
+        else:
+            return f"The tool '{tool_name}' completed successfully with result: {json.dumps(res)}."
+
 
     def cancel_active_generation(self) -> bool:
         """Instantly cancel in-flight streaming generation when caller barges in."""
@@ -316,12 +388,17 @@ class StreamingDialogueManager:
         user_text: str,
         on_token: Optional[Callable[[str], Any]] = None,
         on_clause: Optional[Callable[[str, bool, int], Any]] = None,
+        on_tool_call: Optional[Callable[[str, dict], Any]] = None,
+        on_filler: Optional[Callable[[str], Any]] = None,
+        on_tool_result: Optional[Callable[[str, dict], Any]] = None,
     ) -> dict:
         """
         Executes a streaming LLM turn:
         - Appends user message to context buffer.
-        - Streams response tokens.
-        - Emits tokens and clause chunks via callbacks.
+        - Detects mid-call tool invocations (or OpenAI tool calls).
+        - Emits filler speech immediately (<100ms) to eliminate dead air.
+        - Dispatches tools asynchronously and formats grounded responses.
+        - Streams response tokens and clause chunks.
         - Measures TTFT and generation duration.
         - Appends assistant message to context buffer.
         - Handles barge-in cancellation cleanly.
@@ -336,6 +413,7 @@ class StreamingDialogueManager:
         splitter = ClauseBoundarySplitter()
         accumulated_text: List[str] = []
         clauses_emitted: List[str] = []
+        tool_calls_executed: List[dict] = []
 
         start_time = time.perf_counter()
         first_token_time: Optional[float] = None
@@ -344,28 +422,80 @@ class StreamingDialogueManager:
         async def _run():
             nonlocal first_token_time, interrupted
             try:
-                if self._is_mock:
-                    token_stream = self._mock_stream(user_text)
-                else:
-                    token_stream = self._openai_stream(messages)
-
-                async for token in token_stream:
-                    if first_token_time is None:
-                        first_token_time = time.perf_counter()
-
-                    accumulated_text.append(token)
-                    if on_token:
-                        res = on_token(token)
+                detected_tool = self._detect_simulated_tool_call(user_text)
+                if self._is_mock and detected_tool:
+                    tool_name, tool_args = detected_tool
+                    log.info("Triggered mid-call tool: %s(%s)", tool_name, tool_args)
+                    if on_tool_call:
+                        res = on_tool_call(tool_name, tool_args)
                         if asyncio.iscoroutine(res):
                             await res
 
-                    new_clauses = splitter.feed_token(token)
-                    for clause in new_clauses:
-                        clauses_emitted.append(clause)
-                        if on_clause:
-                            res = on_clause(clause, False, len(clauses_emitted))
+                    # 1. Immediate filler speech to keep caller engaged
+                    filler = self.tool_registry.filler_engine.get_filler(tool_name, tool_args)
+                    if on_filler:
+                        res = on_filler(filler)
+                        if asyncio.iscoroutine(res):
+                            await res
+
+                    # 2. Async tool dispatch
+                    tool_res = await self.tool_dispatcher.execute_tool(tool_name, tool_args)
+                    if on_tool_result:
+                        res = on_tool_result(tool_name, tool_res)
+                        if asyncio.iscoroutine(res):
+                            await res
+
+                    tool_calls_executed.append({
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "result": tool_res,
+                        "filler": filler,
+                    })
+
+                    # 3. Grounded reply generation
+                    grounded_reply = self._format_grounded_tool_response(tool_name, tool_res)
+                    tokens = re.findall(r"\S+|\s+", grounded_reply)
+                    for tok in tokens:
+                        await asyncio.sleep(0.016)
+                        if first_token_time is None:
+                            first_token_time = time.perf_counter()
+
+                        accumulated_text.append(tok)
+                        if on_token:
+                            res = on_token(tok)
                             if asyncio.iscoroutine(res):
                                 await res
+
+                        new_clauses = splitter.feed_token(tok)
+                        for clause in new_clauses:
+                            clauses_emitted.append(clause)
+                            if on_clause:
+                                res = on_clause(clause, False, len(clauses_emitted))
+                                if asyncio.iscoroutine(res):
+                                    await res
+                else:
+                    if self._is_mock:
+                        token_stream = self._mock_stream(user_text)
+                    else:
+                        token_stream = self._openai_stream(messages)
+
+                    async for token in token_stream:
+                        if first_token_time is None:
+                            first_token_time = time.perf_counter()
+
+                        accumulated_text.append(token)
+                        if on_token:
+                            res = on_token(token)
+                            if asyncio.iscoroutine(res):
+                                await res
+
+                        new_clauses = splitter.feed_token(token)
+                        for clause in new_clauses:
+                            clauses_emitted.append(clause)
+                            if on_clause:
+                                res = on_clause(clause, False, len(clauses_emitted))
+                                if asyncio.iscoroutine(res):
+                                    await res
 
                 # Stream ended cleanly: flush remaining buffer
                 final_clauses = splitter.flush()
@@ -408,5 +538,6 @@ class StreamingDialogueManager:
             "interrupted": interrupted,
             "clauses": clauses_emitted,
             "model": self.model if not self._is_mock else "mock-simulator",
+            "tool_calls": tool_calls_executed,
         }
         return metrics

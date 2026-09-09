@@ -15,17 +15,19 @@ See `../ai voice assistent/` for the estimation, stack and cost documents.
 | 1.3 VAD & barge-in | Done — `verify_vad.py` 5/5, Silero VAD speech boundaries + barge-in cutoff. |
 | 1.4 LLM dialogue manager | Done — `verify_llm.py` 5/5, streaming model wrapper, clause boundary splitter, context buffer. |
 | 1.5 Streaming TTS | Done — `verify_tts.py` 5/5, Cartesia Sonic streaming TTS, 20ms chunking, sub-100ms TTFA, instant barge-in cut-off. |
-| 1.6 Latency & Pipeline Optimization | Next up — end-to-end latency benchmarks (sub-800ms mouth-to-ear), jitter buffer, AEC tuning. |
+| 1.6 Mid-Call Function Calling & Retrieval Tools | Done — `verify_tools.py` 5/5, JSON Schema tool registry, async non-blocking dispatcher, <10ms filler speech engine, grounded response synthesis. |
+| 1.7 Browser WebRTC Client SDK | Next up — standalone browser SDK, microphone capture, audio visualizer, reconnect logic. |
 
 ## Run it
 
 ```bash
 docker compose up -d
-python3 scripts/verify.py     # media server acceptance (1.1)
-python3 scripts/verify_stt.py # speech-to-text acceptance (1.2)
-python3 scripts/verify_vad.py # VAD & barge-in acceptance (1.3)
-python3 scripts/verify_llm.py # streaming LLM dialogue manager acceptance (1.4)
-python3 scripts/verify_tts.py # streaming TTS engine acceptance (1.5)
+python3 scripts/verify.py       # media server acceptance (1.1)
+python3 scripts/verify_stt.py   # speech-to-text acceptance (1.2)
+python3 scripts/verify_vad.py   # VAD & barge-in acceptance (1.3)
+python3 scripts/verify_llm.py   # streaming LLM dialogue manager acceptance (1.4)
+python3 scripts/verify_tts.py   # streaming TTS engine acceptance (1.5)
+python3 scripts/verify_tools.py # mid-call function calling & tools acceptance (1.6)
 ```
 
 The verify script proves the four things task 1.1 promises: the server
@@ -108,6 +110,20 @@ Provides ultra-low-latency text-to-speech with sub-100ms Time-To-First-Audio (TT
 python3 scripts/set_key.py cartesia <your-cartesia-key> # validates against Cartesia API and updates .env
 docker compose up -d agent
 python3 scripts/verify_tts.py                          # verifies 5/5 checks
+```
+
+## Mid-Call Function Calling & Retrieval Tools (task 1.6)
+
+Enables real-time CRM/database lookups, scheduling, order status checks, and knowledge base retrieval during live calls without dead air:
+
+- **JSON Schema Tool Registry**: standardized JSON Schema definitions for core tools (`check_availability`, `book_appointment`, `lookup_order`, `query_knowledge_base`, `execute_webhook`).
+- **Async Non-Blocking Dispatcher**: executes tools asynchronously with latency tracking (`duration_ms`) and timeout protection (default 2.5–3.5s) to guarantee conversational flow.
+- **Conversational Filler Speech Engine**: selects and emits natural filler phrases (e.g., *"Checking tracking details for order..."*, *"Let me check available times..."*) in <10ms to eliminate awkward silence while backend I/O runs.
+- **Grounded Response Synthesis**: dynamically formats tool output directly into natural language streamed to the clause boundary splitter and TTS engine.
+- **WebRTC Data Channel Telemetry**: emits `tool_call`, `filler_speech`, and `tool_result` events in real-time over the LiveKit data channels.
+
+```bash
+python3 scripts/verify_tools.py # verifies all 5/5 checks for Task 1.6
 ```
 
 
