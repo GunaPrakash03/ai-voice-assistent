@@ -6,7 +6,8 @@ Components:
 2. SIP Dispatch Rules Engine (Inbound DID phone number routing to agent rooms).
 3. Outbound Phone Dialer API (Programmatic outbound calling via LiveKit SIP).
 4. Telephony Metadata Parser (Caller ID, dialed DID, call direction, carrier headers).
-5. Simulated Telephony Engine (Offline verification when external carrier credentials are pending).
+5. Phone Number Inventory & Direct Purchasing Engine (Browse, provision, re-route, and release DIDs).
+6. Simulated Telephony Engine (Offline verification when external carrier credentials are pending).
 """
 
 import asyncio
@@ -22,6 +23,8 @@ from typing import Any, Dict, List, Optional
 log = logging.getLogger("telephony-manager")
 
 E164_REGEX = re.compile(r"^\+?[1-9]\d{1,14}$")
+CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
+PHONE_NUMBERS_FILE = os.path.join(CONFIG_DIR, "phone_numbers.json")
 
 
 class CallDirection(str, Enum):
@@ -35,6 +38,21 @@ class CallStatus(str, Enum):
     ACTIVE = "active"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+@dataclass
+class PhoneNumberRecord:
+    phone_number: str
+    friendly_name: str
+    country: str
+    region: str
+    capabilities: List[str]  # ["voice", "sip", "sms", "dual_channel"]
+    monthly_cost: float
+    status: str = "active"  # "active" | "released"
+    assigned_trunk_id: str = "trunk-inbound-primary"
+    assigned_agent: str = "Intake Agent"
+    purchased_at: float = field(default_factory=time.time)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -98,12 +116,17 @@ class TelephonyCallRecord:
 
 def normalize_phone_number(number: str) -> str:
     """Normalize phone number to E.164-compatible format."""
-    clean = re.sub(r"[^\d+]", "", number.strip())
-    if not clean.startswith("+") and len(clean) == 10:
-        clean = "+1" + clean
-    elif not clean.startswith("+") and len(clean) > 10:
-        clean = "+" + clean
-    return clean
+    if not number:
+        return ""
+    cleaned = re.sub(r"[^\d+]", "", number)
+    if not cleaned.startswith("+"):
+        if len(cleaned) == 10:
+            cleaned = "+1" + cleaned
+        elif len(cleaned) == 11 and cleaned.startswith("1"):
+            cleaned = "+" + cleaned
+        else:
+            cleaned = "+" + cleaned
+    return cleaned
 
 
 def is_valid_phone_number(number: str) -> bool:
@@ -111,10 +134,25 @@ def is_valid_phone_number(number: str) -> bool:
     return bool(E164_REGEX.match(norm))
 
 
+AVAILABLE_NUMBERS_CATALOG = [
+    {"phone_number": "+14158000129", "friendly_name": "+1 (415) 800-0129", "country": "US", "region": "San Francisco, CA", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
+    {"phone_number": "+12125003491", "friendly_name": "+1 (212) 500-3491", "country": "US", "region": "New York, NY", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
+    {"phone_number": "+13127658920", "friendly_name": "+1 (312) 765-8920", "country": "US", "region": "Chicago, IL", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
+    {"phone_number": "+12064129983", "friendly_name": "+1 (206) 412-9983", "country": "US", "region": "Seattle, WA", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
+    {"phone_number": "+15129930415", "friendly_name": "+1 (512) 993-0415", "country": "US", "region": "Austin, TX", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
+    {"phone_number": "+16175508821", "friendly_name": "+1 (617) 550-8821", "country": "US", "region": "Boston, MA", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
+    {"phone_number": "+18005550199", "friendly_name": "+1 (800) 555-0199 (Toll-Free)", "country": "US", "region": "Toll-Free North America", "capabilities": ["voice", "sip", "sms", "toll_free"], "monthly_cost": 2.00},
+    {"phone_number": "+18885550142", "friendly_name": "+1 (888) 555-0142 (Toll-Free)", "country": "US", "region": "Toll-Free North America", "capabilities": ["voice", "sip", "sms", "toll_free"], "monthly_cost": 2.00},
+    {"phone_number": "+442079460912", "friendly_name": "+44 20 7946 0912", "country": "GB", "region": "London, UK", "capabilities": ["voice", "sip", "dual_channel"], "monthly_cost": 2.50},
+    {"phone_number": "+61291001844", "friendly_name": "+61 2 9100 1844", "country": "AU", "region": "Sydney, Australia", "capabilities": ["voice", "sip", "dual_channel"], "monthly_cost": 3.00},
+    {"phone_number": "+493023125990", "friendly_name": "+49 30 2312 5990", "country": "DE", "region": "Berlin, Germany", "capabilities": ["voice", "sip", "dual_channel"], "monthly_cost": 2.50},
+    {"phone_number": "+14165507812", "friendly_name": "+1 (416) 550-7812", "country": "CA", "region": "Toronto, ON", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.75},
+]
+
+
 class TelephonyManager:
     """
-    Manages SIP trunks, inbound routing rules, and outbound programmatic dialing.
-    Integrates with LiveKit SIP API and provides simulated fallback.
+    Coordinates inbound & outbound SIP trunks, phone number purchasing, routing rules, and calls.
     """
 
     def __init__(
@@ -131,8 +169,10 @@ class TelephonyManager:
         self._outbound_trunks: Dict[str, SIPOutboundTrunk] = {}
         self._dispatch_rules: Dict[str, SIPDispatchRule] = {}
         self._calls: Dict[str, TelephonyCallRecord] = {}
+        self._owned_numbers: Dict[str, PhoneNumberRecord] = {}
 
         self._init_default_demo_trunks()
+        self._load_phone_numbers()
 
     def _init_default_demo_trunks(self):
         """Pre-populate reference carrier trunks and dispatch rules."""
@@ -165,6 +205,54 @@ class TelephonyManager:
         )
         self.register_dispatch_rule(rule)
 
+    def _load_phone_numbers(self):
+        """Seed or load persistent phone numbers."""
+        if os.path.isfile(PHONE_NUMBERS_FILE):
+            try:
+                with open(PHONE_NUMBERS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    for item in data.get("numbers", []):
+                        rec = PhoneNumberRecord(**item)
+                        self._owned_numbers[rec.phone_number] = rec
+            except Exception as e:
+                log.warning("Failed to load phone numbers from disk: %s", e)
+
+        if not self._owned_numbers:
+            # Seed initial default numbers
+            self._owned_numbers["+18005550199"] = PhoneNumberRecord(
+                phone_number="+18005550199",
+                friendly_name="+1 (800) 555-0199 (Toll-Free)",
+                country="US",
+                region="Toll-Free North America",
+                capabilities=["voice", "sip", "sms", "toll_free"],
+                monthly_cost=2.00,
+                assigned_trunk_id="trunk-inbound-primary",
+                assigned_agent="Intake Agent",
+            )
+            self._owned_numbers["+18885550142"] = PhoneNumberRecord(
+                phone_number="+18885550142",
+                friendly_name="+1 (888) 555-0142 (Toll-Free)",
+                country="US",
+                region="Toll-Free North America",
+                capabilities=["voice", "sip", "sms", "toll_free"],
+                monthly_cost=2.00,
+                assigned_trunk_id="trunk-inbound-primary",
+                assigned_agent="Support Agent",
+            )
+            self._save_phone_numbers()
+
+    def _save_phone_numbers(self):
+        """Save phone numbers to disk."""
+        try:
+            os.makedirs(os.path.dirname(PHONE_NUMBERS_FILE), exist_ok=True)
+            with open(PHONE_NUMBERS_FILE, "w", encoding="utf-8") as f:
+                json.dump({
+                    "numbers": [asdict(n) for n in self._owned_numbers.values()],
+                    "updated_at": time.time(),
+                }, f, indent=2)
+        except Exception as e:
+            log.warning("Failed to save phone numbers: %s", e)
+
     def register_inbound_trunk(self, trunk: SIPInboundTrunk) -> None:
         self._inbound_trunks[trunk.trunk_id] = trunk
         log.info("Registered Inbound SIP Trunk: %s (%s numbers)", trunk.trunk_id, len(trunk.numbers))
@@ -189,30 +277,146 @@ class TelephonyManager:
     def list_calls(self) -> List[dict]:
         return [asdict(c) for c in self._calls.values()]
 
+    # ── Phone Number Management ──────────────────────────────────────────────
+    def list_available_numbers(self, country: Optional[str] = None, search: Optional[str] = None) -> List[dict]:
+        owned = set(self._owned_numbers.keys())
+        results = []
+        for item in AVAILABLE_NUMBERS_CATALOG:
+            if item["phone_number"] in owned:
+                continue
+            if country and country.upper() != "ALL" and item["country"] != country.upper():
+                continue
+            if search:
+                q = search.lower().strip()
+                if (q not in item["phone_number"].lower() and
+                    q not in item["friendly_name"].lower() and
+                    q not in item["region"].lower()):
+                    continue
+            results.append(item)
+        return results
+
+    def list_owned_numbers(self) -> List[dict]:
+        return [asdict(n) for n in self._owned_numbers.values() if n.status == "active"]
+
+    def purchase_number(
+        self,
+        phone_number: str,
+        friendly_name: str = "",
+        assigned_trunk_id: str = "trunk-inbound-primary",
+        assigned_agent: str = "Intake Agent",
+    ) -> dict:
+        norm = normalize_phone_number(phone_number)
+        if not is_valid_phone_number(norm):
+            raise ValueError(f"Invalid phone number '{phone_number}'")
+
+        catalog_entry = next((item for item in AVAILABLE_NUMBERS_CATALOG if item["phone_number"] == norm), None)
+        country = catalog_entry["country"] if catalog_entry else "US"
+        region = catalog_entry["region"] if catalog_entry else "Direct Inward Dialing"
+        capabilities = catalog_entry["capabilities"] if catalog_entry else ["voice", "sip", "sms", "dual_channel"]
+        monthly_cost = catalog_entry["monthly_cost"] if catalog_entry else 1.50
+        fname = friendly_name or (catalog_entry["friendly_name"] if catalog_entry else norm)
+
+        record = PhoneNumberRecord(
+            phone_number=norm,
+            friendly_name=fname,
+            country=country,
+            region=region,
+            capabilities=capabilities,
+            monthly_cost=monthly_cost,
+            status="active",
+            assigned_trunk_id=assigned_trunk_id,
+            assigned_agent=assigned_agent,
+            purchased_at=time.time(),
+        )
+        self._owned_numbers[norm] = record
+
+        # Bind to trunk
+        trunk = self._inbound_trunks.get(assigned_trunk_id)
+        if trunk and norm not in trunk.numbers:
+            trunk.numbers.append(norm)
+
+        # Update or create dispatch rule
+        rule_id = f"rule-{norm.replace('+', '')}"
+        rule = SIPDispatchRule(
+            rule_id=rule_id,
+            name=f"DID Routing for {fname}",
+            trunk_ids=[assigned_trunk_id],
+            room_prefix="call-",
+            agent_name=assigned_agent,
+        )
+        self.register_dispatch_rule(rule)
+        self._save_phone_numbers()
+
+        log.info("Purchased phone number %s -> assigned to %s on %s", norm, assigned_agent, assigned_trunk_id)
+        return asdict(record)
+
+    def release_number(self, phone_number: str) -> bool:
+        norm = normalize_phone_number(phone_number)
+        rec = self._owned_numbers.get(norm)
+        if not rec:
+            return False
+
+        rec.status = "released"
+        # Unbind from trunk
+        trunk = self._inbound_trunks.get(rec.assigned_trunk_id)
+        if trunk and norm in trunk.numbers:
+            trunk.numbers.remove(norm)
+
+        self._save_phone_numbers()
+        log.info("Released phone number %s", norm)
+        return True
+
+    def update_number_routing(self, phone_number: str, agent_name: str, trunk_id: Optional[str] = None) -> Optional[dict]:
+        norm = normalize_phone_number(phone_number)
+        rec = self._owned_numbers.get(norm)
+        if not rec:
+            return None
+
+        rec.assigned_agent = agent_name
+        if trunk_id and trunk_id in self._inbound_trunks:
+            if trunk_id != rec.assigned_trunk_id:
+                old_trunk = self._inbound_trunks.get(rec.assigned_trunk_id)
+                if old_trunk and norm in old_trunk.numbers:
+                    old_trunk.numbers.remove(norm)
+                new_trunk = self._inbound_trunks.get(trunk_id)
+                if new_trunk and norm not in new_trunk.numbers:
+                    new_trunk.numbers.append(norm)
+                rec.assigned_trunk_id = trunk_id
+
+        # Update matching dispatch rule
+        for rule in self._dispatch_rules.values():
+            if rec.assigned_trunk_id in rule.trunk_ids:
+                rule.agent_name = agent_name
+
+        self._save_phone_numbers()
+        log.info("Updated routing for %s -> agent=%s trunk=%s", norm, agent_name, rec.assigned_trunk_id)
+        return asdict(rec)
+
     def route_inbound_call(self, dialed_number: str, caller_number: str) -> Optional[dict]:
-        """
-        Determines which SIP dispatch rule and room should handle an incoming phone call.
-        """
         norm_dialed = normalize_phone_number(dialed_number)
         norm_caller = normalize_phone_number(caller_number)
 
-        # 1. Find matching inbound trunk
         matched_trunk = None
         for trunk in self._inbound_trunks.values():
             if trunk.matches_number(norm_dialed):
                 matched_trunk = trunk
                 break
 
-        # 2. Find matching dispatch rule
         matched_rule = None
-        if matched_trunk:
+        # Check if number has explicit assigned agent
+        owned = self._owned_numbers.get(norm_dialed)
+        if owned:
+            agent_name = owned.assigned_agent
+        elif matched_trunk:
             for rule in self._dispatch_rules.values():
                 if matched_trunk.trunk_id in rule.trunk_ids:
                     matched_rule = rule
                     break
+            agent_name = matched_rule.agent_name if matched_rule else "VoiceAssistantAgent"
+        else:
+            agent_name = "VoiceAssistantAgent"
 
         if not matched_rule:
-            # Fallback to first rule if generic
             matched_rule = next(iter(self._dispatch_rules.values()), None)
 
         if not matched_rule:
@@ -232,7 +436,7 @@ class TelephonyManager:
             status=CallStatus.ACTIVE,
             answered_at=time.time(),
             sip_trunk_id=matched_trunk.trunk_id if matched_trunk else None,
-            metadata={"agent_name": matched_rule.agent_name},
+            metadata={"agent_name": agent_name},
         )
         self._calls[call_id] = record
 
@@ -252,15 +456,10 @@ class TelephonyManager:
         outbound_trunk_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> TelephonyCallRecord:
-        """
-        Initiates a programmatic outbound phone call to the PSTN.
-        Creates a dedicated LiveKit room and dispatches a SIP call via the carrier trunk.
-        """
         norm_dest = normalize_phone_number(destination_number)
         if not is_valid_phone_number(norm_dest):
             raise ValueError(f"Invalid E.164 destination phone number: '{destination_number}'")
 
-        # Select outbound trunk
         trunk = None
         if outbound_trunk_id and outbound_trunk_id in self._outbound_trunks:
             trunk = self._outbound_trunks[outbound_trunk_id]
@@ -296,9 +495,7 @@ class TelephonyManager:
             trunk.trunk_id,
         )
 
-        # Perform LiveKit SIP API dispatch
         try:
-            # Check if livekit.api SIP client is usable with credentials
             if self.api_key and self.api_secret and "127.0.0.1" not in self.livekit_url:
                 from livekit import api
                 lk_api = api.LiveKitAPI(self.livekit_url, self.api_key, self.api_secret)
@@ -316,7 +513,6 @@ class TelephonyManager:
                 finally:
                     await lk_api.aclose()
             else:
-                # Simulated outbound call execution for local development and CI tests
                 record.status = CallStatus.RINGING
                 await asyncio.sleep(0.05)
                 record.status = CallStatus.ACTIVE

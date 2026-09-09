@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Call Desk — Real-Time Voice Intelligence</title>
+<title>Call Desk — AI Voice Intelligence & SIP Telephony</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
@@ -13,7 +13,7 @@
     --rail-ink:#A8AEC4; --rail-on:#FFFFFF;
     --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
     --line:#DDE0E9; --line-soft:#EBEDF3;
-    --accent:#C2560F; --accent-soft:#FCEEE4;
+    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
     --pos:#2F7A4F; --pos-soft:#E6F2EA;
     --neu:#5A6480; --neu-soft:#EDEFF4;
     --neg:#A32F26; --neg-soft:#FAEAE8;
@@ -27,23 +27,12 @@
       --rail-ink:#767D96; --rail-on:#FFFFFF;
       --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
       --line:#262B3A; --line-soft:#1C2130;
-      --accent:#F0803C; --accent-soft:#2A1809;
+      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
       --pos:#5FBF88; --pos-soft:#12251A;
       --neu:#8891AB; --neu-soft:#1A1F2C;
       --neg:#E0776C; --neg-soft:#2A1513;
       --live:#F0803C;
     }
-  }
-  :root[data-theme="dark"]{
-    --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
-    --rail-ink:#767D96; --rail-on:#FFFFFF;
-    --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
-    --line:#262B3A; --line-soft:#1C2130;
-    --accent:#F0803C; --accent-soft:#2A1809;
-    --pos:#5FBF88; --pos-soft:#12251A;
-    --neu:#8891AB; --neu-soft:#1A1F2C;
-    --neg:#E0776C; --neg-soft:#2A1513;
-    --live:#F0803C;
   }
 
   *{box-sizing:border-box}
@@ -51,7 +40,7 @@
     font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
   img{max-width:100%}
   [hidden]{display:none!important}
-  .app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:100vh}
+  .app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
 
   /* Rail */
   .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
@@ -60,45 +49,45 @@
   .brand span{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
   .nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
   .nav button,.nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);
-    font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
+    font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s}
   .nav button:hover,.nav a:hover{background:rgba(255,255,255,.06);color:var(--rail-on)}
   .nav button[aria-selected="true"]{background:var(--accent);color:#fff;font-weight:600}
   .nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-  .nav .ct{font-family:var(--f-mono);font-size:11px;opacity:.75}
+  .nav .ct{font-family:var(--f-mono);font-size:11px;opacity:.85}
   .rail-foot{margin-top:auto;padding:14px 18px 0;border-top:1px solid rgba(255,255,255,.07)}
   .rail-foot div{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;line-height:1.7}
   .rail-foot a{color:var(--rail-ink);text-decoration:none}
   .rail-foot a:hover{color:var(--rail-on)}
 
   /* Topbar */
-  .top{background:var(--panel);border-bottom:1px solid var(--line);padding:13px 26px;
+  .top{background:var(--panel);border-bottom:1px solid var(--line);padding:12px 26px;
     display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
   h1{font-size:19px;font-weight:700;margin:0;letter-spacing:-.01em}
   .crumb{font-family:var(--f-mono);font-size:11px;color:var(--ink-faint);
     letter-spacing:.07em;text-transform:uppercase;margin-bottom:2px}
   .livechip{display:inline-flex;align-items:center;gap:7px;background:var(--accent-soft);
-    color:var(--accent);border:1px solid var(--accent);border-radius:20px;
+    color:var(--accent);border:1px solid var(--accent-border);border-radius:20px;
     padding:5px 12px;font-family:var(--f-mono);font-size:11.5px;font-weight:500}
   .pulse{width:7px;height:7px;border-radius:50%;background:var(--live);animation:p 1.6s ease-in-out infinite}
   @keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
   @keyframes highlight{0%{background:var(--accent-soft)}100%{background:transparent}}
   @keyframes vupulse{0%,100%{height:4px}50%{height:14px}}
-  @media (prefers-reduced-motion:reduce){.pulse{animation:none}}
 
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
     padding:7px 14px;border-radius:6px;font-size:13px;font-weight:600;
     cursor:pointer;border:1px solid transparent;background:var(--accent);color:#fff;
-    transition:all .15s ease}
-  .btn:hover{opacity:.9}
+    transition:all .15s ease;text-decoration:none}
+  .btn:hover{opacity:.92}
   .btn:active{transform:scale(.98)}
   .btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-soft)}
   .btn.ghost:hover{background:var(--sunk);color:var(--ink);border-color:var(--ink-faint)}
   .btn.pos{background:var(--pos);color:#fff}
+  .btn.sm{padding:4px 9px;font-size:12px}
 
   main{padding:22px 26px 60px}
   .view{display:none}.view.on{display:block}
 
-  /* Stats */
+  /* Stats Cards */
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin-bottom:22px}
   .stat{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:14px 16px;
     transition:transform .2s ease, border-color .2s ease}
@@ -112,7 +101,8 @@
   .grid2{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;align-items:start}
   @media (max-width:940px){.grid2{grid-template-columns:1fr}}
 
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:7px;overflow:hidden;margin-bottom:16px}
+  .card:last-child{margin-bottom:0}
   .card-h{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;
     justify-content:space-between;align-items:center;gap:10px}
   .card-h h2{font-size:13.5px;font-weight:600;margin:0}
@@ -204,22 +194,54 @@
     display:flex;justify-content:space-between;align-items:center}
   .agent-card:last-child{margin-bottom:0}
 
+  /* Telephony Marketplace Grid */
+  .market-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+  .num-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;
+    display:flex;flex-direction:column;gap:8px;transition:border-color .15s, box-shadow .15s}
+  .num-card:hover{border-color:var(--accent);box-shadow:0 4px 14px rgba(0,0,0,.06)}
+  .num-card .ph{font-size:16px;font-weight:700;font-family:var(--f-mono);color:var(--ink)}
+  .num-card .reg{font-size:12px;color:var(--ink-soft)}
+  .num-card .caps{display:flex;gap:5px;flex-wrap:wrap;margin:4px 0}
+  .cap-chip{background:var(--sunk);font-family:var(--f-mono);font-size:10.5px;padding:2px 7px;
+    border-radius:4px;color:var(--ink-soft)}
+  .num-card .price{font-family:var(--f-mono);font-size:13px;font-weight:700;color:var(--accent);margin-top:auto}
+
+  /* Modal Dialog */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;
+    align-items:center;justify-content:center;z-index:1000;padding:20px}
+  .modal-overlay.open{display:flex}
+  .modal-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    max-width:480px;width:100%;box-shadow:0 12px 36px rgba(0,0,0,.25);overflow:hidden}
+  .modal-h{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;
+    justify-content:space-between;align-items:center}
+  .modal-h h3{margin:0;font-size:15px;font-weight:700}
+  .modal-b{padding:18px}
+  .modal-f{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px;background:var(--sunk)}
+
+  .form-group{margin-bottom:14px}
+  .form-group label{display:block;font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--ink-faint);margin-bottom:5px}
+  .form-group input, .form-group select{width:100%;padding:8px 11px;border-radius:6px;
+    border:1px solid var(--line);background:var(--ground);color:var(--ink);font-size:13px}
+
   /* Toast Notification */
   #toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:var(--ground);
     padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);
-    display:none;z-index:999;align-items:center;gap:10px;animation:p .3s ease}
+    display:none;z-index:1999;align-items:center;gap:10px}
   #toast.show{display:flex}
 </style>
 </head>
 <body>
 
 <div class="app">
+  <!-- Navigation Rail -->
   <nav class="rail">
     <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
     <div class="nav" role="tablist">
       <button role="tab" aria-selected="true" data-v="overview">Overview<span class="ct" id="ctOverview">…</span></button>
       <button role="tab" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls">…</span></button>
       <button role="tab" aria-selected="false" data-v="detail">Call detail</button>
+      <button role="tab" aria-selected="false" data-v="telephony">SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></button>
       <button role="tab" aria-selected="false" data-v="agents">Agents<span class="ct" id="ctAgents">…</span></button>
     </div>
     <div class="rail-foot">
@@ -231,14 +253,18 @@
   </nav>
 
   <div>
+    <!-- Top Bar -->
     <header class="top">
       <div>
         <div class="crumb" id="crumb">Overview</div>
         <h1 id="title">Call history</h1>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button id="btnSimulate" class="btn" title="Generate and process a real dynamic call through the live AI pipeline">
+        <button id="btnSimulate" class="btn" title="Generate and execute a real live dynamic call through the AI pipeline">
           ⚡ Simulate Inbound Call
+        </button>
+        <button id="btnOpenMarket" class="btn ghost" title="Browse and purchase carrier phone numbers">
+          🛒 Buy Phone Number
         </button>
         <button id="btnSyncToggle" class="btn ghost" title="Toggle real-time auto-refresh polling">
           ● Live Sync: ON (3s)
@@ -255,7 +281,7 @@
       <!-- OVERVIEW -->
       <section class="view on" id="v-overview">
         <!-- Live Active Calls Stream Banner -->
-        <div id="activeCallsCard" class="card" style="margin-bottom:18px;border-left:4px solid var(--pos);display:none">
+        <div id="activeCallsCard" class="card" style="border-left:4px solid var(--pos);display:none">
           <div class="card-h" style="background:var(--pos-soft)">
             <h2 style="color:var(--pos);display:flex;align-items:center;gap:8px">
               <span class="pulse" style="background:var(--pos)"></span> Live Active Inbound Calls (<span id="activeCallsCount">0</span>)
@@ -298,7 +324,7 @@
         </div>
       </section>
 
-      <!-- CALLS -->
+      <!-- CALLS LOG -->
       <section class="view" id="v-calls">
         <div class="filters" id="filters">
           <button aria-pressed="true" data-f="all">All calls</button>
@@ -326,11 +352,11 @@
         </div>
       </section>
 
-      <!-- DETAIL -->
+      <!-- CALL DETAIL -->
       <section class="view" id="v-detail">
         <div class="grid2">
           <div>
-            <div class="card" style="margin-bottom:16px">
+            <div class="card">
               <div class="card-h"><h2>Recording</h2><span class="meta" id="recMeta">no call selected</span></div>
               <div class="card-b">
                 <svg id="wave" viewBox="0 0 700 96" width="100%" height="96" role="img"
@@ -350,7 +376,7 @@
           </div>
 
           <div>
-            <div class="card" style="margin-bottom:16px">
+            <div class="card">
               <div class="card-h"><h2>Analysis</h2><span class="meta" id="analysisMeta"></span></div>
               <div class="card-b" id="analysis"><div class="empty">Select a call from the log.</div></div>
             </div>
@@ -358,6 +384,97 @@
               <div class="card-h"><h2>Extracted fields</h2><span class="meta">schema extraction</span></div>
               <div class="card-b" id="extracted"><div class="empty">Select a call from the log.</div></div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TELEPHONY: SIP TRUNKS & PHONE NUMBERS -->
+      <section class="view" id="v-telephony">
+        <dl class="stats" id="telephonyStats">
+          <div class="stat"><dt>ACTIVE NUMBERS</dt><dd id="telStatDids">0<span class="delta" style="color:var(--pos)">100% voice</span></dd></div>
+          <div class="stat"><dt>SIP TRUNKS</dt><dd id="telStatTrunks">0<span class="delta" style="color:var(--ink-faint)">carrier ready</span></dd></div>
+          <div class="stat"><dt>EST. MONTHLY COST</dt><dd id="telStatCost">$0.00<span class="delta" style="color:var(--ink-faint)">/month</span></dd></div>
+          <div class="stat"><dt>SIP CARRIER LATENCY</dt><dd>18 ms<span class="delta" style="color:var(--pos)">UDP / TLS</span></dd></div>
+        </dl>
+
+        <!-- Sub navigation pills -->
+        <div class="filters" id="telNav">
+          <button aria-pressed="true" data-tv="owned">Active Phone Numbers</button>
+          <button aria-pressed="false" data-tv="market">🛒 Purchase Direct Numbers</button>
+          <button aria-pressed="false" data-tv="trunks">SIP Trunks &amp; Gateways</button>
+          <button aria-pressed="false" data-tv="rules">Dispatch &amp; Routing Rules</button>
+        </div>
+
+        <!-- Section: Active Owned Numbers -->
+        <div id="sub-owned">
+          <div class="card">
+            <div class="card-h">
+              <h2>Owned Phone Numbers (DIDs)</h2>
+              <span class="meta">Incoming PSTN calls routed directly to AI Agents</span>
+            </div>
+            <div class="tw"><table>
+              <thead><tr>
+                <th>Phone Number</th><th>Friendly Name &amp; Region</th><th>Capabilities</th>
+                <th>Monthly Rate</th><th>Assigned Voice Agent</th><th>Trunk Binding</th><th>Status</th><th>Actions</th>
+              </tr></thead>
+              <tbody id="ownedNumbersRows"><tr><td colspan="8" class="empty">Loading numbers…</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+
+        <!-- Section: Purchase New Numbers Marketplace -->
+        <div id="sub-market" style="display:none">
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-h">
+              <h2>Direct Phone Number Marketplace</h2>
+              <span class="meta">Instant carrier DID provisioning</span>
+            </div>
+            <div class="card-b">
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+                <select id="marketCountry" style="padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);font-size:13px">
+                  <option value="ALL">🌍 All Countries</option>
+                  <option value="US" selected>🇺🇸 United States (+1)</option>
+                  <option value="CA">🇨🇦 Canada (+1)</option>
+                  <option value="GB">🇬🇧 United Kingdom (+44)</option>
+                  <option value="AU">🇦🇺 Australia (+61)</option>
+                  <option value="DE">🇩🇪 Germany (+49)</option>
+                </select>
+                <input id="marketSearch" type="search" placeholder="Search area code or city (e.g. 415, 212, London)…"
+                  style="flex:1;min-width:240px;padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);font-size:13px">
+              </div>
+              <div class="market-grid" id="marketNumbersList"><div class="empty">Loading available numbers…</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: SIP Trunks & Gateways -->
+        <div id="sub-trunks" style="display:none">
+          <div class="grid2">
+            <div class="card">
+              <div class="card-h">
+                <h2>Inbound SIP Trunks</h2>
+                <button class="btn sm ghost" id="btnAddInboundTrunk">➕ New Inbound Trunk</button>
+              </div>
+              <div class="card-b" id="inboundTrunksList"></div>
+            </div>
+            <div class="card">
+              <div class="card-h">
+                <h2>Outbound SIP Trunks</h2>
+                <button class="btn sm ghost" id="btnAddOutboundTrunk">➕ New Outbound Trunk</button>
+              </div>
+              <div class="card-b" id="outboundTrunksList"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Dispatch Rules -->
+        <div id="sub-rules" style="display:none">
+          <div class="card">
+            <div class="card-h">
+              <h2>SIP Inbound Dispatch &amp; Room Routing</h2>
+              <span class="meta">Connects incoming SIP calls to agent rooms</span>
+            </div>
+            <div class="card-b" id="dispatchRulesList"></div>
           </div>
         </div>
       </section>
@@ -377,6 +494,71 @@
   </div>
 </div>
 
+<!-- Purchase Number Modal -->
+<div class="modal-overlay" id="modalPurchase">
+  <div class="modal-card">
+    <div class="modal-h">
+      <h3>Purchase &amp; Provision Phone Number</h3>
+      <button class="btn ghost sm" id="btnClosePurchaseModal">✕</button>
+    </div>
+    <div class="modal-b">
+      <div class="form-group">
+        <label>Selected Phone Number</label>
+        <input type="text" id="modalBuyNumber" readonly style="font-family:var(--f-mono);font-weight:700">
+      </div>
+      <div class="form-group">
+        <label>Friendly Name / Label</label>
+        <input type="text" id="modalBuyFriendly" placeholder="e.g. Legal Intake Primary Line">
+      </div>
+      <div class="form-group">
+        <label>Assign to Voice Agent</label>
+        <select id="modalBuyAgent"></select>
+      </div>
+      <div class="form-group">
+        <label>Bind to Inbound SIP Trunk</label>
+        <select id="modalBuyTrunk">
+          <option value="trunk-inbound-primary">Primary Inbound Carrier Trunk (Telnyx/Twilio)</option>
+        </select>
+      </div>
+      <div style="background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:6px;padding:10px 14px;font-size:12.5px">
+        <strong>Instant Provisioning:</strong> This number will be immediately activated, bound to your SIP trunk, and routed to the selected voice agent. Monthly charge: <span id="modalBuyPrice" style="font-weight:700;color:var(--accent)">$1.50/mo</span>.
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" id="btnCancelPurchase">Cancel</button>
+      <button class="btn" id="btnConfirmPurchase">⚡ Confirm &amp; Purchase Number</button>
+    </div>
+  </div>
+</div>
+
+<!-- Re-Route Number Modal -->
+<div class="modal-overlay" id="modalRoute">
+  <div class="modal-card">
+    <div class="modal-h">
+      <h3>Update Inbound Call Routing</h3>
+      <button class="btn ghost sm" id="btnCloseRouteModal">✕</button>
+    </div>
+    <div class="modal-b">
+      <div class="form-group">
+        <label>Phone Number</label>
+        <input type="text" id="modalRouteNumber" readonly style="font-family:var(--f-mono);font-weight:700">
+      </div>
+      <div class="form-group">
+        <label>Route Inbound Calls To</label>
+        <select id="modalRouteAgent"></select>
+      </div>
+      <div class="form-group">
+        <label>Inbound SIP Trunk</label>
+        <select id="modalRouteTrunk"></select>
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" id="btnCancelRoute">Cancel</button>
+      <button class="btn" id="btnConfirmRoute">Save Routing</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script src="/inspector.js"></script>
@@ -390,6 +572,7 @@
     overview: ["Overview", "Call history"],
     calls: ["Calls", "Call log"],
     detail: ["Calls / detail", "Call inspector"],
+    telephony: ["Telephony", "SIP Trunks & Phone Numbers"],
     agents: ["Agents", "Configured agents"]
   };
 
@@ -403,8 +586,10 @@
   var autoSync = true;
   var syncInterval = null;
   var lastCallCount = 0;
+  var cachedAgents = [];
+  var cachedTrunks = [];
 
-  // ── Toast notifications ───────────────────────────────────────────────────
+  // ── Toast ─────────────────────────────────────────────────────────────────
   function showToast(msg) {
     var toast = $("#toast");
     toast.textContent = msg;
@@ -420,22 +605,26 @@
     Array.prototype.forEach.call(document.querySelectorAll(".view"), function (v) {
       v.classList.toggle("on", v.id === "v-" + view);
     });
-    $("#crumb").textContent = TITLES[view][0];
-    $("#title").textContent = TITLES[view][1];
+    $("#crumb").textContent = (TITLES[view] || [view, view])[0];
+    $("#title").textContent = (TITLES[view] || [view, view])[1];
     window.scrollTo(0, 0);
+
+    if (view === "telephony") {
+      loadTelephony();
+    }
   }
   Array.prototype.forEach.call(document.querySelectorAll(".nav button"), function (b) {
     b.addEventListener("click", function () { show(b.dataset.v); });
   });
 
-  // ── Overview Dynamic Rendering ────────────────────────────────────────────
+  // ── Overview ──────────────────────────────────────────────────────────────
   function renderStats(stats) {
     if (!stats) { return; }
     var countChanged = lastCallCount > 0 && stats.calls !== lastCallCount;
     lastCallCount = stats.calls;
 
     $("#ctOverview").textContent = stats.calls + " calls";
-    $("#livect").textContent = stats.calls + " calls recorded · Live";
+    $("#livect").textContent = stats.calls + " calls · Live";
 
     var cardsHtml =
       card("Calls recorded", stats.calls, stats.with_audio + " with audio", countChanged) +
@@ -460,7 +649,7 @@
           k + '</span><span class="v">' + stats.sentiment[k] + " &middot; " +
           Math.round(stats.sentiment[k] / total * 100) + "%</span></div>";
       }).join("");
-    $("#sentimentMeta").textContent = total + " calls";
+    $("#sentimentMeta").textContent = total + " dynamic calls";
   }
 
   function card(label, value, sub, flash) {
@@ -504,24 +693,23 @@
     });
   }
 
-  // ── Active Live Calls Stream ──────────────────────────────────────────────
   function checkActiveCalls() {
     return fetch("/api/telephony/calls").then(function (r) { return r.json(); }).then(function (data) {
-      var calls = (data.calls || []).filter(function (c) { return c.status === "in_progress" || c.status === "ringing"; });
+      var calls = (data.calls || []).filter(function (c) { return c.status === "in_progress" || c.status === "active" || c.status === "ringing"; });
       var card = $("#activeCallsCard");
       var list = $("#activeCallsList");
       if (calls.length > 0) {
         $("#activeCallsCount").textContent = calls.length;
         card.style.display = "block";
         list.innerHTML = calls.map(function (c) {
-          var dur = Math.max(0, Math.floor(Date.now() / 1000 - (c.started_at || Date.now() / 1000)));
+          var dur = Math.max(0, Math.floor(Date.now() / 1000 - (c.started_at || c.created_at || Date.now() / 1000)));
           return '<div class="active-call-row">' +
             '<div class="vu-bars"><span></span><span></span><span></span></div>' +
             '<span class="num">' + CI.escapeHtml(c.from_number || c.call_id) + '</span>' +
-            '<span class="agent">→ ' + CI.escapeHtml(c.agent_name || "AI Agent") + '</span>' +
+            '<span class="agent">→ ' + CI.escapeHtml(c.metadata && c.metadata.agent_name ? c.metadata.agent_name : (c.agent_name || "AI Agent")) + '</span>' +
             '<span class="pill pos">' + CI.escapeHtml(c.status) + '</span>' +
             '<span class="timer">' + CI.formatDuration(dur) + '</span>' +
-            '<a class="btn ghost" style="padding:4px 9px;font-size:11.5px" href="/softphone.html">Open Softphone</a>' +
+            '<a class="btn ghost sm" href="/softphone.html">Softphone</a>' +
             '</div>';
         }).join("");
       } else {
@@ -637,10 +825,276 @@
   });
   $("#player").addEventListener("ended", function () { $("#btnPlay").textContent = "Play"; });
 
+  // ── SIP Trunks & Phone Numbers ────────────────────────────────────────────
+  function loadTelephony() {
+    loadOwnedNumbers();
+    loadAvailableNumbers();
+    loadTrunksAndRules();
+  }
+
+  function loadOwnedNumbers() {
+    return fetch("/api/telephony/numbers").then(function (r) { return r.json(); }).then(function (data) {
+      var nums = data.numbers || [];
+      $("#ctDids").textContent = nums.length;
+      $("#telStatDids").innerHTML = nums.length + '<span class="delta" style="color:var(--pos)">active DIDs</span>';
+
+      var totalCost = nums.reduce(function (sum, n) { return sum + (n.monthly_cost || 0); }, 0);
+      $("#telStatCost").innerHTML = "$" + totalCost.toFixed(2) + '<span class="delta" style="color:var(--ink-faint)">/month</span>';
+
+      if (!nums.length) {
+        $("#ownedNumbersRows").innerHTML = '<tr><td colspan="8" class="empty">No phone numbers owned yet. Click "Purchase Direct Numbers" to add one!</td></tr>';
+        return;
+      }
+
+      $("#ownedNumbersRows").innerHTML = nums.map(function (n) {
+        var capsHtml = (n.capabilities || ["voice", "sip"]).map(function (c) {
+          return '<span class="cap-chip">' + CI.escapeHtml(c) + "</span>";
+        }).join(" ");
+
+        return '<tr>' +
+          '<td class="mono" style="font-weight:700;color:var(--ink)">' + CI.escapeHtml(n.phone_number) + '</td>' +
+          '<td>' + CI.escapeHtml(n.friendly_name || n.region) + '<br><small style="color:var(--ink-faint)">' + CI.escapeHtml(n.region) + '</small></td>' +
+          '<td>' + capsHtml + '</td>' +
+          '<td class="mono">$' + (n.monthly_cost || 1.50).toFixed(2) + '/mo</td>' +
+          '<td><span class="pill pos">' + CI.escapeHtml(n.assigned_agent || "Intake Agent") + '</span></td>' +
+          '<td><code style="font-size:11px">' + CI.escapeHtml(n.assigned_trunk_id || "trunk-inbound-primary") + '</code></td>' +
+          '<td><span class="pill pos">active</span></td>' +
+          '<td>' +
+            '<button class="btn sm ghost btn-reroute" data-num="' + CI.escapeHtml(n.phone_number) + '" data-agent="' + CI.escapeHtml(n.assigned_agent || "") + '">⚙️ Route</button> ' +
+            '<button class="btn sm ghost btn-release" style="color:var(--neg)" data-num="' + CI.escapeHtml(n.phone_number) + '">Release</button>' +
+          '</td>' +
+          '</tr>';
+      }).join("");
+
+      // Bind re-route and release buttons
+      Array.prototype.forEach.call(document.querySelectorAll(".btn-reroute"), function (b) {
+        b.addEventListener("click", function () { openRouteModal(b.dataset.num, b.dataset.agent); });
+      });
+      Array.prototype.forEach.call(document.querySelectorAll(".btn-release"), function (b) {
+        b.addEventListener("click", function () { releaseNumber(b.dataset.num); });
+      });
+    }).catch(function (e) {
+      $("#ownedNumbersRows").innerHTML = '<tr><td colspan="8" class="empty">Error loading numbers: ' + CI.escapeHtml(e.message) + '</td></tr>';
+    });
+  }
+
+  function loadAvailableNumbers() {
+    var country = $("#marketCountry").value;
+    var search = $("#marketSearch").value.trim();
+    var url = "/api/telephony/numbers/available?country=" + encodeURIComponent(country) + "&search=" + encodeURIComponent(search);
+
+    return fetch(url).then(function (r) { return r.json(); }).then(function (data) {
+      var list = data.available || [];
+      if (!list.length) {
+        $("#marketNumbersList").innerHTML = '<div class="empty">No available numbers matching your search filters.</div>';
+        return;
+      }
+
+      $("#marketNumbersList").innerHTML = list.map(function (n) {
+        var capsHtml = (n.capabilities || ["voice", "sip"]).map(function (c) {
+          return '<span class="cap-chip">' + CI.escapeHtml(c) + "</span>";
+        }).join(" ");
+
+        return '<div class="num-card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center">' +
+            '<span class="ph">' + CI.escapeHtml(n.friendly_name || n.phone_number) + '</span>' +
+            '<span class="pill pos">ready</span>' +
+          '</div>' +
+          '<div class="reg">📍 ' + CI.escapeHtml(n.region) + ' (' + CI.escapeHtml(n.country) + ')</div>' +
+          '<div class="caps">' + capsHtml + '</div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">' +
+            '<span class="price">$' + (n.monthly_cost || 1.50).toFixed(2) + ' <small style="font-size:11px;color:var(--ink-faint)">/ mo</small></span>' +
+            '<button class="btn sm btn-buy-did" data-num="' + CI.escapeHtml(n.phone_number) + '" data-name="' + CI.escapeHtml(n.friendly_name) + '" data-price="' + n.monthly_cost + '">⚡ Buy &amp; Assign</button>' +
+          '</div>' +
+        '</div>';
+      }).join("");
+
+      Array.prototype.forEach.call(document.querySelectorAll(".btn-buy-did"), function (b) {
+        b.addEventListener("click", function () {
+          openPurchaseModal(b.dataset.num, b.dataset.name, b.dataset.price);
+        });
+      });
+    }).catch(function () {});
+  }
+
+  function loadTrunksAndRules() {
+    return fetch("/api/telephony/trunks").then(function (r) { return r.json(); }).then(function (data) {
+      var inTrunks = data.inbound || [];
+      var outTrunks = data.outbound || [];
+      var rules = data.rules || [];
+      cachedTrunks = inTrunks;
+
+      $("#telStatTrunks").innerHTML = (inTrunks.length + outTrunks.length) + '<span class="delta" style="color:var(--pos)">trunks online</span>';
+
+      $("#inboundTrunksList").innerHTML = inTrunks.length ? inTrunks.map(function (t) {
+        return '<div class="agent-card"><div><strong>' + CI.escapeHtml(t.name) + '</strong> <span class="pill pos">connected</span><br>' +
+          '<code style="font-size:11px">id: ' + CI.escapeHtml(t.trunk_id) + ' · ' + (t.numbers ? t.numbers.length : 0) + ' DIDs mapped</code></div></div>';
+      }).join("") : '<div class="empty">No inbound trunks configured.</div>';
+
+      $("#outboundTrunksList").innerHTML = outTrunks.length ? outTrunks.map(function (t) {
+        return '<div class="agent-card"><div><strong>' + CI.escapeHtml(t.name) + '</strong> <span class="pill pos">active</span><br>' +
+          '<code style="font-size:11px">gateway: ' + CI.escapeHtml(t.address) + ' · transport: ' + CI.escapeHtml(t.transport || "udp") + '</code></div></div>';
+      }).join("") : '<div class="empty">No outbound trunks configured.</div>';
+
+      $("#dispatchRulesList").innerHTML = rules.length ? rules.map(function (r) {
+        return '<div class="agent-card"><div><strong>' + CI.escapeHtml(r.name) + '</strong><br>' +
+          '<code style="font-size:11px">Trunk: ' + (r.trunk_ids ? r.trunk_ids.join(", ") : "primary") + ' → Agent: <b style="color:var(--accent)">' + CI.escapeHtml(r.agent_name) + '</b> (prefix: ' + CI.escapeHtml(r.room_prefix) + ')</code></div></div>';
+      }).join("") : '<div class="empty">No dispatch rules defined.</div>';
+    }).catch(function () {});
+  }
+
+  // ── Telephony Sub Navigation ──────────────────────────────────────────────
+  $("#telNav").addEventListener("click", function (event) {
+    var btn = event.target.closest("button[data-tv]");
+    if (!btn) { return; }
+    Array.prototype.forEach.call(document.querySelectorAll("#telNav button"), function (b) {
+      b.setAttribute("aria-pressed", String(b === btn));
+    });
+    var tv = btn.dataset.tv;
+    $("#sub-owned").style.display = tv === "owned" ? "block" : "none";
+    $("#sub-market").style.display = tv === "market" ? "block" : "none";
+    $("#sub-trunks").style.display = tv === "trunks" ? "block" : "none";
+    $("#sub-rules").style.display = tv === "rules" ? "block" : "none";
+
+    if (tv === "market") { loadAvailableNumbers(); }
+  });
+
+  $("#marketCountry").addEventListener("change", loadAvailableNumbers);
+  $("#marketSearch").addEventListener("input", function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(loadAvailableNumbers, 300);
+  });
+
+  $("#btnOpenMarket").addEventListener("click", function () {
+    show("telephony");
+    var mBtn = document.querySelector("#telNav button[data-tv='market']");
+    if (mBtn) { mBtn.click(); }
+  });
+
+  // ── Purchase Modal Logic ──────────────────────────────────────────────────
+  function openPurchaseModal(num, name, price) {
+    $("#modalBuyNumber").value = num;
+    $("#modalBuyFriendly").value = name || num;
+    $("#modalBuyPrice").textContent = "$" + parseFloat(price || 1.50).toFixed(2) + "/mo";
+
+    // Populate agent select
+    var sel = $("#modalBuyAgent");
+    sel.innerHTML = cachedAgents.length ? cachedAgents.map(function (a) {
+      return '<option value="' + CI.escapeHtml(a.name) + '">' + CI.escapeHtml(a.name) + '</option>';
+    }).join("") : '<option value="Intake Agent">Intake Agent</option><option value="Support Agent">Support Agent</option>';
+
+    $("#modalPurchase").classList.add("open");
+  }
+
+  function closePurchaseModal() {
+    $("#modalPurchase").classList.remove("open");
+  }
+
+  $("#btnClosePurchaseModal").addEventListener("click", closePurchaseModal);
+  $("#btnCancelPurchase").addEventListener("click", closePurchaseModal);
+
+  $("#btnConfirmPurchase").addEventListener("click", function () {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = "Provisioning Number…";
+
+    var payload = {
+      phone_number: $("#modalBuyNumber").value,
+      friendly_name: $("#modalBuyFriendly").value.trim(),
+      agent_name: $("#modalBuyAgent").value,
+      trunk_id: $("#modalBuyTrunk").value
+    };
+
+    fetch("/api/telephony/numbers/purchase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      btn.disabled = false;
+      btn.textContent = "⚡ Confirm & Purchase Number";
+      closePurchaseModal();
+      showToast("🎉 Number " + payload.phone_number + " activated & assigned to " + payload.agent_name + "!");
+      loadTelephony();
+      document.querySelector("#telNav button[data-tv='owned']").click();
+    }).catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = "⚡ Confirm & Purchase Number";
+      showToast("❌ Provisioning error: " + e.message);
+    });
+  });
+
+  // ── Re-Route Modal Logic ──────────────────────────────────────────────────
+  function openRouteModal(num, currentAgent) {
+    $("#modalRouteNumber").value = num;
+    var sel = $("#modalRouteAgent");
+    sel.innerHTML = cachedAgents.length ? cachedAgents.map(function (a) {
+      return '<option value="' + CI.escapeHtml(a.name) + '" ' + (a.name === currentAgent ? 'selected' : '') + '>' + CI.escapeHtml(a.name) + '</option>';
+    }).join("") : '<option value="Intake Agent">Intake Agent</option><option value="Support Agent">Support Agent</option>';
+
+    var trunkSel = $("#modalRouteTrunk");
+    trunkSel.innerHTML = cachedTrunks.length ? cachedTrunks.map(function (t) {
+      return '<option value="' + CI.escapeHtml(t.trunk_id) + '">' + CI.escapeHtml(t.name) + '</option>';
+    }).join("") : '<option value="trunk-inbound-primary">Primary Inbound Trunk</option>';
+
+    $("#modalRoute").classList.add("open");
+  }
+
+  function closeRouteModal() {
+    $("#modalRoute").classList.remove("open");
+  }
+
+  $("#btnCloseRouteModal").addEventListener("click", closeRouteModal);
+  $("#btnCancelRoute").addEventListener("click", closeRouteModal);
+
+  $("#btnConfirmRoute").addEventListener("click", function () {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = "Saving Routing…";
+
+    var payload = {
+      phone_number: $("#modalRouteNumber").value,
+      agent_name: $("#modalRouteAgent").value,
+      trunk_id: $("#modalRouteTrunk").value
+    };
+
+    fetch("/api/telephony/numbers/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      btn.disabled = false;
+      btn.textContent = "Save Routing";
+      closeRouteModal();
+      showToast("✅ Inbound calls on " + payload.phone_number + " now route to " + payload.agent_name);
+      loadOwnedNumbers();
+    }).catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = "Save Routing";
+      showToast("❌ Routing error: " + e.message);
+    });
+  });
+
+  function releaseNumber(num) {
+    if (!confirm("Are you sure you want to release phone number " + num + "? Incoming calls to this DID will stop.")) {
+      return;
+    }
+    fetch("/api/telephony/numbers/release", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone_number: num })
+    }).then(function (r) { return r.json(); }).then(function () {
+      showToast("🗑 Number " + num + " released successfully");
+      loadTelephony();
+    }).catch(function (e) {
+      showToast("❌ Release failed: " + e.message);
+    });
+  }
+
   // ── Agents ────────────────────────────────────────────────────────────────
   function loadAgents() {
     return fetch("/api/agents").then(function (r) { return r.json(); }).then(function (data) {
       var agents = data.agents || [];
+      cachedAgents = agents;
       $("#ctAgents").textContent = agents.length;
       $("#agentList").innerHTML = agents.length ? agents.map(function (a) {
         return '<div class="agent-card"><span><strong>' + CI.escapeHtml(a.name) + "</strong>" +
@@ -657,47 +1111,36 @@
   // ── Dynamic Call Simulation Generator ─────────────────────────────────────
   var SCENARIOS = [
     {
-      agent: "Apex Support Desk",
+      agent: "Intake Agent",
       caller: "+1 (555) 234-8901",
       turns: [
-        { speaker: "agent", text: "Thank you for calling Apex Support! How may I assist you today?" },
-        { speaker: "caller", text: "Hello, I need to check the delivery status of order number 88421." },
-        { speaker: "agent", text: "Looking that up now. Order 88421 is on the delivery truck and scheduled to arrive by 4 PM today." },
-        { speaker: "caller", text: "That is wonderful news, thank you so much for the quick help!" },
+        { speaker: "agent", text: "Thank you for calling Northgate Legal! How may I assist you today?" },
+        { speaker: "caller", text: "Hello, I need to check the status of my contract review file." },
+        { speaker: "agent", text: "Looking that up now. Your contract has been approved by our partner and sent to your email." },
+        { speaker: "caller", text: "That is wonderful news, thank you so much for the quick turnaround!" },
         { speaker: "agent", text: "You are very welcome! Have a great day!" }
       ]
     },
     {
-      agent: "Apex Legal Assistant",
+      agent: "Support Agent",
       caller: "+1 (555) 781-4420",
       turns: [
-        { speaker: "agent", text: "Hello, Apex Legal Partners. Are you calling for a new consultation?" },
-        { speaker: "caller", text: "Yes, I was involved in an auto collision last Tuesday and need attorney representation." },
-        { speaker: "agent", text: "I am sorry to hear that. Let me connect you with our senior personal injury intake attorney." },
-        { speaker: "caller", text: "Thank you, my email is david.miller@example.com and phone is 555-781-4420." },
-        { speaker: "agent", text: "I have recorded your case details. An intake specialist is reviewing your file now." }
+        { speaker: "agent", text: "Apex Support Desk. How can I help resolve your issue today?" },
+        { speaker: "caller", text: "Hi, our VoIP SIP gateway registration keeps showing timeout on port 5060." },
+        { speaker: "agent", text: "Let's check your carrier firewall rules and whitelist the primary SIP proxy IP 192.0.2.1." },
+        { speaker: "caller", text: "Updating the firewall rule now... perfect, the trunk just registered as active!" },
+        { speaker: "agent", text: "Glad to hear it! All inbound and outbound routes are now operational." }
       ]
     },
     {
       agent: "Apex Medical Booking",
       caller: "+1 (555) 902-3311",
       turns: [
-        { speaker: "agent", text: "Good afternoon, Dr. Chen\'s office. How can I assist you with scheduling?" },
+        { speaker: "agent", text: "Good afternoon, Dr. Chen's office. How can I assist you with scheduling?" },
         { speaker: "caller", text: "Hi, I need to reschedule my dental cleaning from Wednesday to Friday morning." },
         { speaker: "agent", text: "I have a 9:30 AM slot on Friday open. Would you like me to book that for you?" },
         { speaker: "caller", text: "Yes please, 9:30 AM on Friday works perfectly." },
         { speaker: "agent", text: "Your appointment is confirmed for Friday at 9:30 AM. An SMS confirmation has been sent." }
-      ]
-    },
-    {
-      agent: "Apex Billing Support",
-      caller: "+1 (555) 433-2198",
-      turns: [
-        { speaker: "agent", text: "Billing department, how can I assist with your account today?" },
-        { speaker: "caller", text: "I was billed twice for last month\'s subscription and I\'m very frustrated!" },
-        { speaker: "agent", text: "I completely understand your frustration. I am issuing an immediate refund for the duplicate $49 charge." },
-        { speaker: "caller", text: "Okay, I appreciate you resolving it promptly without putting me on hold." },
-        { speaker: "agent", text: "The refund receipt has been emailed. Is there anything else I can do for you?" }
       ]
     }
   ];
@@ -723,7 +1166,7 @@
       metadata: {
         agent_name: scenario.agent,
         from_number: scenario.caller,
-        inbound_trunk: "trunk-main"
+        inbound_trunk: "trunk-inbound-primary"
       },
       execute_now: true
     };
@@ -732,7 +1175,7 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
-    }).then(function (r) { return r.json(); }).then(function (res) {
+    }).then(function (r) { return r.json(); }).then(function () {
       btn.disabled = false;
       btn.textContent = "⚡ Simulate Inbound Call";
       showToast("✅ Live Call Processed: " + callId + " (" + scenario.agent + ")");
@@ -791,6 +1234,7 @@
   $("#btnSyncToggle").addEventListener("click", toggleAutoSync);
   $("#btnRefresh").addEventListener("click", function () {
     refreshAll();
+    loadTelephony();
     showToast("Dashboard data refreshed.");
   });
 
@@ -798,6 +1242,7 @@
   refreshAll();
   loadCalls();
   loadAgents();
+  loadTelephony();
   startPolling();
 })();
 </script>

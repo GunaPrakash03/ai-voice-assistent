@@ -1,0 +1,59 @@
+{
+  "numbers": [
+    {
+      "phone_number": "+18005550199",
+      "friendly_name": "+1 (800) 555-0199 (Toll-Free)",
+      "country": "US",
+      "region": "Toll-Free North America",
+      "capabilities": [
+        "voice",
+        "sip",
+        "sms",
+        "toll_free"
+      ],
+      "monthly_cost": 2.0,
+      "status": "active",
+      "assigned_trunk_id": "trunk-inbound-primary",
+      "assigned_agent": "Intake Agent",
+      "purchased_at": 1788951734.4027433,
+      "metadata": {}
+    },
+    {
+      "phone_number": "+18885550142",
+      "friendly_name": "+1 (888) 555-0142 (Toll-Free)",
+      "country": "US",
+      "region": "Toll-Free North America",
+      "capabilities": [
+        "voice",
+        "sip",
+        "sms",
+        "toll_free"
+      ],
+      "monthly_cost": 2.0,
+      "status": "active",
+      "assigned_trunk_id": "trunk-inbound-primary",
+      "assigned_agent": "Support Agent",
+      "purchased_at": 1788951734.4027483,
+      "metadata": {}
+    },
+    {
+      "phone_number": "+14158000129",
+      "friendly_name": "+1 (415) 800-0129",
+      "country": "US",
+      "region": "San Francisco, CA",
+      "capabilities": [
+        "voice",
+        "sip",
+        "sms",
+        "dual_channel"
+      ],
+      "monthly_cost": 1.5,
+      "status": "active",
+      "assigned_trunk_id": "trunk-inbound-primary",
+      "assigned_agent": "Apex Legal Assistant",
+      "purchased_at": 1788951742.9044557,
+      "metadata": {}
+    }
+  ],
+  "updated_at": 1788951742.9054506
+}
