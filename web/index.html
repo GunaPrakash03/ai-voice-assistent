@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Call Desk</title>
+<title>Call Desk — Real-Time Voice Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
@@ -81,14 +81,28 @@
     padding:5px 12px;font-family:var(--f-mono);font-size:11.5px;font-weight:500}
   .pulse{width:7px;height:7px;border-radius:50%;background:var(--live);animation:p 1.6s ease-in-out infinite}
   @keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
+  @keyframes highlight{0%{background:var(--accent-soft)}100%{background:transparent}}
+  @keyframes vupulse{0%,100%{height:4px}50%{height:14px}}
   @media (prefers-reduced-motion:reduce){.pulse{animation:none}}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:7px 14px;border-radius:6px;font-size:13px;font-weight:600;
+    cursor:pointer;border:1px solid transparent;background:var(--accent);color:#fff;
+    transition:all .15s ease}
+  .btn:hover{opacity:.9}
+  .btn:active{transform:scale(.98)}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-soft)}
+  .btn.ghost:hover{background:var(--sunk);color:var(--ink);border-color:var(--ink-faint)}
+  .btn.pos{background:var(--pos);color:#fff}
 
   main{padding:22px 26px 60px}
   .view{display:none}.view.on{display:block}
 
   /* Stats */
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;margin-bottom:22px}
-  .stat{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:14px 16px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:14px 16px;
+    transition:transform .2s ease, border-color .2s ease}
+  .stat.flash{border-color:var(--accent);transform:translateY(-2px)}
   .stat dt{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
     color:var(--ink-faint);margin:0 0 5px}
   .stat dd{margin:0;font-size:25px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
@@ -105,18 +119,31 @@
   .card-h .meta{font-family:var(--f-mono);font-size:11px;color:var(--ink-faint)}
   .card-b{padding:14px 16px}
 
+  /* Active live call banner */
+  .active-call-row{display:flex;align-items:center;gap:12px;padding:9px 12px;
+    background:var(--pos-soft);border-radius:6px;margin-bottom:8px;border:1px solid var(--pos)}
+  .active-call-row:last-child{margin-bottom:0}
+  .active-call-row .num{font-family:var(--f-mono);font-size:13px;font-weight:600;color:var(--pos)}
+  .active-call-row .agent{font-size:12.5px;color:var(--ink)}
+  .active-call-row .timer{font-family:var(--f-mono);font-size:13px;font-weight:700;color:var(--pos);margin-left:auto}
+  .vu-bars{display:flex;align-items:center;gap:2px;height:14px}
+  .vu-bars span{width:3px;background:var(--pos);border-radius:1px;animation:vupulse .8s ease-in-out infinite}
+  .vu-bars span:nth-child(2){animation-delay:.2s}
+  .vu-bars span:nth-child(3){animation-delay:.4s}
+
   /* Recent calls */
   .live-row{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line-soft);
-    cursor:pointer}
+    cursor:pointer;transition:background .15s ease}
   .live-row:last-child{border-bottom:none}
   .live-row:hover{background:var(--sunk)}
+  .live-row.new-call{animation:highlight 2s ease}
   .live-row .num{font-family:var(--f-mono);font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .live-row .ag{font-size:12.5px;color:var(--ink-soft)}
   .live-row .el{font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--accent);font-weight:500}
 
   /* Sentiment */
   .sbar{display:flex;height:9px;border-radius:5px;overflow:hidden;margin:4px 0 12px}
-  .sbar i{display:block}
+  .sbar i{display:block;transition:width .4s ease}
   .slegend{display:flex;flex-direction:column;gap:8px}
   .slegend div{display:flex;justify-content:space-between;align-items:center;font-size:13px}
   .slegend .k{display:flex;align-items:center;gap:8px}
@@ -130,7 +157,7 @@
     text-transform:uppercase;color:var(--ink-soft);font-weight:500;text-align:left;
     padding:9px 14px;white-space:nowrap;border-bottom:1px solid var(--line)}
   td{padding:10px 14px;border-bottom:1px solid var(--line-soft);white-space:nowrap}
-  tbody tr{cursor:pointer}
+  tbody tr{cursor:pointer;transition:background .15s ease}
   tbody tr:hover{background:var(--sunk)}
   tbody tr:last-child td{border-bottom:none}
   td.empty{color:var(--ink-faint);padding:22px 14px;cursor:default}
@@ -158,34 +185,30 @@
   .pager .pg[disabled]{opacity:.4;cursor:not-allowed}
   .pager .pg-info{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-faint)}
 
-  /* Transcript */
-  .turn{display:grid;grid-template-columns:52px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--line-soft);
-    cursor:pointer;border-left:2px solid transparent;padding-left:8px}
-  .turn:last-child{border-bottom:none}
-  .turn:hover{background:var(--sunk)}
-  .turn.active{border-left-color:var(--accent);background:var(--accent-soft)}
-  .turn .t{font-family:var(--f-mono);font-size:11px;color:var(--ink-faint);padding-top:2px}
-  .turn .who{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
-    margin-bottom:2px}
-  .turn.agent .who{color:var(--accent)}
-  .turn.caller .who{color:var(--ink-faint)}
-  .turn p{margin:0;font-size:13.5px;white-space:normal}
+  /* Inspector detail */
+  .turn{padding:10px 14px;border-left:3px solid transparent;margin-bottom:8px;
+    border-radius:0 6px 6px 0;background:var(--sunk);cursor:pointer}
+  .turn.caller{border-left-color:var(--neu)}
+  .turn.agent{border-left-color:var(--accent)}
+  .turn .turn-head{display:flex;justify-content:space-between;margin-bottom:4px;
+    font-family:var(--f-mono);font-size:11px;color:var(--ink-faint)}
+  .turn .turn-text{font-size:13.5px}
+  .turn.active{background:var(--accent-soft);border-left-color:var(--accent)}
 
-  .kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:13px}
+  .kv{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:13px}
   .kv:last-child{border-bottom:none}
-  .kv .k{color:var(--ink-faint)}
-  .kv .v{font-weight:500;text-align:right;word-break:break-word}
+  .kv .k{color:var(--ink-soft);font-family:var(--f-mono);font-size:12px}
+  .kv .v{font-weight:500;text-align:right}
 
-  .btn{all:unset;cursor:pointer;background:var(--accent);color:#fff;font-weight:600;font-size:13px;
-    padding:9px 18px;border-radius:5px;text-align:center}
-  .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
-  .btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-  .empty{color:var(--ink-faint);font-size:12.5px;padding:14px 0}
-  #wave{cursor:pointer}
-  .agent-card{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 0;
-    border-bottom:1px solid var(--line-soft)}
-  .agent-card:last-child{border-bottom:none}
-  .agent-card code{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-faint)}
+  .agent-card{padding:12px 14px;background:var(--sunk);border-radius:6px;margin-bottom:8px;
+    display:flex;justify-content:space-between;align-items:center}
+  .agent-card:last-child{margin-bottom:0}
+
+  /* Toast Notification */
+  #toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:var(--ground);
+    padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);
+    display:none;z-index:999;align-items:center;gap:10px;animation:p .3s ease}
+  #toast.show{display:flex}
 </style>
 </head>
 <body>
@@ -194,10 +217,10 @@
   <nav class="rail">
     <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
     <div class="nav" role="tablist">
-      <button role="tab" aria-selected="true" data-v="overview">Overview<span class="ct" id="ctOverview"></span></button>
-      <button role="tab" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls"></span></button>
+      <button role="tab" aria-selected="true" data-v="overview">Overview<span class="ct" id="ctOverview">…</span></button>
+      <button role="tab" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls">…</span></button>
       <button role="tab" aria-selected="false" data-v="detail">Call detail</button>
-      <button role="tab" aria-selected="false" data-v="agents">Agents<span class="ct" id="ctAgents"></span></button>
+      <button role="tab" aria-selected="false" data-v="agents">Agents<span class="ct" id="ctAgents">…</span></button>
     </div>
     <div class="rail-foot">
       <div>WORKSPACE</div>
@@ -213,23 +236,51 @@
         <div class="crumb" id="crumb">Overview</div>
         <h1 id="title">Call history</h1>
       </div>
-      <span class="livechip"><span class="pulse"></span><span id="livect">loading…</span></span>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button id="btnSimulate" class="btn" title="Generate and process a real dynamic call through the live AI pipeline">
+          ⚡ Simulate Inbound Call
+        </button>
+        <button id="btnSyncToggle" class="btn ghost" title="Toggle real-time auto-refresh polling">
+          ● Live Sync: ON (3s)
+        </button>
+        <button id="btnRefresh" class="btn ghost" style="padding:7px 10px" title="Refresh all data immediately">
+          ↻
+        </button>
+        <span class="livechip"><span class="pulse"></span><span id="livect">loading…</span></span>
+      </div>
     </header>
 
     <main>
 
       <!-- OVERVIEW -->
       <section class="view on" id="v-overview">
+        <!-- Live Active Calls Stream Banner -->
+        <div id="activeCallsCard" class="card" style="margin-bottom:18px;border-left:4px solid var(--pos);display:none">
+          <div class="card-h" style="background:var(--pos-soft)">
+            <h2 style="color:var(--pos);display:flex;align-items:center;gap:8px">
+              <span class="pulse" style="background:var(--pos)"></span> Live Active Inbound Calls (<span id="activeCallsCount">0</span>)
+            </h2>
+            <span class="meta" style="color:var(--pos);font-weight:600">SIP / WebRTC In-Progress</span>
+          </div>
+          <div class="card-b" id="activeCallsList" style="padding:10px 16px"></div>
+        </div>
+
         <dl class="stats" id="statCards"></dl>
 
         <div class="grid2">
           <div class="card">
-            <div class="card-h"><h2>Recent calls</h2><span class="meta">newest first</span></div>
+            <div class="card-h">
+              <h2>Recent calls</h2>
+              <span class="meta">live stream · newest first</span>
+            </div>
             <div id="recent"><div class="empty" style="padding:14px 16px">Loading…</div></div>
           </div>
 
           <div class="card">
-            <div class="card-h"><h2>Caller sentiment</h2><span class="meta" id="sentimentMeta">all calls</span></div>
+            <div class="card-h">
+              <h2>Caller sentiment</h2>
+              <span class="meta" id="sentimentMeta">all dynamic calls</span>
+            </div>
             <div class="card-b">
               <div class="sbar" id="sentimentBar"></div>
               <div class="slegend" id="sentimentLegend"></div>
@@ -238,7 +289,10 @@
         </div>
 
         <div class="card" style="margin-top:16px">
-          <div class="card-h"><h2>Call volume</h2><span class="meta">by hour, from call records</span></div>
+          <div class="card-h">
+            <h2>Call volume</h2>
+            <span class="meta" id="volumeMeta">by hour, from dynamic call records</span>
+          </div>
           <div class="card-b"><svg id="volume" viewBox="0 0 720 130" width="100%" height="130" role="img"
             aria-label="Call volume by hour"></svg></div>
         </div>
@@ -323,6 +377,8 @@
   </div>
 </div>
 
+<div id="toast"></div>
+
 <script src="/inspector.js"></script>
 <script>
 (function () {
@@ -344,6 +400,18 @@
     audio: $("#player"), waveform: $("#wave"), transcript: $("#transcript"), clock: $("#clock")
   });
 
+  var autoSync = true;
+  var syncInterval = null;
+  var lastCallCount = 0;
+
+  // ── Toast notifications ───────────────────────────────────────────────────
+  function showToast(msg) {
+    var toast = $("#toast");
+    toast.textContent = msg;
+    toast.classList.add("show");
+    setTimeout(function () { toast.classList.remove("show"); }, 3500);
+  }
+
   // ── Navigation ────────────────────────────────────────────────────────────
   function show(view) {
     Array.prototype.forEach.call(document.querySelectorAll(".nav button"), function (b) {
@@ -360,23 +428,31 @@
     b.addEventListener("click", function () { show(b.dataset.v); });
   });
 
-  // ── Overview ──────────────────────────────────────────────────────────────
+  // ── Overview Dynamic Rendering ────────────────────────────────────────────
   function renderStats(stats) {
+    if (!stats) { return; }
+    var countChanged = lastCallCount > 0 && stats.calls !== lastCallCount;
+    lastCallCount = stats.calls;
+
     $("#ctOverview").textContent = stats.calls + " calls";
-    $("#livect").textContent = stats.calls + " calls in history";
-    $("#statCards").innerHTML =
-      card("Calls recorded", stats.calls, stats.with_audio + " with audio") +
+    $("#livect").textContent = stats.calls + " calls recorded · Live";
+
+    var cardsHtml =
+      card("Calls recorded", stats.calls, stats.with_audio + " with audio", countChanged) +
       card("Avg duration", CI.formatDuration(stats.avg_duration_seconds), stats.total_turns + " turns total") +
       card("Resolved", Math.round(stats.resolution_rate * 100) + "%", (stats.outcomes.resolved || 0) + " calls") +
       card("Frustration flags", stats.frustrated_calls, stats.transferred_calls + " escalated");
 
-    var total = Object.keys(stats.sentiment).reduce(function (n, k) { return n + stats.sentiment[k]; }, 0) || 1;
+    $("#statCards").innerHTML = cardsHtml;
+
+    var total = Object.keys(stats.sentiment || {}).reduce(function (n, k) { return n + stats.sentiment[k]; }, 0) || 1;
     var order = ["positive", "neutral", "negative", "unknown"];
     $("#sentimentBar").innerHTML = order.filter(function (k) { return stats.sentiment[k]; })
       .map(function (k) {
         return '<i style="width:' + (stats.sentiment[k] / total * 100).toFixed(1) +
           '%;background:var(--' + (k === "positive" ? "pos" : k === "negative" ? "neg" : "neu") + ')"></i>';
       }).join("");
+
     $("#sentimentLegend").innerHTML = order.filter(function (k) { return stats.sentiment[k]; })
       .map(function (k) {
         var colour = k === "positive" ? "pos" : k === "negative" ? "neg" : "neu";
@@ -387,8 +463,8 @@
     $("#sentimentMeta").textContent = total + " calls";
   }
 
-  function card(label, value, sub) {
-    return '<div class="stat"><dt>' + label + "</dt><dd>" + value +
+  function card(label, value, sub, flash) {
+    return '<div class="stat' + (flash ? ' flash' : '') + '"><dt>' + label + "</dt><dd>" + value +
       '<span class="delta" style="color:var(--ink-faint)">' + (sub || "") + "</span></dd></div>";
   }
 
@@ -412,12 +488,12 @@
   }
 
   function renderRecent(items) {
-    if (!items.length) {
+    if (!items || !items.length) {
       $("#recent").innerHTML = '<div class="empty" style="padding:14px 16px">No calls recorded yet.</div>';
       return;
     }
-    $("#recent").innerHTML = items.slice(0, 6).map(function (call) {
-      return '<div class="live-row" data-call="' + CI.escapeHtml(call.call_id) + '">' +
+    $("#recent").innerHTML = items.slice(0, 6).map(function (call, idx) {
+      return '<div class="live-row' + (idx === 0 ? ' new-call' : '') + '" data-call="' + CI.escapeHtml(call.call_id) + '">' +
         '<span class="num">' + CI.escapeHtml(call.from_number || call.call_id) + "</span>" +
         '<span class="ag">' + CI.escapeHtml(call.agent_name) + "</span>" +
         '<span class="pill ' + CI.sentimentClass(call.sentiment) + '">' + CI.escapeHtml(call.sentiment) + "</span>" +
@@ -428,7 +504,33 @@
     });
   }
 
-  // ── Call log ──────────────────────────────────────────────────────────────
+  // ── Active Live Calls Stream ──────────────────────────────────────────────
+  function checkActiveCalls() {
+    return fetch("/api/telephony/calls").then(function (r) { return r.json(); }).then(function (data) {
+      var calls = (data.calls || []).filter(function (c) { return c.status === "in_progress" || c.status === "ringing"; });
+      var card = $("#activeCallsCard");
+      var list = $("#activeCallsList");
+      if (calls.length > 0) {
+        $("#activeCallsCount").textContent = calls.length;
+        card.style.display = "block";
+        list.innerHTML = calls.map(function (c) {
+          var dur = Math.max(0, Math.floor(Date.now() / 1000 - (c.started_at || Date.now() / 1000)));
+          return '<div class="active-call-row">' +
+            '<div class="vu-bars"><span></span><span></span><span></span></div>' +
+            '<span class="num">' + CI.escapeHtml(c.from_number || c.call_id) + '</span>' +
+            '<span class="agent">→ ' + CI.escapeHtml(c.agent_name || "AI Agent") + '</span>' +
+            '<span class="pill pos">' + CI.escapeHtml(c.status) + '</span>' +
+            '<span class="timer">' + CI.formatDuration(dur) + '</span>' +
+            '<a class="btn ghost" style="padding:4px 9px;font-size:11.5px" href="/softphone.html">Open Softphone</a>' +
+            '</div>';
+        }).join("");
+      } else {
+        card.style.display = "none";
+      }
+    }).catch(function () {});
+  }
+
+  // ── Call Log Table ────────────────────────────────────────────────────────
   function loadCalls() {
     return CI.fetchCalls(query).then(function (page) {
       CI.renderTable($("#rows"), page, { onSelect: openCall });
@@ -437,7 +539,7 @@
       $("#exportLink").href = CI.exportUrl({
         sentiment: query.sentiment, agent: query.agent, q: query.q
       });
-      if ($("#agentFilter").options.length === 1) {
+      if ($("#agentFilter").options.length === 1 && page.filters && page.filters.agents) {
         page.filters.agents.forEach(function (name) {
           var opt = document.createElement("option");
           opt.value = name; opt.textContent = name;
@@ -485,13 +587,13 @@
     }, 300);
   });
 
-  // ── Detail ────────────────────────────────────────────────────────────────
+  // ── Detail View ───────────────────────────────────────────────────────────
   function openCall(callId) {
     show("detail");
     $("#recMeta").textContent = callId;
     CI.fetchDetail(callId).then(function (detail) {
       renderAnalysis(detail);
-      $("#audioNote").textContent = detail.audio.available
+      $("#audioNote").textContent = (detail.audio && detail.audio.available)
         ? Math.round(detail.audio.bytes / 1024) + " KB · range-streamed"
         : "no recording stored";
       return player.load(callId, detail);
@@ -544,7 +646,7 @@
         return '<div class="agent-card"><span><strong>' + CI.escapeHtml(a.name) + "</strong>" +
           (a.active ? ' <span class="pill pos">live</span>' : "") + "<br>" +
           "<code>rev " + a.revision + " · " + CI.escapeHtml(a.llm_model) + " · " +
-          a.tools.length + " tools</code></span>" +
+          (a.tools ? a.tools.length : 0) + " tools</code></span>" +
           '<a class="btn ghost" style="padding:6px 12px" href="/agent-builder.html">Edit</a></div>';
       }).join("") : '<div class="empty">No agents configured.</div>';
     }).catch(function () {
@@ -552,17 +654,151 @@
     });
   }
 
+  // ── Dynamic Call Simulation Generator ─────────────────────────────────────
+  var SCENARIOS = [
+    {
+      agent: "Apex Support Desk",
+      caller: "+1 (555) 234-8901",
+      turns: [
+        { speaker: "agent", text: "Thank you for calling Apex Support! How may I assist you today?" },
+        { speaker: "caller", text: "Hello, I need to check the delivery status of order number 88421." },
+        { speaker: "agent", text: "Looking that up now. Order 88421 is on the delivery truck and scheduled to arrive by 4 PM today." },
+        { speaker: "caller", text: "That is wonderful news, thank you so much for the quick help!" },
+        { speaker: "agent", text: "You are very welcome! Have a great day!" }
+      ]
+    },
+    {
+      agent: "Apex Legal Assistant",
+      caller: "+1 (555) 781-4420",
+      turns: [
+        { speaker: "agent", text: "Hello, Apex Legal Partners. Are you calling for a new consultation?" },
+        { speaker: "caller", text: "Yes, I was involved in an auto collision last Tuesday and need attorney representation." },
+        { speaker: "agent", text: "I am sorry to hear that. Let me connect you with our senior personal injury intake attorney." },
+        { speaker: "caller", text: "Thank you, my email is david.miller@example.com and phone is 555-781-4420." },
+        { speaker: "agent", text: "I have recorded your case details. An intake specialist is reviewing your file now." }
+      ]
+    },
+    {
+      agent: "Apex Medical Booking",
+      caller: "+1 (555) 902-3311",
+      turns: [
+        { speaker: "agent", text: "Good afternoon, Dr. Chen\'s office. How can I assist you with scheduling?" },
+        { speaker: "caller", text: "Hi, I need to reschedule my dental cleaning from Wednesday to Friday morning." },
+        { speaker: "agent", text: "I have a 9:30 AM slot on Friday open. Would you like me to book that for you?" },
+        { speaker: "caller", text: "Yes please, 9:30 AM on Friday works perfectly." },
+        { speaker: "agent", text: "Your appointment is confirmed for Friday at 9:30 AM. An SMS confirmation has been sent." }
+      ]
+    },
+    {
+      agent: "Apex Billing Support",
+      caller: "+1 (555) 433-2198",
+      turns: [
+        { speaker: "agent", text: "Billing department, how can I assist with your account today?" },
+        { speaker: "caller", text: "I was billed twice for last month\'s subscription and I\'m very frustrated!" },
+        { speaker: "agent", text: "I completely understand your frustration. I am issuing an immediate refund for the duplicate $49 charge." },
+        { speaker: "caller", text: "Okay, I appreciate you resolving it promptly without putting me on hold." },
+        { speaker: "agent", text: "The refund receipt has been emailed. Is there anything else I can do for you?" }
+      ]
+    }
+  ];
+
+  function simulateCall() {
+    var btn = $("#btnSimulate");
+    btn.disabled = true;
+    btn.textContent = "Processing Call…";
+
+    var scenario = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
+    var callId = "live-call-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 900 + 100);
+
+    var payload = {
+      call_id: callId,
+      transcript_turns: scenario.turns.map(function (t, i) {
+        return {
+          speaker: t.speaker,
+          text: t.text,
+          start_time: i * 3.5,
+          end_time: i * 3.5 + 3.0
+        };
+      }),
+      metadata: {
+        agent_name: scenario.agent,
+        from_number: scenario.caller,
+        inbound_trunk: "trunk-main"
+      },
+      execute_now: true
+    };
+
+    fetch("/api/pipeline/enqueue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      btn.disabled = false;
+      btn.textContent = "⚡ Simulate Inbound Call";
+      showToast("✅ Live Call Processed: " + callId + " (" + scenario.agent + ")");
+      refreshAll();
+    }).catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = "⚡ Simulate Inbound Call";
+      showToast("❌ Simulation failed: " + err.message);
+    });
+  }
+
+  $("#btnSimulate").addEventListener("click", simulateCall);
+
+  // ── Master Live Refresh Loop ──────────────────────────────────────────────
+  function refreshAll() {
+    CI.fetchStats().then(function (data) { renderStats(data.stats); })
+      .catch(function (e) { $("#livect").textContent = "API error: " + e.message; });
+
+    CI.fetchCalls({ page_size: 200 }).then(function (page) {
+      renderRecent(page.items);
+      renderVolume(page.items);
+    }).catch(function () {});
+
+    checkActiveCalls();
+
+    if ($("#v-calls").classList.contains("on") && query.page === 1 && !query.q) {
+      loadCalls();
+    }
+  }
+
+  function toggleAutoSync() {
+    autoSync = !autoSync;
+    var btn = $("#btnSyncToggle");
+    if (autoSync) {
+      btn.textContent = "● Live Sync: ON (3s)";
+      btn.style.color = "var(--pos)";
+      startPolling();
+      showToast("Live Sync Enabled (polling every 3s)");
+    } else {
+      btn.textContent = "⏸ Live Sync: PAUSED";
+      btn.style.color = "var(--neg)";
+      stopPolling();
+      showToast("Live Sync Paused");
+    }
+  }
+
+  function startPolling() {
+    if (syncInterval) { clearInterval(syncInterval); }
+    syncInterval = setInterval(refreshAll, 3000);
+  }
+
+  function stopPolling() {
+    if (syncInterval) { clearInterval(syncInterval); syncInterval = null; }
+  }
+
+  $("#btnSyncToggle").addEventListener("click", toggleAutoSync);
+  $("#btnRefresh").addEventListener("click", function () {
+    refreshAll();
+    showToast("Dashboard data refreshed.");
+  });
+
   // ── Boot ──────────────────────────────────────────────────────────────────
-  CI.fetchStats().then(function (data) { renderStats(data.stats); })
-    .catch(function (e) { $("#livect").textContent = "API unreachable: " + e.message; });
-
-  CI.fetchCalls({ page_size: 200 }).then(function (page) {
-    renderRecent(page.items);
-    renderVolume(page.items);
-  }).catch(function () { /* the stats call already surfaced the error */ });
-
+  refreshAll();
   loadCalls();
   loadAgents();
+  startPolling();
 })();
 </script>
 
