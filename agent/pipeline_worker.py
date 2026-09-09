@@ -22,6 +22,8 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from agent.sentiment_analyzer import sentiment_analyzer
+
 log = logging.getLogger("voice-agent.pipeline")
 if not log.handlers:
     logging.basicConfig(level=logging.INFO)
@@ -43,6 +45,7 @@ class PipelineStage(str, Enum):
     AUDIO_MIXDOWN = "audio_mixdown"
     TRANSCRIPT_NORMALIZATION = "transcript_normalization"
     METRICS_CALCULATION = "metrics_calculation"
+    SENTIMENT_ANALYSIS = "sentiment_analysis"
     STORAGE_ARCHIVE = "storage_archive"
 
 
@@ -414,11 +417,41 @@ class PostCallPipelineWorker:
             self._emit_event("stage_completed", job, {"stage": PipelineStage.METRICS_CALCULATION.value})
 
             # -------------------------------------------------------------
-            # Stage 4: Storage Archive Verification & Metadata Manifest
+            # Stage 4: Sentiment Analysis & Executive Summary
             # -------------------------------------------------------------
             s4_start = time.time()
+            job.stages[PipelineStage.SENTIMENT_ANALYSIS.value]["status"] = StageStatus.RUNNING.value
+            job.stages[PipelineStage.SENTIMENT_ANALYSIS.value]["started_at"] = s4_start
+
+            analytics_result = sentiment_analyzer.analyze_and_summarize(
+                call_id=job.call_id,
+                transcript_turns=job.transcript_turns,
+                metadata=job.metadata,
+            )
+            job.metadata["sentiment"] = analytics_result["sentiment"]
+            job.metadata["summary"] = analytics_result["summary"]
+
+            job.stages[PipelineStage.SENTIMENT_ANALYSIS.value].update({
+                "status": StageStatus.COMPLETED.value,
+                "completed_at": time.time(),
+                "duration_ms": round((time.time() - s4_start) * 1000, 2),
+                "output": {
+                    "overall_polarity": analytics_result["sentiment"]["overall_polarity"],
+                    "overall_score": analytics_result["sentiment"]["overall_score"],
+                    "frustration_detected": analytics_result["sentiment"]["frustration_detected"],
+                    "trajectory_trend": analytics_result["sentiment"]["trajectory_trend"],
+                    "resolution_status": analytics_result["summary"]["resolution_status"],
+                    "topics": analytics_result["summary"]["topics"],
+                },
+            })
+            self._emit_event("stage_completed", job, {"stage": PipelineStage.SENTIMENT_ANALYSIS.value})
+
+            # -------------------------------------------------------------
+            # Stage 5: Storage Archive Verification & Metadata Manifest
+            # -------------------------------------------------------------
+            s5_start = time.time()
             job.stages[PipelineStage.STORAGE_ARCHIVE.value]["status"] = StageStatus.RUNNING.value
-            job.stages[PipelineStage.STORAGE_ARCHIVE.value]["started_at"] = s4_start
+            job.stages[PipelineStage.STORAGE_ARCHIVE.value]["started_at"] = s5_start
 
             manifest = {
                 "job_id": job.job_id,
@@ -429,6 +462,8 @@ class PostCallPipelineWorker:
                 "duration_seconds": metrics.get("call_duration_seconds"),
                 "turns_count": metrics.get("total_turns"),
                 "words_count": metrics.get("total_words"),
+                "sentiment": job.metadata.get("sentiment"),
+                "summary": job.metadata.get("summary"),
                 "archived_at": time.time(),
             }
             # Write manifest JSON alongside audio file
@@ -439,7 +474,7 @@ class PostCallPipelineWorker:
             job.stages[PipelineStage.STORAGE_ARCHIVE.value].update({
                 "status": StageStatus.COMPLETED.value,
                 "completed_at": time.time(),
-                "duration_ms": round((time.time() - s4_start) * 1000, 2),
+                "duration_ms": round((time.time() - s5_start) * 1000, 2),
                 "output": {"manifest_path": manifest_path, "archive_url": job.archive_url},
             })
             self._emit_event("stage_completed", job, {"stage": PipelineStage.STORAGE_ARCHIVE.value})

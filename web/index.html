@@ -439,7 +439,7 @@
 
   <div class="panel">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-      <label style="margin-bottom:0">Post-Call Processing Queue Worker (Task 3.1)</label>
+      <label style="margin-bottom:0">Post-Call Processing &amp; Analytics (Tasks 3.1–3.2)</label>
       <span id="pipeline-badge" class="badge" style="background:var(--rule);color:var(--soft)">Queue Idle</span>
     </div>
 
@@ -460,9 +460,27 @@
         <div class="metric-label">Talk-Time Ratios</div>
         <div class="metric-val" id="pipe-ratios" style="font-size:13px;font-family:ui-monospace,monospace">—</div>
       </div>
+      <div class="metric-card">
+        <div class="metric-label">Sentiment Polarity</div>
+        <div class="metric-val" id="pipe-sentiment-polarity" style="font-size:16px">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Trajectory Trend</div>
+        <div class="metric-val" id="pipe-sentiment-trend" style="font-size:16px">—</div>
+      </div>
     </div>
 
-    <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
+    <div style="margin-top:10px;background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:10px 12px;font-size:12px;display:none" id="pipe-summary-card">
+      <div style="font-weight:600;margin-bottom:4px;font-size:12.5px">📋 Executive Summary</div>
+      <div id="pipe-exec-summary" style="color:var(--soft);line-height:1.5">—</div>
+      <div style="margin-top:6px;display:flex;gap:12px;flex-wrap:wrap">
+        <span style="font-size:11px"><b>Intent:</b> <span id="pipe-intent">—</span></span>
+        <span style="font-size:11px"><b>Resolution:</b> <span id="pipe-resolution">—</span></span>
+        <span style="font-size:11px"><b>Topics:</b> <span id="pipe-topics">—</span></span>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">
       <div id="stg-mixdown" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
         <div style="font-weight:600">1. Audio Mixdown</div>
         <div id="stg-mixdown-st" style="color:var(--soft);font-size:11px">Pending</div>
@@ -475,8 +493,12 @@
         <div style="font-weight:600">3. Metrics Calc</div>
         <div id="stg-metrics-st" style="color:var(--soft);font-size:11px">Pending</div>
       </div>
+      <div id="stg-sentiment" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
+        <div style="font-weight:600">4. Sentiment AI</div>
+        <div id="stg-sentiment-st" style="color:var(--soft);font-size:11px">Pending</div>
+      </div>
       <div id="stg-archive" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
-        <div style="font-weight:600">4. Storage Archive</div>
+        <div style="font-weight:600">5. Storage Archive</div>
         <div id="stg-archive-st" style="color:var(--soft);font-size:11px">Pending</div>
       </div>
     </div>
@@ -487,6 +509,7 @@
       <span id="pipe-storage-url" style="font-size:11.5px;color:var(--soft);font-family:ui-monospace,monospace"></span>
     </div>
   </div>
+
 
   <div class="panel">
     <label>Event Log</label>
@@ -1676,7 +1699,7 @@
     }
   });
 
-  // Task 3.1: Post-Call Processing Pipeline UI
+  // Tasks 3.1+3.2: Post-Call Processing & Analytics Pipeline UI
   function updatePipelineUI(job) {
     if (!job || !job.job_id) return;
     $("pipe-job-id").textContent = job.job_id;
@@ -1700,6 +1723,7 @@
       "audio_mixdown": "stg-mixdown-st",
       "transcript_normalization": "stg-norm-st",
       "metrics_calculation": "stg-metrics-st",
+      "sentiment_analysis": "stg-sentiment-st",
       "storage_archive": "stg-archive-st"
     };
 
@@ -1713,6 +1737,32 @@
         el.textContent = stStatus.toUpperCase() + dur;
         el.style.color = stStatus === "completed" ? "var(--ok)" : (stStatus === "failed" ? "var(--bad)" : "var(--warn)");
       }
+    }
+
+    // Sentiment Analytics (Task 3.2)
+    var meta = job.metadata || {};
+    var sentiment = meta.sentiment || {};
+    var summary = meta.summary || {};
+
+    if (sentiment.overall_polarity) {
+      var polarityEmoji = sentiment.overall_polarity === "positive" ? "😊" :
+                          sentiment.overall_polarity === "negative" ? "😞" : "😐";
+      $("pipe-sentiment-polarity").textContent = polarityEmoji + " " + sentiment.overall_polarity.toUpperCase();
+      $("pipe-sentiment-polarity").style.color = sentiment.overall_polarity === "positive" ? "var(--ok)" :
+                                                   (sentiment.overall_polarity === "negative" ? "var(--bad)" : "var(--soft)");
+    }
+    if (sentiment.trajectory_trend) {
+      var trendEmoji = sentiment.trajectory_trend === "improving" ? "↗" :
+                       sentiment.trajectory_trend === "declining" ? "↘" : "→";
+      $("pipe-sentiment-trend").textContent = trendEmoji + " " + sentiment.trajectory_trend;
+    }
+
+    if (summary.executive_summary) {
+      $("pipe-summary-card").style.display = "block";
+      $("pipe-exec-summary").textContent = summary.executive_summary;
+      $("pipe-intent").textContent = summary.key_intent || "—";
+      $("pipe-resolution").textContent = (summary.resolution_status || "—").replace(/_/g, " ");
+      $("pipe-topics").textContent = (summary.topics || []).join(", ") || "—";
     }
 
     if (job.archive_url) {

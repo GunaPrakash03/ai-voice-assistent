@@ -964,6 +964,28 @@ async def entrypoint(ctx: agents.JobContext):
                 "timestamp": time.time(),
             }, topic="pipeline_stats", reliable=True)
 
+        elif action == "analyze_sentiment":
+            from agent.sentiment_analyzer import sentiment_analyzer
+            call_id = data.get("call_id", ctx.room.name)
+            turns = data.get("transcript_turns")
+            if not turns:
+                turns = []
+                for msg in llm_manager.context.to_list():
+                    turns.append({"role": msg.get("role", "caller"), "text": msg.get("content", "")})
+            analytics = sentiment_analyzer.analyze_and_summarize(
+                call_id=call_id,
+                transcript_turns=turns,
+                metadata=data.get("metadata", {}),
+            )
+            publish({
+                "type": "analytics_event",
+                "event": "sentiment_analyzed",
+                "call_id": call_id,
+                "analytics": analytics,
+                "timestamp": time.time(),
+            }, topic="analytics_event", reliable=True)
+
+
         elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"
             log.info("Test speech requested by %s for barge-in verification", participant_id)

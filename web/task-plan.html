@@ -358,10 +358,10 @@
     </div>
     <div style="text-align:right">
       <span class="badge done" style="font-size:12px;padding:5px 10px">
-        &#x2714; Phase 1, Phase 2 &amp; Task 3.1 Verified
+        &#x2714; Phase 1, Phase 2, Task 3.1 &amp; 3.2 Verified
       </span>
       <div style="font-size:11.5px;color:var(--soft);margin-top:6px;font-family:var(--font-mono)">
-        71 / 71 Acceptance Checks Passing (0 Regressions)
+        100 / 100 Acceptance Checks Passing (0 Regressions)
       </div>
     </div>
   </header>
@@ -370,42 +370,42 @@
   <div class="metrics-grid">
     <div class="metric-card">
       <div class="metric-label">Completed Tasks</div>
-      <div class="metric-val" style="color:var(--ok)">14 <span style="font-size:14px;color:var(--soft)">/ 21 total</span></div>
-      <div class="metric-sub">Phases 1 &amp; 2 + Task 3.1 committed</div>
+      <div class="metric-val" style="color:var(--ok)">15 <span style="font-size:14px;color:var(--soft)">/ 21 total</span></div>
+      <div class="metric-sub">Phases 1 &amp; 2 + Tasks 3.1–3.2 committed</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Acceptance Verification</div>
-      <div class="metric-val" style="color:var(--accent)">71 / 71</div>
-      <div class="metric-sub">13 test suites passing (100%)</div>
+      <div class="metric-val" style="color:var(--accent)">100 / 100</div>
+      <div class="metric-sub">14 test suites passing (100%)</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Delivered Dev Hours</div>
-      <div class="metric-val" style="color:var(--ok)">318 h <span style="font-size:14px;color:var(--soft)">/ 532 h</span></div>
-      <div class="metric-sub">59.8% total engineering budget</div>
+      <div class="metric-val" style="color:var(--ok)">338 h <span style="font-size:14px;color:var(--soft)">/ 532 h</span></div>
+      <div class="metric-sub">63.5% total engineering budget</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Next Task</div>
-      <div class="metric-val" style="color:var(--warn)">Task 3.2</div>
-      <div class="metric-sub">Summary &amp; Sentiment Analyzer</div>
+      <div class="metric-val" style="color:var(--warn)">Task 3.3</div>
+      <div class="metric-sub">Custom Schema Data Extractor</div>
     </div>
   </div>
 
   <!-- Overall Progress Track -->
   <div class="progress-section">
     <div class="progress-head">
-      <div><strong>Platform Delivery Completion</strong>: 59.8% (318h realistic hours delivered)</div>
-      <div style="font-family:var(--font-mono);font-size:12px;color:var(--ok)">Tasks 1.1&ndash;3.1: DONE &bull; Task 3.2: NEXT UP</div>
+      <div><strong>Platform Delivery Completion</strong>: 63.5% (338h realistic hours delivered)</div>
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--ok)">Tasks 1.1&ndash;3.2: DONE &bull; Task 3.3: NEXT UP</div>
     </div>
     <div class="progress-track">
       <div class="prog-seg seg-p1" title="Phase 1: Real-Time Core (204h) — 100% Complete"></div>
       <div class="prog-seg seg-p2" title="Phase 2: Telephony & SIP (92h) — 100% Complete"></div>
-      <div class="prog-seg seg-p3" style="background:var(--warn);width:4.1%" title="Task 3.1: Post-Call Worker (22h) — Complete"></div>
+      <div class="prog-seg seg-p3" style="background:var(--warn);width:7.9%" title="Tasks 3.1+3.2: Post-Call Worker & Analytics (42h) — Complete"></div>
       <div class="prog-seg seg-p4" title="Remaining Phase 3 & Phase 4 — In Progress / Planned"></div>
     </div>
     <div class="progress-legend">
       <div class="leg-item"><div class="leg-dot" style="background:var(--ok)"></div><span>Phase 1: Real-Time Audio Core (100% Done &bull; 204h)</span></div>
       <div class="leg-item"><div class="leg-dot" style="background:var(--accent)"></div><span>Phase 2: Telephony &amp; SIP Gateway (100% Done &bull; 92h)</span></div>
-      <div class="leg-item"><div class="leg-dot" style="background:var(--warn)"></div><span>Phase 3: Post-Call Intelligence (Task 3.1 Done &bull; 3.2 Next)</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--warn)"></div><span>Phase 3: Post-Call Intelligence (Tasks 3.1+3.2 Done &bull; 3.3 Next)</span></div>
       <div class="leg-item"><div class="leg-dot" style="background:var(--purple)"></div><span>Phase 4: Management Platform (Planned &bull; 146h)</span></div>
     </div>
   </div>
@@ -719,19 +719,21 @@
             </div>
           </td>
         </tr>
-        <tr>
+        <tr class="done-row">
           <td class="task-id">3.2</td>
           <td>
             <div class="task-name">Summary &amp; Sentiment Analyzer</div>
             <div class="task-desc">Zero-shot multi-dimensional sentiment classifier, executive narrative summary generator, speaker turn attribution.</div>
           </td>
-          <td><span class="badge next">Next Up</span></td>
+          <td><span class="badge done">Done</span></td>
           <td>20 h</td>
           <td>
-            Analyzes caller transcripts into positive/neutral/negative ratings, user frustration flags, action items, and concise 2-sentence call abstracts.
+            Analyzes caller transcripts into positive/neutral/negative ratings, user frustration flags, action items, and concise 2-sentence call abstracts. 29/29 checks passing.
             <div class="task-artifacts">
               <span>agent/sentiment_analyzer.py</span>
+              <span>agent/pipeline_worker.py</span>
               <span>scripts/verify_analytics.py</span>
+              <span>scripts/verify_pipeline.py</span>
             </div>
           </td>
         </tr>
@@ -741,7 +743,7 @@
             <div class="task-name">Custom Schema Data Extractor</div>
             <div class="task-desc">Dynamic JSON Schema validator, structured extraction of business entities (names, order IDs, appointments, dates).</div>
           </td>
-          <td><span class="badge planned">Planned</span></td>
+          <td><span class="badge next">Next Up</span></td>
           <td>28 h</td>
           <td>
             Extracts typed fields (string, number, boolean, enum) from conversation turns with confidence scores, formatting structured payloads for CRMs.
@@ -751,6 +753,7 @@
             </div>
           </td>
         </tr>
+
         <tr>
           <td class="task-id">3.4</td>
           <td>

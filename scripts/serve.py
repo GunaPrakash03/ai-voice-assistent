@@ -139,6 +139,25 @@ class Handler(SimpleHTTPRequestHandler):
         elif parsed.path == "/api/pipeline/stats":
             self._send_json({"status": "ok", "stats": pipeline_worker.get_stats()})
             return
+        elif parsed.path == "/api/pipeline/analytics":
+            q = parse_qs(parsed.query)
+            job_id = (q.get("job_id") or [""])[0] or None
+            call_id = (q.get("call_id") or [""])[0] or None
+            job = pipeline_worker.get_job(job_id=job_id, call_id=call_id)
+            if not job:
+                self._send_json({"status": "error", "error": "Job not found"}, 404)
+                return
+            sentiment = job.metadata.get("sentiment")
+            summary = job.metadata.get("summary")
+            self._send_json({
+                "status": "ok",
+                "call_id": job.call_id,
+                "job_id": job.job_id,
+                "sentiment": sentiment,
+                "summary": summary,
+            })
+            return
+
 
         return super().do_GET()
 
@@ -381,7 +400,21 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"status": "ok", "job": job.to_dict()})
             return
 
+        elif parsed.path == "/api/pipeline/analyze":
+            call_id = payload.get("call_id", f"analyze-{int(time.time())}")
+            transcript_turns = payload.get("transcript_turns", [])
+            metadata = payload.get("metadata", {})
+            from agent.sentiment_analyzer import sentiment_analyzer
+            result = sentiment_analyzer.analyze_and_summarize(
+                call_id=call_id,
+                transcript_turns=transcript_turns,
+                metadata=metadata,
+            )
+            self._send_json({"status": "ok", "analytics": result})
+            return
+
         self.send_error(404, "Endpoint not found")
+
 
     def log_message(self, fmt, *args):
         first_arg = str(args[0]) if args else ""

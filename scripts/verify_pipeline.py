@@ -58,6 +58,7 @@ def test_job_models_and_priority_queue():
     assert "audio_mixdown" in stages
     assert "transcript_normalization" in stages
     assert "metrics_calculation" in stages
+    assert "sentiment_analysis" in stages
     assert "storage_archive" in stages
 
     # Test PostCallJob instantiation and serialization
@@ -84,7 +85,8 @@ def test_job_models_and_priority_queue():
     p2, _, id2 = worker._queue.get_nowait()
     assert id2 == j_low.job_id, f"Expected low priority job {j_low.job_id}, got {id2}"
 
-    return "Job states (5), stages (4), priority ordering (p1 > p10) & serialization verified"
+    return "Job states (5), stages (5), priority ordering (p1 > p10) & serialization verified"
+
 
 
 def test_audio_mixdown_and_archival():
@@ -129,7 +131,7 @@ def test_conversation_metrics_processor():
 
 
 def test_async_pipeline_worker_execution():
-    """Verify asynchronous queue worker execution across all 4 stages and retry recovery."""
+    """Verify asynchronous queue worker execution across all 5 stages and retry recovery."""
     worker = PostCallPipelineWorker(concurrency=2)
     sample_call_id = f"worker-test-{int(time.time()*1000)}"
 
@@ -144,16 +146,20 @@ def test_async_pipeline_worker_execution():
 
     assert job.status == JobStatus.QUEUED.value
 
-    # Execute complete 4-stage pipeline
+    # Execute complete 5-stage pipeline
     loop = asyncio.new_event_loop()
     executed_job = loop.run_until_complete(worker.execute_job(job.job_id))
     loop.close()
 
     assert executed_job.status == JobStatus.COMPLETED.value
     assert executed_job.total_duration_ms > 0
-    assert len(executed_job.stages) == 4
+    assert len(executed_job.stages) == 5, f"Expected 5 stages, got {len(executed_job.stages)}: {list(executed_job.stages.keys())}"
     for st_name, st_res in executed_job.stages.items():
         assert st_res["status"] == StageStatus.COMPLETED.value, f"Stage {st_name} failed: {st_res}"
+
+    # Verify sentiment analysis integrated
+    assert "sentiment" in executed_job.metadata, "sentiment missing from job.metadata"
+    assert "summary" in executed_job.metadata, "summary missing from job.metadata"
 
     # Verify manifest file created on disk
     manifest_file = os.path.join(ROOT, "recordings", "archive", f"{sample_call_id}_manifest.json")
@@ -168,7 +174,8 @@ def test_async_pipeline_worker_execution():
     assert retried_job is not None
     assert retried_job.status == JobStatus.QUEUED.value
 
-    return f"4/4 stages completed (dur={executed_job.total_duration_ms:.2f}ms), manifest verified & retry logic validated"
+    return f"5/5 stages completed (dur={executed_job.total_duration_ms:.2f}ms), manifest verified & retry logic validated"
+
 
 
 def test_pipeline_rest_api_endpoints():
@@ -320,7 +327,8 @@ asyncio.run(test())
         raise AssertionError(f"No pipeline event received: {res.stdout}")
 
     ev, status, stages_count = lines[-1].split("|", 2)
-    return f"event='{ev}', status='{status}', completed_stages={stages_count}/4 verified over WebRTC data channel"
+    return f"event='{ev}', status='{status}', completed_stages={stages_count}/5 verified over WebRTC data channel"
+
 
 
 def main():
