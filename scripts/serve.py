@@ -62,7 +62,8 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, fmt, *args):
-        if "/token" in (args[0] if args else ""):
+        first_arg = str(args[0]) if args else ""
+        if "/token" in first_arg:
             sys.stderr.write("  token issued\n")
 
 

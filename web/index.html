@@ -527,11 +527,14 @@
       });
 
       await room.connect(cfg.url, cfg.token);
-      await room.localParticipant.setMicrophoneEnabled(true);
-      log("microphone published");
-
-      var pub = Array.from(room.localParticipant.audioTrackPublications.values())[0];
-      if (pub && pub.track) startMeter(pub.track);
+      try {
+        await room.localParticipant.setMicrophoneEnabled(true);
+        log("microphone published");
+        var pub = Array.from(room.localParticipant.audioTrackPublications.values())[0];
+        if (pub && pub.track) startMeter(pub.track);
+      } catch (micErr) {
+        log("warning: microphone not enabled (" + (micErr && micErr.message ? micErr.message : micErr) + "). You can still listen and test TTS/tools.");
+      }
 
       $("stop").disabled = false;
       $("test-barge").disabled = false;
