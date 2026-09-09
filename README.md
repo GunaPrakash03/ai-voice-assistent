@@ -17,7 +17,8 @@ See `../ai voice assistent/` for the estimation, stack and cost documents.
 | 1.5 Streaming TTS | Done — `verify_tts.py` 5/5, Cartesia Sonic streaming TTS, 20ms chunking, sub-100ms TTFA, instant barge-in cut-off. |
 | 1.6 Mid-Call Function Calling & Retrieval Tools | Done — `verify_tools.py` 5/5, JSON Schema tool registry, async non-blocking dispatcher, <10ms filler speech engine, grounded response synthesis. |
 | 1.7 Browser WebRTC Client SDK | Done — `verify_sdk.py` 5/5, standalone browser SDK, UMD module, TypeScript definitions, audio visualizer, reconnect logic. |
-| 2.1 SIP Gateway & Telephony Integration | Next up — LiveKit SIP carrier trunk, inbound DID routing, outbound dialer API. |
+| 2.1 SIP Gateway & Telephony Integration | Done — `verify_sip.py` 5/5, LiveKit SIP carrier trunk models, inbound DID routing, outbound dialer API, REST & WebRTC data channel events. |
+| 2.2 Call Transfer Engine | Next up — Blind (cold) & warm transfers via SIP REFER, conference room bridging. |
 
 ## Run it
 
@@ -30,6 +31,7 @@ python3 scripts/verify_llm.py   # streaming LLM dialogue manager acceptance (1.4
 python3 scripts/verify_tts.py   # streaming TTS engine acceptance (1.5)
 python3 scripts/verify_tools.py # mid-call function calling & tools acceptance (1.6)
 python3 scripts/verify_sdk.py   # browser WebRTC client SDK acceptance (1.7)
+python3 scripts/verify_sip.py   # SIP gateway & telephony integration acceptance (2.1)
 ```
 
 The verify script proves the four things task 1.1 promises: the server
@@ -159,6 +161,25 @@ await client.connect();
 
 ```bash
 python3 scripts/verify_sdk.py # verifies all 5/5 checks for Task 1.7
+```
+
+## SIP Gateway & Telephony Integration (task 2.1)
+
+Enables bidirectional connectivity between the public switched telephone network (PSTN) and LiveKit WebRTC rooms via carrier SIP trunks (Telnyx / Twilio / generic SIP PBX):
+
+- **SIP Trunk Models & E.164 Normalization**: structured data models (`SIPInboundTrunk`, `SIPOutboundTrunk`, `SIPDispatchRule`, `TelephonyCallRecord`) with strict E.164 phone number normalization and ITU-T validation.
+- **Inbound DID Dispatch Routing Engine**: maps incoming PSTN carrier numbers (DIDs) directly to dynamic LiveKit rooms (`call-<caller>-<timestamp>`), dispatching worker agents automatically on phone answer.
+- **Programmatic Outbound Dialer**: creates dedicated call rooms and dispatches LiveKit SIP participant sessions (`livekit.api.CreateSIPParticipantRequest`) to call PSTN numbers with automatic fallback simulation for local and CI environments.
+- **Telephony REST API Server (Port 8091)**:
+  - `GET /api/telephony/trunks` — list configured carrier inbound and outbound SIP trunks.
+  - `GET /api/telephony/calls` — query active and historic call session records.
+  - `POST /api/telephony/dial` — initiate programmatic outbound PSTN call (`destination`, `caller_id`, `room`).
+  - `POST /api/telephony/inbound/simulate` — simulate carrier DID dispatch and room provisioning.
+- **WebRTC Data Channel Integration**: emits `telephony_event` notifications for caller states (`initiated -> ringing -> active -> completed`) and supports `dial_phone` / `get_telephony_trunks` actions over the WebRTC data channel.
+- **Interactive Browser Telephony Console**: test outbound PSTN dialing and inbound DID simulation directly from `http://localhost:8091`.
+
+```bash
+python3 scripts/verify_sip.py # verifies all 5/5 checks for Task 2.1
 ```
 
 

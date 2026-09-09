@@ -78,7 +78,7 @@
 <div class="wrap">
 
   <h1>AI Voice Assistant — Core Audio & Dialogue</h1>
-  <p class="sub">Task 1.7 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD Barge-in &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser Client SDK &bull; <a href="/code-walkthrough.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Line-by-Line Code Walkthrough &rarr;</a></p>
+  <p class="sub">Task 2.1 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser SDK &bull; <strong>SIP Gateway &amp; Telephony</strong> &bull; <a href="/code-walkthrough.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Line-by-Line Code Walkthrough &rarr;</a></p>
 
   <div class="panel">
     <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
@@ -240,6 +240,44 @@
         <button id="btn-tool-avail" class="ghost" disabled style="font-size:13px;padding:6px 12px">Check Availability (Dental)</button>
         <button id="btn-tool-order" class="ghost" disabled style="font-size:13px;padding:6px 12px">Lookup Order #1042</button>
         <button id="btn-tool-kb" class="ghost" disabled style="font-size:13px;padding:6px 12px">Query KB (Return Policy)</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label>SIP Gateway &amp; Telephony Integration (Task 2.1)</label>
+      <span id="tel-status-badge" class="badge" style="background:var(--rule);color:var(--soft)">SIP Trunks Ready</span>
+    </div>
+
+    <!-- Live Telephony Metrics / Call Info -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Active Call ID</div>
+        <div class="metric-val" style="font-size:13px;word-break:break-all" id="m-call-id">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Call State</div>
+        <div class="metric-val" style="font-size:15px" id="m-call-state">Idle</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Destination (PSTN)</div>
+        <div class="metric-val" style="font-size:14px" id="m-call-dest">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Assigned Room</div>
+        <div class="metric-val" style="font-size:13px;word-break:break-all" id="m-call-room">—</div>
+      </div>
+    </div>
+
+    <!-- Outbound Dialing Form -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <label for="tel-dest">Outbound Phone Number (E.164 format)</label>
+      <div class="row">
+        <input id="tel-dest" style="flex:1;min-width:200px" value="+18005550199" placeholder="+1 (555) 000-0000">
+        <button id="btn-dial-phone">Dial Outbound PSTN</button>
+        <button id="btn-sim-inbound" class="ghost">Simulate Inbound DID</button>
+        <button id="btn-hangup-phone" class="ghost" disabled style="color:var(--warn)">Hangup</button>
       </div>
     </div>
   </div>
@@ -522,6 +560,27 @@
             $("m-tool-status").style.color = "var(--err)";
           }
           log("✅ Tool result for " + msg.tool + " (" + (msg.duration_ms != null ? msg.duration_ms.toFixed(1) : 0) + "ms): " + JSON.stringify(msg.result));
+        } else if (topic === "telephony_event") {
+          log("📞 Telephony event: " + msg.event + (msg.call ? " [" + msg.call.call_id + " -> " + msg.call.destination_number + "]" : ""));
+          if (msg.event === "outbound_call_initiated" && msg.call) {
+            currentActiveCallId = msg.call.call_id;
+            $("m-call-id").textContent = msg.call.call_id;
+            $("m-call-state").textContent = msg.call.state.toUpperCase();
+            $("m-call-state").style.color = "var(--ok)";
+            $("m-call-dest").textContent = msg.call.destination_number;
+            $("m-call-room").textContent = msg.call.room_name;
+            var tb = $("tel-status-badge");
+            tb.textContent = "📞 Call Active";
+            tb.style.background = "var(--ok)";
+            tb.style.color = "#fff";
+            $("btn-hangup-phone").disabled = false;
+          } else if (msg.event === "outbound_call_failed") {
+            var tb = $("tel-status-badge");
+            tb.textContent = "Call Failed";
+            tb.style.background = "var(--err)";
+            tb.style.color = "#fff";
+            log("❌ Telephony error: " + msg.error);
+          }
         }
       });
 
@@ -581,6 +640,15 @@
     $("m-filler-status").textContent = "—";
     $("m-tool-status").textContent = "Ready";
     $("m-tool-status").style.color = "";
+    $("m-call-id").textContent = "—";
+    $("m-call-state").textContent = "Idle";
+    $("m-call-state").style.color = "";
+    $("m-call-dest").textContent = "—";
+    $("m-call-room").textContent = "—";
+    $("tel-status-badge").textContent = "SIP Trunks Ready";
+    $("tel-status-badge").style.background = "var(--rule)";
+    $("tel-status-badge").style.color = "var(--soft)";
+    $("btn-hangup-phone").disabled = true;
     $("barge-banner").style.display = "none";
     if (raf) cancelAnimationFrame(raf);
     if (audioCtx) { audioCtx.close(); audioCtx = null; }
@@ -708,6 +776,115 @@
 
   var fromUrl = new URLSearchParams(location.search).get("room");
   if (fromUrl) $("room").value = fromUrl;
+
+  var currentActiveCallId = null;
+
+  async function dialPhone() {
+    var dest = $("tel-dest").value.trim();
+    if (!dest) {
+      log("Please enter a valid E.164 phone number (e.g. +18005550199)");
+      return;
+    }
+    log("Dialing outbound PSTN destination: " + dest + "...");
+    var tb = $("tel-status-badge");
+    tb.textContent = "Dialing...";
+    tb.style.background = "var(--accent)";
+    tb.style.color = "#fff";
+
+    // If connected to room, also notify via WebRTC data channel
+    if (room && room.localParticipant) {
+      try {
+        await room.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({ action: "dial_phone", destination: dest })),
+          { reliable: true }
+        );
+      } catch (e) {
+        log("Data channel dial notification warning: " + e);
+      }
+    }
+
+    // Call REST endpoint
+    try {
+      var resp = await fetch("/api/telephony/dial", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          destination: dest,
+          caller_id: "+18005550100",
+          room: $("room").value || "test-room"
+        })
+      });
+      var data = await resp.json();
+      if (resp.ok && data.call) {
+        currentActiveCallId = data.call.call_id;
+        $("m-call-id").textContent = data.call.call_id;
+        $("m-call-state").textContent = data.call.state.toUpperCase();
+        $("m-call-state").style.color = "var(--ok)";
+        $("m-call-dest").textContent = data.call.destination_number;
+        $("m-call-room").textContent = data.call.room_name;
+        tb.textContent = "📞 Call Active (" + data.call.state + ")";
+        tb.style.background = "var(--ok)";
+        $("btn-hangup-phone").disabled = false;
+        log("✅ Outbound call placed! Call ID: " + data.call.call_id + " -> room: " + data.call.room_name);
+      } else {
+        tb.textContent = "Dial Error";
+        tb.style.background = "var(--err)";
+        log("❌ Dialing failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      tb.textContent = "Connection Error";
+      tb.style.background = "var(--err)";
+      log("❌ Telephony server connection error: " + err);
+    }
+  }
+
+  async function simulateInboundDID() {
+    log("Simulating inbound carrier DID call (+18005550199)...");
+    try {
+      var resp = await fetch("/api/telephony/inbound/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "+15559876543",
+          to: "+18005550199"
+        })
+      });
+      var data = await resp.json();
+      if (resp.ok && data.route) {
+        log("📞 Inbound DID routed! Trunk: " + data.route.trunk + " -> Room: " + data.route.room);
+        $("m-call-id").textContent = "inbound-did-" + Date.now().toString().slice(-4);
+        $("m-call-state").textContent = "ROUTED";
+        $("m-call-state").style.color = "var(--ok)";
+        $("m-call-dest").textContent = data.route.caller_number;
+        $("m-call-room").textContent = data.route.room;
+        var tb = $("tel-status-badge");
+        tb.textContent = "Incoming Call Routed";
+        tb.style.background = "var(--ok)";
+        tb.style.color = "#fff";
+      } else {
+        log("❌ Inbound simulation failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      log("❌ Failed to simulate inbound: " + err);
+    }
+  }
+
+  function hangupPhone() {
+    log("Hanging up telephony call (" + (currentActiveCallId || "active") + ")...");
+    $("m-call-state").textContent = "COMPLETED";
+    $("m-call-state").style.color = "var(--soft)";
+    var tb = $("tel-status-badge");
+    tb.textContent = "Call Ended";
+    tb.style.background = "var(--rule)";
+    tb.style.color = "var(--soft)";
+    $("btn-hangup-phone").disabled = true;
+    currentActiveCallId = null;
+    log("Telephony call terminated.");
+  }
+
+  $("btn-dial-phone").addEventListener("click", dialPhone);
+  $("btn-sim-inbound").addEventListener("click", simulateInboundDID);
+  $("btn-hangup-phone").addEventListener("click", hangupPhone);
 
   $("go").addEventListener("click", join);
   $("stop").addEventListener("click", leave);

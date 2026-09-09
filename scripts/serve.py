@@ -6,6 +6,7 @@ no pip install. This is a development harness, not the production token
 path: in production Drupal mints the token (see BACKEND-FRONTEND-STACK).
 """
 
+import asyncio
 import json
 import os
 import sys
@@ -33,33 +34,93 @@ KEY, SECRET = env("LIVEKIT_API_KEY"), env("LIVEKIT_API_SECRET")
 WS_URL = env("LIVEKIT_URL")
 
 
+from agent.telephony_manager import telephony_manager, asdict, normalize_phone_number
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=WEB, **kw)
 
-    def do_GET(self):
-        parsed = urlparse(self.path)
-        if parsed.path != "/token":
-            return super().do_GET()
-
-        q = parse_qs(parsed.query)
-        room = (q.get("room") or ["test-room"])[0]
-        identity = (q.get("identity") or q.get("user") or ["caller"])[0]
-
-        # Development harness only. A real endpoint authenticates the
-        # visitor and rate-limits before minting anything.
-        body = json.dumps({
-            "url": WS_URL,
-            "room": room,
-            "identity": identity,
-            "token": join_token(KEY, SECRET, room, identity),
-        }).encode()
-
-        self.send_response(200)
+    def _send_json(self, data: dict, status: int = 200):
+        body = json.dumps(data).encode()
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/token":
+            q = parse_qs(parsed.query)
+            room = (q.get("room") or ["test-room"])[0]
+            identity = (q.get("identity") or q.get("user") or ["caller"])[0]
+
+            self._send_json({
+                "url": WS_URL,
+                "room": room,
+                "identity": identity,
+                "token": join_token(KEY, SECRET, room, identity),
+            })
+            return
+        elif parsed.path == "/api/telephony/trunks":
+            self._send_json({
+                "inbound": telephony_manager.list_inbound_trunks(),
+                "outbound": telephony_manager.list_outbound_trunks(),
+                "rules": telephony_manager.list_dispatch_rules(),
+            })
+            return
+        elif parsed.path == "/api/telephony/calls":
+            self._send_json({
+                "calls": telephony_manager.list_calls(),
+            })
+            return
+
+        return super().do_GET()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        content_len = int(self.headers.get("Content-Length", 0))
+        post_data = self.rfile.read(content_len) if content_len > 0 else b"{}"
+        try:
+            payload = json.loads(post_data.decode("utf-8")) if post_data else {}
+        except Exception:
+            self._send_json({"error": "Invalid JSON"}, 400)
+            return
+
+        if parsed.path == "/api/telephony/dial":
+            destination = payload.get("destination", "").strip()
+            caller_id = payload.get("caller_id", "").strip() or None
+            room_name = payload.get("room", "").strip() or None
+            if not destination:
+                self._send_json({"error": "Missing 'destination' phone number"}, 400)
+                return
+            try:
+                loop = asyncio.new_event_loop()
+                record = loop.run_until_complete(
+                    telephony_manager.dial_phone_number(
+                        destination_number=destination,
+                        caller_id=caller_id,
+                        room_name=room_name,
+                    )
+                )
+                loop.close()
+                self._send_json({"status": "ok", "call": asdict(record)})
+            except Exception as err:
+                self._send_json({"status": "error", "error": str(err)}, 500)
+            return
+
+        elif parsed.path == "/api/telephony/inbound/simulate":
+            from_num = payload.get("from", "+15551234567")
+            to_num = payload.get("to", "+18005550199")
+            routed = telephony_manager.route_inbound_call(dialed_number=to_num, caller_number=from_num)
+            if not routed:
+                self._send_json({"status": "error", "error": "No matching route found"}, 404)
+            else:
+                self._send_json({"status": "ok", "routed": routed})
+            return
+
+        self.send_error(404, "Endpoint not found")
 
     def log_message(self, fmt, *args):
         first_arg = str(args[0]) if args else ""

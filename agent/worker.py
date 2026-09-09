@@ -38,6 +38,7 @@ from agent.llm_manager import (
     StreamingDialogueManager,
 )
 from agent.tts_manager import StreamingTTSManager
+from agent.telephony_manager import telephony_manager, asdict
 
 load_dotenv()
 log = logging.getLogger("dialogue-worker")
@@ -542,6 +543,41 @@ async def entrypoint(ctx: agents.JobContext):
                 "tools": schemas,
                 "timestamp": time.time(),
             }, topic="tools_list", reliable=True)
+        elif action == "dial_phone":
+            dest = data.get("destination", "").strip()
+            caller_id = data.get("caller_id", "").strip() or None
+            log.info("Outbound dial requested over data channel for: %s", dest)
+            async def run_dial():
+                try:
+                    record = await telephony_manager.dial_phone_number(
+                        destination_number=dest,
+                        caller_id=caller_id,
+                        room_name=ctx.room.name,
+                    )
+                    publish({
+                        "type": "telephony_event",
+                        "event": "outbound_call_initiated",
+                        "call": asdict(record),
+                        "timestamp": time.time(),
+                    }, topic="telephony_event", reliable=True)
+                except Exception as dial_err:
+                    publish({
+                        "type": "telephony_event",
+                        "event": "outbound_call_failed",
+                        "error": str(dial_err),
+                        "timestamp": time.time(),
+                    }, topic="telephony_event", reliable=True)
+            task = asyncio.create_task(run_dial())
+            pending.add(task)
+            task.add_done_callback(pending.discard)
+        elif action == "get_telephony_trunks":
+            publish({
+                "type": "telephony_trunks",
+                "inbound": telephony_manager.list_inbound_trunks(),
+                "outbound": telephony_manager.list_outbound_trunks(),
+                "rules": telephony_manager.list_dispatch_rules(),
+                "timestamp": time.time(),
+            }, topic="telephony_trunks", reliable=True)
         elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"
             log.info("Test speech requested by %s for barge-in verification", participant_id)
