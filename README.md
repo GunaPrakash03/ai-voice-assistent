@@ -72,7 +72,7 @@ on CPU via ONNX Runtime inside the agent container.
 - **Dynamic turn endpointing**: automatically detects when the caller stops speaking (0.4s to 1.8s silence window) and closes the user turn locally without waiting on external cloud gateway services.
 - **Instant barge-in interruption**: when the caller begins speaking while the agent is outputting audio, the agent's playback buffer is immediately truncated, ongoing speech playback is cancelled, and an interruption event is published on the `interruption` data topic.
 - **Real-time state broadcasting**: worker publishes live `vad` (speaking/listening), `agent_state`, and `interruption` data messages directly into the room.
-- **Interactive verification**: open `http://localhost:8474`, join the room, and click **Test Agent Speech (Barge-in)** to hear the agent stream audio, then speak into the microphone to witness instant barge-in cut-off.
+- **Interactive verification**: open `http://localhost:8091`, join the room, and click **Test Agent Speech (Barge-in)** to hear the agent stream audio, then speak into the microphone to witness instant barge-in cut-off.
 
 ```bash
 python3 scripts/verify_vad.py

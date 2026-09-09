@@ -101,7 +101,7 @@ def transcript_seen():
     finals = [l for l in out.splitlines() if "FINAL" in l]
     if not finals:
         raise AssertionError(
-            "no transcript yet — open http://localhost:8474, join, and speak")
+            "no transcript yet — open http://localhost:8091, join, and speak")
     return f"{len(finals)} final transcript(s), last: {finals[-1].split('FINAL')[-1].strip()[:48]}"
 
 
@@ -118,5 +118,5 @@ passed = sum(results)
 print(f"\n{passed}/{len(results)} checks passed")
 if not results[-1] and passed == len(results) - 1:
     print("\nEverything automated passes. The last check needs a human:")
-    print("  open http://localhost:8474 — join the room — say a sentence — rerun this.")
+    print("  open http://localhost:8091 — join the room — say a sentence — rerun this.")
 sys.exit(0 if all(results) else 1)

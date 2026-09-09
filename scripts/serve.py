@@ -16,9 +16,9 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, ROOT)
 from agent.token import join_token  # noqa: E402
 
-# 8080 is taken by another app on this machine; override with:
-#   python3 scripts/serve.py 9090
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8474
+# Default port is 8091; override with:
+#   python3 scripts/serve.py <port>
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8091
 WEB = os.path.join(ROOT, "web")
 
 
