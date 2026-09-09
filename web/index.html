@@ -83,7 +83,7 @@
 <div class="wrap">
 
   <h1>AI Voice Assistant — Core Audio & Dialogue</h1>
-  <p class="sub">Task 2.4 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser SDK &bull; SIP Gateway &bull; Call Transfer &bull; DTMF &amp; IVR &bull; <strong>AMD &amp; Voicemail Drop</strong> &bull; <a href="/call-desk.html" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:underline">Call Desk &rarr;</a> &bull; <a href="/code-walkthrough.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Walkthrough &rarr;</a></p>
+  <p class="sub">Task 2.5 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser SDK &bull; SIP Gateway &bull; Call Transfer &bull; DTMF/IVR &bull; AMD &bull; <strong>Dual-Channel Recording</strong> &bull; <a href="/call-desk.html" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:underline">Call Desk &rarr;</a> &bull; <a href="/code-walkthrough.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Walkthrough &rarr;</a></p>
 
   <div class="panel">
     <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
@@ -398,6 +398,31 @@
         <button id="btn-sim-machine" class="ghost" style="flex:1;min-width:140px;font-size:11.5px">Simulate Voicemail Prompt</button>
         <button id="btn-sim-beep" class="ghost" style="flex:1;min-width:130px;font-size:11.5px">Simulate 1kHz Beep</button>
         <button id="btn-drop-voicemail" style="flex:1;min-width:140px;font-size:11.5px;background:var(--accent);color:#fff">Drop Voicemail Message</button>
+      </div>
+    </div>
+
+    <!-- Real-Time Call Recording, Dual-Channel Stereo & Compliance (Task 2.5) -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="margin-bottom:0">Call Recording &amp; Dual-Channel Compliance (Task 2.5)</label>
+        <span id="rec-badge" class="badge" style="background:var(--rule);color:var(--soft)">REC: Idle</span>
+      </div>
+
+      <div style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:9px 12px;font-size:12px;line-height:1.6">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div><strong>Channels:</strong> <span style="color:var(--accent)">Dual-Channel Stereo (L: Caller, R: Agent)</span></div>
+          <div><strong>Duration:</strong> <span id="rec-duration-text" style="font-family:ui-monospace,monospace;font-weight:700">00:00</span></div>
+          <div><strong>Status:</strong> <span id="rec-status-text" style="font-weight:600">IDLE</span></div>
+          <div><strong>Compliance:</strong> <span id="rec-compliance-text" style="color:var(--ok)">2-Party (1.4kHz Beep + Disclosure)</span></div>
+        </div>
+        <div style="margin-top:4px" id="rec-file-info"><strong>Storage:</strong> <span id="rec-path-text" style="font-style:italic;color:var(--soft)">WAV container ready (16-bit PCM @ 16kHz)</span></div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button id="btn-start-rec" style="flex:1;min-width:130px;font-size:11.5px;background:var(--danger);color:#fff">&#x23FA; Start Recording</button>
+        <button id="btn-pause-rec" class="ghost" style="flex:1;min-width:140px;font-size:11.5px" disabled>&#x23F8; Pause (PCI Redact)</button>
+        <button id="btn-resume-rec" class="ghost" style="flex:1;min-width:120px;font-size:11.5px" disabled>&#x25B6; Resume</button>
+        <button id="btn-stop-rec" class="ghost" style="flex:1;min-width:130px;font-size:11.5px" disabled>&#x23F9; Stop &amp; Save</button>
       </div>
     </div>
   </div>
@@ -781,6 +806,43 @@
           if (reason) $("amd-reason-text").textContent = reason;
 
           log("🤖 AMD: state=" + state + " conf=" + conf + "% (" + reason + ")");
+        } else if (topic === "recording_event" || topic === "recording_state") {
+          var rec = msg.recording || {};
+          var status = (rec.status || (msg.event ? msg.event.replace("recording_", "") : "idle")).toLowerCase();
+          var dur = rec.duration_s !== undefined ? rec.duration_s : 0.0;
+          var mins = Math.floor(dur / 60);
+          var secs = Math.floor(dur % 60);
+          var timeStr = (mins < 10 ? "0" : "") + mins + ":" + (secs < 10 ? "0" : "") + secs;
+
+          $("rec-status-text").textContent = status.toUpperCase();
+          $("rec-duration-text").textContent = timeStr;
+
+          if (status === "recording") {
+            $("rec-badge").style.background = "var(--danger)";
+            $("rec-badge").textContent = "● REC: Recording (Stereo)";
+            $("btn-start-rec").disabled = true;
+            $("btn-pause-rec").disabled = false;
+            $("btn-resume-rec").disabled = true;
+            $("btn-stop-rec").disabled = false;
+          } else if (status === "paused") {
+            $("rec-badge").style.background = "var(--warn)";
+            $("rec-badge").textContent = "⏸ REC: Paused (PCI Masking)";
+            $("btn-start-rec").disabled = true;
+            $("btn-pause-rec").disabled = true;
+            $("btn-resume-rec").disabled = false;
+            $("btn-stop-rec").disabled = false;
+          } else if (status === "stopped") {
+            $("rec-badge").style.background = "var(--ok)";
+            $("rec-badge").textContent = "✓ REC: Saved (" + dur.toFixed(1) + "s)";
+            $("btn-start-rec").disabled = false;
+            $("btn-pause-rec").disabled = true;
+            $("btn-resume-rec").disabled = true;
+            $("btn-stop-rec").disabled = true;
+            if (rec.file_path) {
+              $("rec-path-text").textContent = rec.file_path + " (" + (rec.file_size_bytes ? (rec.file_size_bytes / 1024).toFixed(1) + " KB" : "") + ")";
+            }
+          }
+          log("🎙️ Recording: " + status.toUpperCase() + (rec.recording_id ? " [" + rec.recording_id + "]" : ""));
         }
       });
 
@@ -1414,6 +1476,145 @@
       }
     } catch (e) {
       log("❌ Failed to drop voicemail: " + e);
+    }
+  });
+
+  // Real-Time Call Recording Controls (Task 2.5)
+  var recTimerInterval = null;
+  var recStartTimestamp = null;
+  var recPausedAccum = 0;
+
+  $("btn-start-rec").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    log("🎙️ Initiating dual-channel stereo call recording...");
+
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({
+          action: "start_recording",
+          compliance_mode: "two_party"
+        }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+
+    try {
+      var res = await fetch("/api/telephony/recording/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId, compliance_mode: "two_party", beep_on_start: true })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        $("rec-badge").style.background = "var(--danger)";
+        $("rec-badge").textContent = "● REC: Recording (Stereo)";
+        $("rec-status-text").textContent = "RECORDING";
+        $("btn-start-rec").disabled = true;
+        $("btn-pause-rec").disabled = false;
+        $("btn-resume-rec").disabled = true;
+        $("btn-stop-rec").disabled = false;
+
+        recStartTimestamp = Date.now();
+        recPausedAccum = 0;
+        if (recTimerInterval) clearInterval(recTimerInterval);
+        recTimerInterval = setInterval(function () {
+          if ($("rec-status-text").textContent === "RECORDING") {
+            var elapsed = Math.floor((Date.now() - recStartTimestamp - recPausedAccum) / 1000);
+            var m = Math.floor(elapsed / 60);
+            var s = elapsed % 60;
+            $("rec-duration-text").textContent = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+          }
+        }, 1000);
+
+        log("✅ Recording started [" + (data.recording ? data.recording.recording_id : "") + "] (Stereo, 2-party compliance)");
+      }
+    } catch (e) {
+      log("❌ Failed to start recording: " + e);
+    }
+  });
+
+  $("btn-pause-rec").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({
+          action: "pause_recording",
+          reason: "pci_compliance"
+        }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+    try {
+      await fetch("/api/telephony/recording/pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId, reason: "pci_compliance" })
+      });
+      $("rec-badge").style.background = "var(--warn)";
+      $("rec-badge").textContent = "⏸ REC: Paused (PCI Masking)";
+      $("rec-status-text").textContent = "PAUSED";
+      $("btn-pause-rec").disabled = true;
+      $("btn-resume-rec").disabled = false;
+      log("⏸️ Recording paused (silence padding active for PCI/HIPAA redaction)");
+    } catch (e) {}
+  });
+
+  $("btn-resume-rec").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({ action: "resume_recording" }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+    try {
+      await fetch("/api/telephony/recording/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId })
+      });
+      $("rec-badge").style.background = "var(--danger)";
+      $("rec-badge").textContent = "● REC: Recording (Stereo)";
+      $("rec-status-text").textContent = "RECORDING";
+      $("btn-pause-rec").disabled = false;
+      $("btn-resume-rec").disabled = true;
+      log("▶️ Recording resumed");
+    } catch (e) {}
+  });
+
+  $("btn-stop-rec").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    if (recTimerInterval) clearInterval(recTimerInterval);
+
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({ action: "stop_recording" }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+    try {
+      var res = await fetch("/api/telephony/recording/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        var rec = data.recording || {};
+        $("rec-badge").style.background = "var(--ok)";
+        $("rec-badge").textContent = "✓ REC: Saved (" + (rec.duration_s || 0).toFixed(1) + "s)";
+        $("rec-status-text").textContent = "STOPPED";
+        $("btn-start-rec").disabled = false;
+        $("btn-pause-rec").disabled = true;
+        $("btn-resume-rec").disabled = true;
+        $("btn-stop-rec").disabled = true;
+        if (rec.file_path) {
+          $("rec-path-text").textContent = rec.file_path + " (" + ((rec.file_size_bytes || 0) / 1024).toFixed(1) + " KB)";
+        }
+        log("💾 Recording stopped and saved to " + rec.file_path + " (" + (rec.duration_s || 0).toFixed(1) + "s)");
+      }
+    } catch (e) {
+      log("❌ Failed to stop recording: " + e);
     }
   });
 

@@ -42,6 +42,7 @@ from agent.telephony_manager import telephony_manager, asdict
 from agent.transfer_manager import transfer_manager
 from agent.dtmf_manager import dtmf_manager
 from agent.amd_manager import AMDManager, AMDState, AMDAction, VoicemailDropConfig
+from agent.recording_manager import recording_manager, RecordingConfig, ComplianceMode, RecordingStatus
 
 load_dotenv()
 log = logging.getLogger("dialogue-worker")
@@ -832,6 +833,67 @@ async def entrypoint(ctx: agents.JobContext):
                 "action": s.to_result().action.value,
                 "timestamp": time.time(),
             }, topic="amd_event", reliable=True)
+
+        elif action == "start_recording":
+            cm_str = data.get("compliance_mode", "two_party")
+            try:
+                cm = ComplianceMode(cm_str)
+            except Exception:
+                cm = ComplianceMode.TWO_PARTY
+            cfg = RecordingConfig(
+                compliance_mode=cm,
+                beep_on_start=bool(data.get("beep_on_start", True)),
+                redact_on_pause=bool(data.get("redact_on_pause", True)),
+            )
+            meta = recording_manager.start_recording(ctx.room.name, config=cfg)
+            publish({
+                "type": "recording_event",
+                "event": "recording_started",
+                "call_id": ctx.room.name,
+                "recording": meta.dict(),
+                "timestamp": time.time(),
+            }, topic="recording_event", reliable=True)
+
+        elif action == "pause_recording":
+            reason = data.get("reason", "pci_compliance")
+            meta = recording_manager.pause_recording(ctx.room.name, reason=reason)
+            publish({
+                "type": "recording_event",
+                "event": "recording_paused",
+                "call_id": ctx.room.name,
+                "recording": meta.dict(),
+                "timestamp": time.time(),
+            }, topic="recording_event", reliable=True)
+
+        elif action == "resume_recording":
+            meta = recording_manager.resume_recording(ctx.room.name)
+            publish({
+                "type": "recording_event",
+                "event": "recording_resumed",
+                "call_id": ctx.room.name,
+                "recording": meta.dict(),
+                "timestamp": time.time(),
+            }, topic="recording_event", reliable=True)
+
+        elif action == "stop_recording":
+            meta = recording_manager.stop_recording(ctx.room.name)
+            publish({
+                "type": "recording_event",
+                "event": "recording_stopped",
+                "call_id": ctx.room.name,
+                "recording": meta.dict(),
+                "timestamp": time.time(),
+            }, topic="recording_event", reliable=True)
+
+        elif action == "get_recording_state":
+            s = recording_manager.get_session(ctx.room.name)
+            publish({
+                "type": "recording_state",
+                "call_id": ctx.room.name,
+                "recording": s.to_metadata().dict() if s else None,
+                "timestamp": time.time(),
+            }, topic="recording_state", reliable=True)
+
         elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"
             log.info("Test speech requested by %s for barge-in verification", participant_id)

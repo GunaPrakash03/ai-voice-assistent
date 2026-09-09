@@ -38,6 +38,7 @@ from agent.telephony_manager import telephony_manager, asdict, normalize_phone_n
 from agent.transfer_manager import transfer_manager, TransferMode
 from agent.dtmf_manager import dtmf_manager
 from agent.amd_manager import AMDManager, AMDState, AMDAction, VoicemailDropConfig
+from agent.recording_manager import recording_manager, RecordingConfig, ComplianceMode
 amd_manager = AMDManager()
 
 
@@ -107,6 +108,18 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "ok", "amd": session.to_result().dict() if session else None})
             else:
                 self._send_json({"status": "ok", "default_config": amd_manager.default_config.dict()})
+            return
+        elif parsed.path == "/api/telephony/recordings":
+            self._send_json({"status": "ok", "recordings": recording_manager.list_recordings()})
+            return
+        elif parsed.path == "/api/telephony/recording":
+            q = parse_qs(parsed.query)
+            call_id = (q.get("call_id") or [""])[0]
+            if call_id:
+                s = recording_manager.get_session(call_id)
+                self._send_json({"status": "ok", "recording": s.to_metadata().dict() if s else None})
+            else:
+                self._send_json({"status": "ok", "recordings": recording_manager.list_recordings()})
             return
 
         return super().do_GET()
@@ -275,6 +288,41 @@ class Handler(SimpleHTTPRequestHandler):
             message = payload.get("message")
             res = amd_manager.trigger_voicemail_drop(call_id, custom_message=message)
             self._send_json({"status": "ok", "drop": res})
+            return
+
+        elif parsed.path == "/api/telephony/recording/start":
+            call_id = payload.get("call_id", "").strip() or "active-call"
+            cm_str = payload.get("compliance_mode", "two_party")
+            try:
+                cm = ComplianceMode(cm_str)
+            except Exception:
+                cm = ComplianceMode.TWO_PARTY
+            cfg = RecordingConfig(
+                compliance_mode=cm,
+                beep_on_start=bool(payload.get("beep_on_start", True)),
+                redact_on_pause=bool(payload.get("redact_on_pause", True)),
+            )
+            meta = recording_manager.start_recording(call_id, config=cfg)
+            self._send_json({"status": "ok", "recording": meta.dict()})
+            return
+
+        elif parsed.path == "/api/telephony/recording/pause":
+            call_id = payload.get("call_id", "").strip() or "active-call"
+            reason = payload.get("reason", "pci_compliance")
+            meta = recording_manager.pause_recording(call_id, reason=reason)
+            self._send_json({"status": "ok", "recording": meta.dict()})
+            return
+
+        elif parsed.path == "/api/telephony/recording/resume":
+            call_id = payload.get("call_id", "").strip() or "active-call"
+            meta = recording_manager.resume_recording(call_id)
+            self._send_json({"status": "ok", "recording": meta.dict()})
+            return
+
+        elif parsed.path == "/api/telephony/recording/stop":
+            call_id = payload.get("call_id", "").strip() or "active-call"
+            meta = recording_manager.stop_recording(call_id)
+            self._send_json({"status": "ok", "recording": meta.dict()})
             return
 
         self.send_error(404, "Endpoint not found")

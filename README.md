@@ -21,7 +21,8 @@ See `../ai voice assistent/` for the estimation, stack and cost documents.
 | 2.2 Call Transfer Engine | Done — `verify_transfer.py` 6/6, Blind & Warm transfer, SIP REFER, caller hold, consultation bridging, handoff briefing, decline recovery. |
 | 2.3 DTMF Digit Handling & IVR Navigation | Done — `verify_dtmf.py` 6/6, RFC 4733 & Goertzel dual-tone DSP, multi-digit buffer with `#` terminator, phone tree IVR routing engine, REST & WebRTC data channel events. |
 | 2.4 Answering Machine Detection (AMD) & Voicemail Drop | Done — `verify_amd.py` 6/6, temporal cadence classifier, Goertzel voicemail beep DSP, transcript keyword detector, automated voicemail drop, REST & WebRTC data channel events. |
-| 2.5 Real-Time Call Recording, Dual-Channel Stereo & Compliance | Next up — Call recording pipeline, dual-channel stereo split, beep compliance disclosures, and storage upload. |
+| 2.5 Real-Time Call Recording, Dual-Channel Stereo & Compliance | Done — `verify_recording.py` 6/6, dual-channel stereo split, 1400 Hz compliance tone, PCI/HIPAA pause/resume redaction, RIFF WAV container, REST & WebRTC data channel events. |
+| 2.6 WebRTC Telephony Softphone / Web Calling Dialpad | Next up — Browser SIP dialer, microphone device selection, incoming call notification banner, ringtones, and DTMF integration. |
 
 ## Run it
 
@@ -38,6 +39,7 @@ python3 scripts/verify_sip.py      # SIP gateway & telephony integration accepta
 python3 scripts/verify_transfer.py # call transfer engine acceptance (2.2)
 python3 scripts/verify_dtmf.py     # DTMF keypad & IVR phone tree acceptance (2.3)
 python3 scripts/verify_amd.py      # Answering Machine Detection & Voicemail Drop (2.4)
+python3 scripts/verify_recording.py # Dual-channel stereo recording & compliance (2.5)
 ```
 
 The verify script proves the four things task 1.1 promises: the server
@@ -261,6 +263,38 @@ Enables real-time classification of live human callers versus automated voicemai
 
 ```bash
 python3 scripts/verify_amd.py # verifies all 6/6 checks for Task 2.4
+```
+
+## Real-Time Call Recording, Dual-Channel Stereo & Compliance (task 2.5)
+
+Enables full-duplex regulatory-compliant call recording with separate stereo tracks for caller and AI agent:
+
+- **Dual-Channel Stereo Audio Capture (Left: Caller, Right: Agent)**:
+  - Interleaves separate mono 16-bit PCM audio frames into true stereo (`[L0, R0, L1, R1, ...]`), eliminating audio bleed and enabling isolated per-speaker STT diarization, acoustic analysis, and sentiment extraction in post-call pipelines.
+- **Regulatory Consent & Compliance Engine**:
+  - Full support for FCC, FTC, GDPR, and US Two-Party Consent regulations (California Penal Code § 632).
+  - Generates standard 1400 Hz compliance notification beep tones on call start and periodic intervals.
+  - Spoken disclosure notice flag (*"This call may be recorded for quality assurance and compliance purposes"*).
+- **PCI-DSS & HIPAA Privacy Controls (Pause / Resume)**:
+  - Dynamically pauses audio capture during sensitive data entry (credit card numbers, CVVs, SSNs, or health records).
+  - Automatically injects zero-leakage silence frames during pause periods to maintain flawless timeline synchronization without storing sensitive PII on disk.
+- **Broadcast-Standard RIFF/WAV Container Pipeline**:
+  - Directly streams 16-bit PCM stereo WAV files with valid RIFF headers, sample counts, duration telemetry, and storage path tracking.
+- **Telephony Recording REST API Server (Port 8091)**:
+  - `GET /api/telephony/recordings` — list all active and historic call recordings.
+  - `GET /api/telephony/recording?call_id=<id>` — inspect live recording metadata, status, duration, and file path.
+  - `POST /api/telephony/recording/start` — start recording (`call_id`, `compliance_mode`, `beep_on_start`).
+  - `POST /api/telephony/recording/pause` — pause recording for PCI redaction (`call_id`, `reason`).
+  - `POST /api/telephony/recording/resume` — resume recording (`call_id`).
+  - `POST /api/telephony/recording/stop` — stop recording and finalize WAV container.
+- **WebRTC Data Channel Integration**:
+  - LiveKit data channel events: emits `recording_event` (`recording_started`, `recording_paused`, `recording_resumed`, `recording_stopped`) and `recording_state`.
+  - Listens to `start_recording`, `pause_recording`, `resume_recording`, `stop_recording`, and `get_recording_state` actions.
+- **Interactive Browser Telephony Console**:
+  - Dedicated Call Recording panel on `http://localhost:8091` with live duration clock, pulsing recording badge, PCI redaction pause/resume controls, and download info.
+
+```bash
+python3 scripts/verify_recording.py # verifies all 6/6 checks for Task 2.5
 ```
 
 
