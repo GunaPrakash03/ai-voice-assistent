@@ -188,11 +188,14 @@ class StreamingTTSManager:
         self.voice = voice
         self.sample_rate = sample_rate
 
-        self._is_mock = not bool(self.api_key)
+        self._is_mock = True
         self._interrupted = False
         self._active_play_task: Optional[asyncio.Task] = None
+        self.provider = "simulator"
 
-        if not self._is_mock:
+        deepgram_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
+
+        if self.api_key:
             try:
                 from livekit.plugins import cartesia
                 self._tts = cartesia.TTS(
@@ -201,14 +204,32 @@ class StreamingTTSManager:
                     voice=self.voice,
                     sample_rate=self.sample_rate,
                 )
+                self._is_mock = False
+                self.provider = "cartesia"
                 log.info("Initialized Cartesia Sonic TTS (model=%s, voice=%s)", self.model, self.voice)
             except Exception as e:
-                log.warning("Failed to initialize Cartesia TTS (%s), falling back to simulator", e)
+                log.warning("Failed to initialize Cartesia TTS (%s), checking fallbacks", e)
                 self._is_mock = True
-                self._tts = SimulatedStreamingTTS(sample_rate=self.sample_rate)
-        else:
-            log.info("CARTESIA_API_KEY not set — using local streaming TTS simulator")
+
+        if self._is_mock and deepgram_key:
+            try:
+                from livekit.plugins import deepgram
+                self._tts = deepgram.TTS(
+                    api_key=deepgram_key,
+                    model=os.getenv("DEEPGRAM_TTS_MODEL", "aura-2-andromeda-en"),
+                    sample_rate=self.sample_rate,
+                )
+                self._is_mock = False
+                self.provider = "deepgram-aura"
+                log.info("Initialized Deepgram Aura TTS (real human voice via active DEEPGRAM_API_KEY)")
+            except Exception as e:
+                log.warning("Failed to initialize Deepgram Aura TTS (%s)", e)
+                self._is_mock = True
+
+        if self._is_mock:
+            log.info("No cloud TTS keys available — using local acoustic formant simulator")
             self._tts = SimulatedStreamingTTS(sample_rate=self.sample_rate)
+            self.provider = "simulator"
 
     @property
     def is_mock(self) -> bool:

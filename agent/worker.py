@@ -172,8 +172,8 @@ async def entrypoint(ctx: agents.JobContext):
             "duration_ms": dur_ms,
             "audio_duration_ms": audio_dur_ms,
             "characters": getattr(m, "characters_count", 0),
-            "provider": getattr(tts_manager.tts, "provider", "cartesia"),
-            "model": getattr(tts_manager.tts, "model", TTS_MODEL),
+            "provider": getattr(tts_manager, "provider", "cartesia"),
+            "model": getattr(tts_manager.tts, "model", getattr(tts_manager, "model", TTS_MODEL)),
             "interrupted": getattr(m, "cancelled", False),
             "timestamp": time.time(),
         }, topic="tts_metrics", reliable=True)
