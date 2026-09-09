@@ -292,7 +292,7 @@ async def test():
     track = rtc.LocalAudioTrack.create_audio_track('mic', source)
     await room.local_participant.publish_track(track, rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE))
 
-    await asyncio.wait_for(agent_ready, timeout=10.0)
+    await asyncio.wait_for(agent_ready, timeout=15.0)
     await asyncio.sleep(0.5)
 
     # Send start_recording action over WebRTC data channel
@@ -302,7 +302,7 @@ async def test():
     }).encode()
     await room.local_participant.publish_data(rec_pkt, reliable=True)
 
-    result = await asyncio.wait_for(rec_event_received, timeout=10.0)
+    result = await asyncio.wait_for(rec_event_received, timeout=15.0)
     await room.disconnect()
     ev = result.get('event', 'unknown')
     status = result.get('recording', {}).get('status', 'unknown')

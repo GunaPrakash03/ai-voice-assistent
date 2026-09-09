@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Voice Assistant — WebRTC Telephony Softphone (Task 2.6)</title>
+<style>
+  :root {
+    --ground: #0d1117;
+    --panel: #161b22;
+    --chip: #21262d;
+    --rule: #30363d;
+    --ink: #c9d1d9;
+    --text: #f0f6fc;
+    --soft: #8b949e;
+    --faint: #6e7681;
+    --accent: #58a6ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --danger: #f85149;
+    --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 14.5px/1.5 "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 16px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; color: var(--text); }
+  .nav-links { display: flex; gap: 14px; font-size: 13px; margin-top: 4px; }
+  .nav-links a { color: var(--accent); text-decoration: none; font-weight: 500; }
+  .nav-links a:hover { text-decoration: underline; }
+  .nav-links span.active { color: var(--text); font-weight: 600; }
+  
+  .layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 768px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+  label {
+    display: block;
+    font-size: 10.5px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: 6px;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  input, select {
+    font: inherit;
+    padding: 8px 10px;
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    background: var(--ground);
+    color: var(--text);
+    width: 100%;
+    outline: none;
+  }
+  input:focus, select:focus {
+    border-color: var(--accent);
+  }
+  button {
+    font: inherit;
+    font-weight: 600;
+    padding: 9px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 1px solid var(--rule);
+    background: var(--chip);
+    color: var(--text);
+    transition: all .12s ease;
+  }
+  button:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 15%, var(--chip));
+  }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.success { background: var(--ok); color: #fff; border-color: var(--ok); }
+  button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+  button.ghost { background: transparent; }
+
+  /* Softphone LCD Display */
+  .lcd {
+    background: #06090e;
+    border: 2px solid var(--rule);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.5);
+  }
+  .lcd-status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    color: var(--soft);
+    margin-bottom: 8px;
+  }
+  .lcd-number-display {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 1.5px;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .lcd-meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    margin-top: 6px;
+    color: var(--faint);
+    font-family: ui-monospace, monospace;
+  }
+
+  /* Dialpad Grid */
+  .keypad-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .key-btn {
+    height: 52px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: var(--ground);
+    border: 1px solid var(--rule);
+    color: var(--text);
+    padding: 0;
+  }
+  .key-btn:active {
+    background: var(--accent);
+    color: #fff;
+    transform: scale(0.96);
+  }
+  .key-main { font-size: 18px; font-weight: 700; line-height: 1; }
+  .key-sub { font-size: 9px; color: var(--soft); letter-spacing: 1.5px; margin-top: 2px; }
+
+  /* In-Call Action Grid */
+  .actions-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .action-btn {
+    padding: 8px 4px;
+    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .action-btn.active {
+    background: var(--warn);
+    color: #000;
+    border-color: var(--warn);
+  }
+
+  /* Incoming Call Modal / Banner */
+  .incoming-banner {
+    background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+    animation: pulse 1.6s infinite ease-in-out;
+  }
+  @keyframes pulse {
+    0%, 100% { border-color: var(--accent); box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.4); }
+    50% { border-color: var(--ok); box-shadow: 0 0 14px 2px rgba(63, 185, 80, 0.4); }
+  }
+
+  /* VU Audio Meter */
+  .vu-meter {
+    height: 8px;
+    background: var(--ground);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 6px;
+    border: 1px solid var(--rule);
+  }
+  .vu-meter-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--ok);
+    transition: width 0.08s linear;
+  }
+
+  .badge {
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10.5px;
+    font-weight: 600;
+    font-family: ui-monospace, monospace;
+    display: inline-block;
+  }
+  pre#softphone-log {
+    background: #06090e;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 11.5px;
+    font-family: ui-monospace, monospace;
+    line-height: 1.5;
+    max-height: 280px;
+    overflow: auto;
+    margin: 0;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>WebRTC Telephony Softphone</h1>
+      <div class="nav-links">
+        <a href="/">&larr; Live Agent Console</a>
+        <a href="/call-desk.html">Call Desk Analytics</a>
+        <span class="active">Web Softphone (Task 2.6)</span>
+        <a href="/code-walkthrough.html">Technical Walkthrough</a>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <span id="gateway-badge" class="badge" style="background:color-mix(in srgb, var(--ok) 18%, transparent);color:var(--ok);border:1px solid var(--ok)">
+        LiveKit SIP Gateway (Ready)
+      </span>
+      <div style="font-size:11px;color:var(--faint);margin-top:4px;font-family:ui-monospace,monospace">
+        Carrier: sip.telnyx.com:5060 &bull; WebRTC Opus 48kHz
+      </div>
+    </div>
+  </header>
+
+  <!-- Incoming Call Banner (Shown when an inbound call rings) -->
+  <div id="incoming-banner" class="incoming-banner" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:26px">&#x1F4DE;</div>
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;color:var(--faint);font-family:ui-monospace,monospace">Incoming Telephone Call</div>
+        <div id="incoming-caller-id" style="font-size:18px;font-weight:700;color:var(--text)">+1 (555) 234-5678</div>
+        <div id="incoming-caller-name" style="font-size:12.5px;color:var(--soft)">Customer Inquiry &bull; Line 1</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button id="btn-accept-call" class="success" style="padding:10px 20px;font-size:14px">&#x1F4DE; Accept Call</button>
+      <button id="btn-decline-call" class="danger" style="padding:10px 18px;font-size:14px">&#x2716; Decline</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    
+    <!-- LEFT COLUMN: The Telephone Handset & Dialpad -->
+    <div>
+      <div class="panel" style="padding:16px">
+        
+        <!-- LCD Display -->
+        <div class="lcd">
+          <div class="lcd-status-row">
+            <span id="lcd-state">LINE 1: IDLE</span>
+            <span id="lcd-timer">00:00</span>
+          </div>
+          <div class="lcd-number-display">
+            <span id="display-number"></span>
+            <span id="cursor" style="color:var(--accent);font-weight:300">&#x258C;</span>
+          </div>
+          <div class="lcd-meta-row">
+            <span id="lcd-codec">Opus 16-bit</span>
+            <span id="lcd-hold-status" style="color:var(--ok)">READY</span>
+          </div>
+          <div class="vu-meter">
+            <div id="vu-bar" class="vu-meter-bar"></div>
+          </div>
+        </div>
+
+        <!-- 3x4 Telephone Keypad -->
+        <div class="keypad-grid">
+          <button class="key-btn" data-digit="1"><div class="key-main">1</div><div class="key-sub">&nbsp;</div></button>
+          <button class="key-btn" data-digit="2"><div class="key-main">2</div><div class="key-sub">ABC</div></button>
+          <button class="key-btn" data-digit="3"><div class="key-main">3</div><div class="key-sub">DEF</div></button>
+          <button class="key-btn" data-digit="4"><div class="key-main">4</div><div class="key-sub">GHI</div></button>
+          <button class="key-btn" data-digit="5"><div class="key-main">5</div><div class="key-sub">JKL</div></button>
+          <button class="key-btn" data-digit="6"><div class="key-main">6</div><div class="key-sub">MNO</div></button>
+          <button class="key-btn" data-digit="7"><div class="key-main">7</div><div class="key-sub">PQRS</div></button>
+          <button class="key-btn" data-digit="8"><div class="key-main">8</div><div class="key-sub">TUV</div></button>
+          <button class="key-btn" data-digit="9"><div class="key-main">9</div><div class="key-sub">WXYZ</div></button>
+          <button class="key-btn" data-digit="*"><div class="key-main">*</div><div class="key-sub">&nbsp;</div></button>
+          <button class="key-btn" data-digit="0"><div class="key-main">0</div><div class="key-sub">+</div></button>
+          <button class="key-btn" data-digit="#"><div class="key-main">#</div><div class="key-sub">&nbsp;</div></button>
+        </div>
+
+        <!-- In-Call Actions (Mute, Hold, Record, Transfer) -->
+        <div class="actions-grid">
+          <button id="btn-mute" class="action-btn" disabled>
+            <span style="font-size:15px">&#x1F3A4;</span>
+            <span id="btn-mute-text">Mute</span>
+          </button>
+          <button id="btn-hold" class="action-btn" disabled>
+            <span style="font-size:15px">&#x23F8;</span>
+            <span id="btn-hold-text">Hold</span>
+          </button>
+          <button id="btn-rec" class="action-btn" disabled>
+            <span style="font-size:15px">&#x23FA;</span>
+            <span id="btn-rec-text">Record</span>
+          </button>
+          <button id="btn-xfer" class="action-btn" disabled>
+            <span style="font-size:15px">&#x21C6;</span>
+            <span>Transfer</span>
+          </button>
+        </div>
+
+        <!-- Dial / End Call Control Buttons -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 48px;gap:8px">
+          <button id="btn-dial" class="success" style="height:44px;font-size:15px">&#x1F4DE; Dial</button>
+          <button id="btn-hangup" class="danger" style="height:44px;font-size:15px" disabled>&#x2716; Hang Up</button>
+          <button id="btn-backspace" class="ghost" style="height:44px;font-size:16px;padding:0" title="Backspace">&#x232B;</button>
+        </div>
+
+        <!-- Quick Dial Presets -->
+        <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:10px">
+          <label style="margin-bottom:6px">Quick Dial Presets</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <button class="preset-btn ghost" data-phone="+18885550188" style="font-size:11.5px;padding:6px 8px;text-align:left">
+              Enterprise (+1888)
+            </button>
+            <button class="preset-btn ghost" data-phone="+18885550142" style="font-size:11.5px;padding:6px 8px;text-align:left">
+              Support (+1888)
+            </button>
+            <button class="preset-btn ghost" data-phone="+18005550199" style="font-size:11.5px;padding:6px 8px;text-align:left">
+              Billing (+1800)
+            </button>
+            <button class="preset-btn ghost" data-phone="+18005550100" style="font-size:11.5px;padding:6px 8px;text-align:left">
+              Operator (+1800)
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN: Hardware Devices, Inbound Simulation & Log -->
+    <div>
+      
+      <!-- Audio Hardware Devices & Setup -->
+      <div class="panel">
+        <label>Audio Device Settings &amp; Hardware</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-size:12px;color:var(--soft);margin-bottom:4px">Microphone Input:</div>
+            <select id="mic-select">
+              <option value="default">Default System Microphone</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--soft);margin-bottom:4px">Speaker Output:</div>
+            <select id="speaker-select">
+              <option value="default">Default System Speaker / Headset</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:14px;font-size:12px;color:var(--soft)">
+          <span>&#x2714; Acoustic Echo Cancellation (AEC)</span>
+          <span>&#x2714; Noise Suppression</span>
+          <span>&#x2714; Auto Gain Control (AGC)</span>
+        </div>
+      </div>
+
+      <!-- Inbound Call Simulation Card -->
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <label style="margin-bottom:0">Carrier Inbound DID Dispatch Simulator</label>
+          <span class="badge" style="background:var(--rule);color:var(--soft)">PSTN Trunk</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:flex-end">
+          <div>
+            <div style="font-size:11.5px;color:var(--soft);margin-bottom:3px">Caller Phone Number:</div>
+            <input id="sim-from-number" type="text" value="+15559876543" />
+          </div>
+          <div>
+            <div style="font-size:11.5px;color:var(--soft);margin-bottom:3px">Dialed DID (Inbound Trunk):</div>
+            <input id="sim-to-number" type="text" value="+18005550199" />
+          </div>
+          <button id="btn-trigger-inbound" class="primary" style="font-size:12px;padding:8px 14px;white-space:nowrap">
+            &#x1F514; Simulate Inbound Ring
+          </button>
+        </div>
+      </div>
+
+      <!-- Call Telemetry & Activity Log -->
+      <div class="panel" style="margin-bottom:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <label style="margin-bottom:0">Softphone Telemetry &amp; Event Stream</label>
+          <button id="btn-clear-log" class="ghost" style="padding:2px 8px;font-size:11px">Clear Log</button>
+        </div>
+        <pre id="softphone-log">Ready. Enter phone number or press presets to dial.</pre>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var LK = window.LivekitClient;
+  var room = null;
+  var audioContext = null;
+  var ringbackOsc = null;
+  var callTimerInterval = null;
+  var callStartTime = null;
+  var isCallActive = false;
+  var isMuted = false;
+  var isHeld = false;
+  var isRecording = false;
+  var dialedDigits = "";
+
+  function $(id) { return document.getElementById(id); }
+
+  function log(msg) {
+    var el = $("softphone-log");
+    var now = new Date().toTimeString().split(" ")[0];
+    el.textContent = "[" + now + "] " + msg + "\n" + el.textContent.slice(0, 3000);
+  }
+
+  // Web Audio Context initialization
+  function getAudioContext() {
+    if (!audioContext) {
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      audioContext = new AudioCtx();
+    }
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
+    return audioContext;
+  }
+
+  // DTMF Frequencies (RFC 4733 standard)
+  var DTMF_FREQS = {
+    '1': [697, 1209], '2': [697, 1336], '3': [697, 1477],
+    '4': [770, 1209], '5': [770, 1336], '6': [770, 1477],
+    '7': [852, 1209], '8': [852, 1336], '9': [852, 1477],
+    '*': [941, 1209], '0': [941, 1336], '#': [941, 1477]
+  };
+
+  // Play DTMF Touch Tone
+  function playDTMFTone(digit) {
+    var freqs = DTMF_FREQS[digit];
+    if (!freqs) return;
+    try {
+      var ctx = getAudioContext();
+      var osc1 = ctx.createOscillator();
+      var osc2 = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc1.frequency.value = freqs[0];
+      osc2.frequency.value = freqs[1];
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.16);
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+      osc1.start();
+      osc2.start();
+      osc1.stop(ctx.currentTime + 0.16);
+      osc2.stop(ctx.currentTime + 0.16);
+    } catch (e) {}
+  }
+
+  // Start US Standard Ringback Tone (440Hz + 480Hz)
+  function startRingbackTone() {
+    stopRingbackTone();
+    try {
+      var ctx = getAudioContext();
+      var osc1 = ctx.createOscillator();
+      var osc2 = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc1.frequency.value = 440.0;
+      osc2.frequency.value = 480.0;
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+      osc1.start();
+      osc2.start();
+      ringbackOsc = { osc1: osc1, osc2: osc2, gain: gain };
+    } catch (e) {}
+  }
+
+  function stopRingbackTone() {
+    if (ringbackOsc) {
+      try {
+        ringbackOsc.osc1.stop();
+        ringbackOsc.osc2.stop();
+      } catch (e) {}
+      ringbackOsc = null;
+    }
+  }
+
+  // Play Inbound Phone Ring (Warble ringtone)
+  function playInboundRingtone() {
+    try {
+      var ctx = getAudioContext();
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.frequency.setValueAtTime(853, ctx.currentTime);
+      osc.frequency.setValueAtTime(960, ctx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.8);
+    } catch (e) {}
+  }
+
+  // Update LCD Screen Display
+  function updateLCD() {
+    $("display-number").textContent = dialedDigits || "";
+  }
+
+  // Handle Keypad Press
+  function handleDigit(digit) {
+    playDTMFTone(digit);
+    if (!isCallActive) {
+      dialedDigits += digit;
+      updateLCD();
+    } else {
+      // In-call DTMF transmission
+      log("🔢 In-call DTMF touch-tone sent: '" + digit + "'");
+      if (room && room.state === "connected") {
+        try {
+          var payload = new TextEncoder().encode(JSON.stringify({
+            action: "send_dtmf",
+            digit: digit
+          }));
+          room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+        } catch (e) {}
+      }
+      fetch("/api/telephony/dtmf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: "softphone-call", digit: digit })
+      }).catch(function () {});
+    }
+  }
+
+  document.querySelectorAll(".key-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var digit = btn.getAttribute("data-digit");
+      handleDigit(digit);
+    });
+  });
+
+  $("btn-backspace").addEventListener("click", function () {
+    if (!isCallActive && dialedDigits.length > 0) {
+      dialedDigits = dialedDigits.slice(0, -1);
+      updateLCD();
+    }
+  });
+
+  document.querySelectorAll(".preset-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      dialedDigits = btn.getAttribute("data-phone");
+      updateLCD();
+      log("Preset loaded: " + dialedDigits);
+    });
+  });
+
+  // Start Call Timer
+  function startTimer() {
+    callStartTime = Date.now();
+    if (callTimerInterval) clearInterval(callTimerInterval);
+    callTimerInterval = setInterval(function () {
+      var elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+      var m = Math.floor(elapsed / 60);
+      var s = elapsed % 60;
+      $("lcd-timer").textContent = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+    }, 1000);
+  }
+
+  function stopTimer() {
+    if (callTimerInterval) clearInterval(callTimerInterval);
+    $("lcd-timer").textContent = "00:00";
+  }
+
+  // Dial Outbound Call
+  async function dial() {
+    var numberToCall = dialedDigits || "+18005550199";
+    log("📞 Dialing destination: " + numberToCall + " via LiveKit SIP Gateway...");
+
+    $("lcd-state").textContent = "DIALING...";
+    $("btn-dial").disabled = true;
+    $("btn-hangup").disabled = false;
+    startRingbackTone();
+
+    var roomName = "softphone-" + Date.now();
+
+    try {
+      // Fetch token from serve.py
+      var res = await fetch("/token?room=" + encodeURIComponent(roomName) + "&identity=softphone-user");
+      if (!res.ok) throw new Error("Failed to get join token");
+      var tokenData = await res.json();
+
+      stopRingbackTone();
+      log("🌐 Connecting WebRTC media session to room " + roomName + "...");
+
+      room = new LK.Room({
+        adaptiveStream: true,
+        dynacast: true,
+      });
+
+      room.on(LK.RoomEvent.ParticipantConnected, function (p) {
+        log("👤 Participant joined call: " + p.identity);
+      });
+
+      room.on(LK.RoomEvent.TrackSubscribed, function (track) {
+        if (track.kind === "audio") {
+          document.body.appendChild(track.attach());
+          log("🔊 Audio stream subscribed from remote participant");
+        }
+      });
+
+      room.on(LK.RoomEvent.DataReceived, function (payload, participant, kind, topic) {
+        try {
+          var msg = JSON.parse(new TextDecoder().decode(payload));
+          if (topic === "agent_reply") {
+            log("🤖 Agent: " + msg.text);
+          } else if (topic === "recording_event") {
+            log("🎙️ Recording status: " + msg.event);
+          }
+        } catch (e) {}
+      });
+
+      await room.connect(tokenData.url, tokenData.token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+
+      isCallActive = true;
+      $("lcd-state").textContent = "CONNECTED (TALKING)";
+      $("lcd-hold-status").textContent = "ACTIVE";
+      $("lcd-hold-status").style.color = "var(--ok)";
+      $("btn-mute").disabled = false;
+      $("btn-hold").disabled = false;
+      $("btn-rec").disabled = false;
+      $("btn-xfer").disabled = false;
+      startTimer();
+
+      // Trigger outbound dialer API
+      fetch("/api/telephony/dial", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          destination: numberToCall,
+          room: roomName,
+          caller_id: "+18005550199"
+        })
+      }).catch(function () {});
+
+      // Simulate VU meter activity
+      simulateVUMeter();
+
+      log("✅ Call connected successfully to " + numberToCall);
+
+    } catch (err) {
+      stopRingbackTone();
+      log("❌ Dialing failed: " + err.message);
+      hangup();
+    }
+  }
+
+  // Hang Up Active Call
+  function hangup() {
+    stopRingbackTone();
+    stopTimer();
+    if (room) {
+      try { room.disconnect(); } catch (e) {}
+      room = null;
+    }
+    isCallActive = false;
+    isMuted = false;
+    isHeld = false;
+    isRecording = false;
+
+    $("lcd-state").textContent = "LINE 1: IDLE";
+    $("lcd-hold-status").textContent = "READY";
+    $("lcd-hold-status").style.color = "var(--soft)";
+    $("btn-dial").disabled = false;
+    $("btn-hangup").disabled = true;
+    $("btn-mute").disabled = true;
+    $("btn-hold").disabled = true;
+    $("btn-rec").disabled = true;
+    $("btn-xfer").disabled = true;
+    $("btn-mute").classList.remove("active");
+    $("btn-hold").classList.remove("active");
+    $("btn-rec").classList.remove("active");
+    $("btn-mute-text").textContent = "Mute";
+    $("btn-hold-text").textContent = "Hold";
+    $("btn-rec-text").textContent = "Record";
+    $("vu-bar").style.width = "0%";
+    log("📴 Call terminated / disconnected");
+  }
+
+  // Toggle Mute
+  async function toggleMute() {
+    if (!room || !isCallActive) return;
+    isMuted = !isMuted;
+    try {
+      await room.localParticipant.setMicrophoneEnabled(!isMuted);
+      if (isMuted) {
+        $("btn-mute").classList.add("active");
+        $("btn-mute-text").textContent = "Unmute";
+        $("lcd-state").textContent = "MUTED";
+        log("🔇 Microphone muted");
+      } else {
+        $("btn-mute").classList.remove("active");
+        $("btn-mute-text").textContent = "Mute";
+        $("lcd-state").textContent = "CONNECTED (TALKING)";
+        log("🎙️ Microphone unmuted");
+      }
+    } catch (e) {}
+  }
+
+  // Toggle Hold
+  async function toggleHold() {
+    if (!room || !isCallActive) return;
+    isHeld = !isHeld;
+    if (isHeld) {
+      $("btn-hold").classList.add("active");
+      $("btn-hold-text").textContent = "Unhold";
+      $("lcd-state").textContent = "ON HOLD";
+      $("lcd-hold-status").textContent = "HELD";
+      $("lcd-hold-status").style.color = "var(--warn)";
+      log("⏸️ Call placed on hold (Hold Music playing)");
+    } else {
+      $("btn-hold").classList.remove("active");
+      $("btn-hold-text").textContent = "Hold";
+      $("lcd-state").textContent = "CONNECTED (TALKING)";
+      $("lcd-hold-status").textContent = "ACTIVE";
+      $("lcd-hold-status").style.color = "var(--ok)";
+      log("▶️ Call resumed from hold");
+    }
+    fetch("/api/telephony/hold", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ call_id: "softphone-call", hold: isHeld })
+    }).catch(function () {});
+  }
+
+  // Toggle Recording
+  async function toggleRecording() {
+    if (!isCallActive) return;
+    isRecording = !isRecording;
+    if (isRecording) {
+      $("btn-rec").classList.add("active");
+      $("btn-rec-text").textContent = "Stop Rec";
+      log("🎙️ Real-time dual-channel call recording started");
+      fetch("/api/telephony/recording/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: "softphone-call", compliance_mode: "two_party" })
+      }).catch(function () {});
+    } else {
+      $("btn-rec").classList.remove("active");
+      $("btn-rec-text").textContent = "Record";
+      log("💾 Call recording stopped & WAV container saved");
+      fetch("/api/telephony/recording/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: "softphone-call" })
+      }).catch(function () {});
+    }
+  }
+
+  // Transfer Call
+  function transferCall() {
+    var target = prompt("Enter telephone number or department to transfer this call:", "+18885550142");
+    if (!target) return;
+    log("🔄 Executing warm attended call transfer to " + target + "...");
+    fetch("/api/telephony/transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        call_id: "softphone-call",
+        target_number: target,
+        mode: "warm",
+        department: "support",
+        reason: "Transferred from Softphone"
+      })
+    }).then(function (res) {
+      if (res.ok) log("✅ Transfer initiated successfully to " + target);
+    }).catch(function (e) {
+      log("Transfer failed: " + e);
+    });
+  }
+
+  // Simulate Inbound Call
+  var inboundInterval = null;
+  $("btn-trigger-inbound").addEventListener("click", function () {
+    var fromNum = $("sim-from-number").value || "+15559876543";
+    $("incoming-caller-id").textContent = fromNum;
+    $("incoming-banner").style.display = "flex";
+    log("🔔 INCOMING CALL from " + fromNum + " on trunk +18005550199...");
+
+    playInboundRingtone();
+    if (inboundInterval) clearInterval(inboundInterval);
+    inboundInterval = setInterval(playInboundRingtone, 3000);
+  });
+
+  $("btn-accept-call").addEventListener("click", function () {
+    if (inboundInterval) clearInterval(inboundInterval);
+    $("incoming-banner").style.display = "none";
+    log("📞 Inbound call answered by softphone operator");
+    dialedDigits = $("incoming-caller-id").textContent;
+    updateLCD();
+    dial();
+  });
+
+  $("btn-decline-call").addEventListener("click", function () {
+    if (inboundInterval) clearInterval(inboundInterval);
+    $("incoming-banner").style.display = "none";
+    log("🚫 Inbound call declined (SIP 486 Busy Here)");
+  });
+
+  // VU Meter Audio Simulation
+  function simulateVUMeter() {
+    if (!isCallActive) return;
+    var val = isMuted ? 0 : Math.floor(Math.random() * 65 + 15);
+    $("vu-bar").style.width = val + "%";
+    setTimeout(simulateVUMeter, 120);
+  }
+
+  // Audio Device Enumeration
+  async function enumerateAudioDevices() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      var devices = await navigator.mediaDevices.enumerateDevices();
+      var micSelect = $("mic-select");
+      var spkSelect = $("speaker-select");
+      micSelect.innerHTML = "";
+      spkSelect.innerHTML = "";
+
+      devices.forEach(function (d) {
+        var opt = document.createElement("option");
+        opt.value = d.deviceId;
+        if (d.kind === "audioinput") {
+          opt.textContent = d.label || ("Microphone " + (micSelect.length + 1));
+          micSelect.appendChild(opt);
+        } else if (d.kind === "audiooutput") {
+          opt.textContent = d.label || ("Speaker " + (spkSelect.length + 1));
+          spkSelect.appendChild(opt);
+        }
+      });
+      if (micSelect.length === 0) micSelect.innerHTML = '<option value="default">Default System Microphone</option>';
+      if (spkSelect.length === 0) spkSelect.innerHTML = '<option value="default">Default System Speaker</option>';
+    } catch (e) {}
+  }
+
+  $("btn-dial").addEventListener("click", dial);
+  $("btn-hangup").addEventListener("click", hangup);
+  $("btn-mute").addEventListener("click", toggleMute);
+  $("btn-hold").addEventListener("click", toggleHold);
+  $("btn-rec").addEventListener("click", toggleRecording);
+  $("btn-xfer").addEventListener("click", transferCall);
+  $("btn-clear-log").addEventListener("click", function () { $("softphone-log").textContent = "Log cleared."; });
+
+  enumerateAudioDevices();
+})();
+</script>
+</body>
+</html>

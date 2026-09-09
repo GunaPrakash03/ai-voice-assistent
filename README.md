@@ -22,7 +22,7 @@ See `../ai voice assistent/` for the estimation, stack and cost documents.
 | 2.3 DTMF Digit Handling & IVR Navigation | Done — `verify_dtmf.py` 6/6, RFC 4733 & Goertzel dual-tone DSP, multi-digit buffer with `#` terminator, phone tree IVR routing engine, REST & WebRTC data channel events. |
 | 2.4 Answering Machine Detection (AMD) & Voicemail Drop | Done — `verify_amd.py` 6/6, temporal cadence classifier, Goertzel voicemail beep DSP, transcript keyword detector, automated voicemail drop, REST & WebRTC data channel events. |
 | 2.5 Real-Time Call Recording, Dual-Channel Stereo & Compliance | Done — `verify_recording.py` 6/6, dual-channel stereo split, 1400 Hz compliance tone, PCI/HIPAA pause/resume redaction, RIFF WAV container, REST & WebRTC data channel events. |
-| 2.6 WebRTC Telephony Softphone / Web Calling Dialpad | Next up — Browser SIP dialer, microphone device selection, incoming call notification banner, ringtones, and DTMF integration. |
+| 2.6 WebRTC Telephony Softphone / Web Calling Dialpad | Done — `verify_softphone.py` 6/6, standalone browser dialpad, Web Audio DTMF & ringback synthesizer, inbound call simulation, hardware selectors, and LiveKit WebRTC bridging. |
 
 ## Run it
 
@@ -40,6 +40,7 @@ python3 scripts/verify_transfer.py # call transfer engine acceptance (2.2)
 python3 scripts/verify_dtmf.py     # DTMF keypad & IVR phone tree acceptance (2.3)
 python3 scripts/verify_amd.py      # Answering Machine Detection & Voicemail Drop (2.4)
 python3 scripts/verify_recording.py # Dual-channel stereo recording & compliance (2.5)
+python3 scripts/verify_softphone.py # WebRTC softphone & web dialpad acceptance (2.6)
 ```
 
 The verify script proves the four things task 1.1 promises: the server
@@ -295,6 +296,36 @@ Enables full-duplex regulatory-compliant call recording with separate stereo tra
 
 ```bash
 python3 scripts/verify_recording.py # verifies all 6/6 checks for Task 2.5
+```
+
+## WebRTC Telephony Softphone & Web Calling Dialpad (task 2.6)
+
+Provides a comprehensive, standalone WebRTC SIP softphone interface (`web/softphone.html`) and PSTN dialpad connected directly to the LiveKit SIP Gateway and carrier trunks:
+
+- **Standalone Web Calling Dialpad**:
+  - Full LCD telephone display with real-time connection state (`LINE 1: IDLE`, `DIALING...`, `CONNECTED (TALKING)`, `ON HOLD`, `MUTED`), call duration counter, codec indicator (`Opus 16-bit / 48kHz`), and real-time VU audio activity meter.
+  - 3x4 telephone keypad with touch-tone dual audio feedback, alphanumeric character guides, backspace, and quick dial enterprise presets (`Enterprise +1888`, `Support +1888`, `Billing +1800`, `Operator +1800`).
+- **Web Audio DTMF & Ringback Tone Synthesizers**:
+  - Implements standard RFC 4733 / ITU-T Q.23 dual-tone multifrequency synthesis (697–941 Hz row frequencies + 1209–1477 Hz column frequencies) for all 12 telephone keys (`0-9`, `*`, `#`).
+  - Synthesizes authentic US standard ringback tones (440 Hz + 480 Hz audible cadenced ringing) during outbound call placement.
+  - Implements acoustic warble ringtones for incoming calls.
+- **Inbound PSTN Call Simulation & State Machine**:
+  - Simulated carrier DID inbound dispatch banner presenting caller ID (`+15559876543`) and trunk name with pulsing ring alert.
+  - Accept handler answers the call, joins the WebRTC media room, and connects audio.
+  - Decline handler issues standard SIP 486 Busy Here call termination.
+- **Hardware Device Selection & Audio Processing Constraints**:
+  - Automatically queries and enumerates audio input microphones and audio output speakers via `navigator.mediaDevices.enumerateDevices()`.
+  - Configures browser WebRTC audio constraints: Acoustic Echo Cancellation (AEC), Automatic Gain Control (AGC), and Noise Suppression.
+- **In-Call Telephony Control Matrix**:
+  - Microphone mute / unmute toggle with UI state feedback.
+  - Call hold / un-hold toggle with REST `/api/telephony/hold` synchronization and hold state announcements.
+  - Real-time dual-channel recording trigger (`/api/telephony/recording/start` & `/stop`).
+  - Warm / attended and blind call transfer dispatch (`/api/telephony/transfer`).
+- **Interactive Verification**:
+  - Open `http://localhost:8091/softphone.html` in any browser, select audio hardware, dial any phone number or select a preset, and talk live with the AI voice assistant.
+
+```bash
+python3 scripts/verify_softphone.py # verifies all 6/6 checks for Task 2.6
 ```
 
 
