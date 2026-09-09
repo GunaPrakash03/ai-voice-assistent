@@ -18,7 +18,8 @@ See `../ai voice assistent/` for the estimation, stack and cost documents.
 | 1.6 Mid-Call Function Calling & Retrieval Tools | Done — `verify_tools.py` 5/5, JSON Schema tool registry, async non-blocking dispatcher, <10ms filler speech engine, grounded response synthesis. |
 | 1.7 Browser WebRTC Client SDK | Done — `verify_sdk.py` 5/5, standalone browser SDK, UMD module, TypeScript definitions, audio visualizer, reconnect logic. |
 | 2.1 SIP Gateway & Telephony Integration | Done — `verify_sip.py` 5/5, LiveKit SIP carrier trunk models, inbound DID routing, outbound dialer API, REST & WebRTC data channel events. |
-| 2.2 Call Transfer Engine | Next up — Blind (cold) & warm transfers via SIP REFER, conference room bridging. |
+| 2.2 Call Transfer Engine | Done — `verify_transfer.py` 6/6, Blind & Warm transfer, SIP REFER, caller hold, consultation bridging, handoff briefing, decline recovery. |
+| 2.3 DTMF Digit Handling & IVR Navigation | Next up — In-band and RFC 4733 / RFC 2833 DTMF detection, phone keypad IVR menus. |
 
 ## Run it
 
@@ -32,6 +33,7 @@ python3 scripts/verify_tts.py   # streaming TTS engine acceptance (1.5)
 python3 scripts/verify_tools.py # mid-call function calling & tools acceptance (1.6)
 python3 scripts/verify_sdk.py   # browser WebRTC client SDK acceptance (1.7)
 python3 scripts/verify_sip.py   # SIP gateway & telephony integration acceptance (2.1)
+python3 scripts/verify_transfer.py # call transfer engine acceptance (2.2)
 ```
 
 The verify script proves the four things task 1.1 promises: the server
@@ -180,6 +182,27 @@ Enables bidirectional connectivity between the public switched telephone network
 
 ```bash
 python3 scripts/verify_sip.py # verifies all 5/5 checks for Task 2.1
+```
+
+## Call Transfer Engine (task 2.2)
+
+Enables human-in-the-loop escalation, attended call handoffs, and carrier redirection:
+
+- **Transfer Modes (Blind vs Warm)**:
+  - **Blind (Cold) Transfer**: immediate redirect of the caller's SIP session to another telephone number or PBX extension via SIP REFER (`TransferSIPParticipantRequest`), with immediate AI agent departure.
+  - **Warm (Attended) Transfer**: places caller on hold with music-on-hold, dials the receiving human specialist on a private consultation leg, delivers an automated structured conversational briefing (`generate_briefing`), bridges all participants together, and gracefully exits.
+- **Call Hold State Controller**: manages caller hold status (`is_held`, `hold_music`, `hold_reason`) with real-time WebRTC `hold_state` notifications and un-hold recovery.
+- **Automated Failure Recovery & Fallback**: if a transfer target is busy (SIP 486), declines, or times out, the caller is automatically taken off hold and the AI dialogue agent seamlessly resumes the conversation (*"Our specialist is currently unavailable. Would you like me to take a message?"*).
+- **Mid-Call Function Tool (`transfer_call`)**: allows the streaming LLM to execute call transfers autonomously when callers request human assistance (*"Can you transfer me to billing?"*), with natural filler speech (*"Transferring you to our billing specialist right now, please stay on the line..."*).
+- **Telephony Transfer REST API (Port 8091)**:
+  - `GET /api/telephony/transfers` — list active and historic transfer records.
+  - `GET /api/telephony/hold?call_id=<id>` — inspect live hold status.
+  - `POST /api/telephony/transfer` — initiate blind or warm call transfer (`call_id`, `target_number`, `mode`, `department`, `reason`).
+  - `POST /api/telephony/hold` — toggle hold and resume call (`call_id`, `hold: true|false`).
+- **Interactive Browser Console**: test blind and warm transfers, monitor handoff briefings, and toggle live call hold from `http://localhost:8091`.
+
+```bash
+python3 scripts/verify_transfer.py # verifies all 6/6 checks for Task 2.2
 ```
 
 

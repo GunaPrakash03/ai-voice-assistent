@@ -78,7 +78,7 @@
 <div class="wrap">
 
   <h1>AI Voice Assistant — Core Audio & Dialogue</h1>
-  <p class="sub">Task 2.1 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser SDK &bull; <strong>SIP Gateway &amp; Telephony</strong> &bull; <a href="/code-walkthrough.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Line-by-Line Code Walkthrough &rarr;</a></p>
+  <p class="sub">Task 2.2 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser SDK &bull; SIP Gateway &bull; <strong>Call Transfer (Blind &amp; Warm)</strong> &bull; <a href="/code-walkthrough.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Line-by-Line Code Walkthrough &rarr;</a></p>
 
   <div class="panel">
     <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
@@ -278,6 +278,46 @@
         <button id="btn-dial-phone">Dial Outbound PSTN</button>
         <button id="btn-sim-inbound" class="ghost">Simulate Inbound DID</button>
         <button id="btn-hangup-phone" class="ghost" disabled style="color:var(--warn)">Hangup</button>
+      </div>
+    </div>
+
+    <!-- Call Transfer & Hold Controller (Task 2.2) -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="margin-bottom:0">Call Transfer Engine (SIP REFER &amp; Warm Consultation — Task 2.2)</label>
+        <span id="xfer-badge" class="badge" style="background:var(--rule);color:var(--soft)">Transfer Idle</span>
+      </div>
+      <div class="row" style="align-items:flex-end">
+        <div style="flex:1;min-width:180px">
+          <label for="xfer-dest" style="font-size:12px">Transfer Target (E.164)</label>
+          <input id="xfer-dest" value="+18885550142" placeholder="+1 (888) 555-0142">
+        </div>
+        <div>
+          <label for="xfer-mode" style="font-size:12px">Mode</label>
+          <select id="xfer-mode" style="padding:6px 8px;border-radius:4px;border:1px solid var(--rule);background:var(--ground);color:var(--text)">
+            <option value="warm">Warm (Attended / Briefing)</option>
+            <option value="blind">Blind (Cold / Immediate)</option>
+          </select>
+        </div>
+        <div>
+          <label for="xfer-dept" style="font-size:12px">Department</label>
+          <select id="xfer-dept" style="padding:6px 8px;border-radius:4px;border:1px solid var(--rule);background:var(--ground);color:var(--text)">
+            <option value="billing">Billing &amp; Payments</option>
+            <option value="technical support">Technical Support</option>
+            <option value="sales">Sales &amp; Upgrades</option>
+          </select>
+        </div>
+        <button id="btn-do-xfer">Transfer Call</button>
+        <button id="btn-toggle-hold" class="ghost">Hold Call</button>
+      </div>
+
+      <!-- Live Transfer & Hold Status Card -->
+      <div id="xfer-timeline" style="margin-top:10px;padding:8px 12px;background:var(--ground);border:1px solid var(--rule);border-radius:4px;font-size:12.5px;color:var(--soft);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div><strong>Transfer:</strong> <span id="xfer-state-text">Ready</span></div>
+        <div>&bull;</div>
+        <div><strong>Hold:</strong> <span id="xfer-hold-text">Active (Talking)</span></div>
+        <div>&bull;</div>
+        <div><strong>Briefing:</strong> <span id="xfer-briefing-text" style="font-style:italic">—</span></div>
       </div>
     </div>
   </div>
@@ -581,6 +621,34 @@
             tb.style.color = "#fff";
             log("❌ Telephony error: " + msg.error);
           }
+        } else if (topic === "transfer_event") {
+          log("🔀 Transfer event: " + msg.event + (msg.transfer ? " [" + msg.transfer.mode + " -> " + msg.transfer.target_number + "]" : ""));
+          var xb = $("xfer-badge");
+          if (msg.event === "transfer_initiated") {
+            xb.textContent = "Transferring...";
+            xb.style.background = "var(--accent)";
+            xb.style.color = "#fff";
+            $("xfer-state-text").textContent = "Initiated (" + (msg.mode || "blind") + ")";
+          } else if (msg.event === "transfer_completed") {
+            xb.textContent = "✓ Transferred";
+            xb.style.background = "var(--ok)";
+            xb.style.color = "#fff";
+            $("xfer-state-text").textContent = "Completed (" + (msg.transfer ? msg.transfer.mode : "done") + ")";
+            if (msg.transfer && msg.transfer.briefing_summary) {
+              $("xfer-briefing-text").textContent = msg.transfer.briefing_summary;
+            }
+          } else if (msg.event === "transfer_failed") {
+            xb.textContent = "Transfer Failed";
+            xb.style.background = "var(--err)";
+            xb.style.color = "#fff";
+            $("xfer-state-text").textContent = "Failed: " + (msg.error || "Unknown");
+          }
+        } else if (topic === "hold_state") {
+          var isHeld = !!msg.is_held;
+          $("xfer-hold-text").textContent = isHeld ? "ON HOLD (Music Playing)" : "Active (Talking)";
+          $("xfer-hold-text").style.color = isHeld ? "var(--warn)" : "var(--ok)";
+          $("btn-toggle-hold").textContent = isHeld ? "Resume Call" : "Hold Call";
+          log("⏸️ Hold state changed: " + (isHeld ? "ON HOLD (" + msg.reason + ")" : "RESUMED"));
         }
       });
 
@@ -647,8 +715,16 @@
     $("m-call-room").textContent = "—";
     $("tel-status-badge").textContent = "SIP Trunks Ready";
     $("tel-status-badge").style.background = "var(--rule)";
-    $("tel-status-badge").style.color = "var(--soft)";
     $("btn-hangup-phone").disabled = true;
+    $("xfer-badge").textContent = "Transfer Idle";
+    $("xfer-badge").style.background = "var(--rule)";
+    $("xfer-badge").style.color = "var(--soft)";
+    $("xfer-state-text").textContent = "Ready";
+    $("xfer-hold-text").textContent = "Active (Talking)";
+    $("xfer-hold-text").style.color = "";
+    $("xfer-briefing-text").textContent = "—";
+    $("btn-toggle-hold").textContent = "Hold Call";
+    isCallOnHold = false;
     $("barge-banner").style.display = "none";
     if (raf) cancelAnimationFrame(raf);
     if (audioCtx) { audioCtx.close(); audioCtx = null; }
@@ -885,6 +961,119 @@
   $("btn-dial-phone").addEventListener("click", dialPhone);
   $("btn-sim-inbound").addEventListener("click", simulateInboundDID);
   $("btn-hangup-phone").addEventListener("click", hangupPhone);
+
+  var isCallOnHold = false;
+
+  async function executeTransfer() {
+    var dest = $("xfer-dest").value.trim();
+    var mode = $("xfer-mode").value;
+    var dept = $("xfer-dept").value;
+    if (!dest) {
+      log("Please enter a valid transfer target phone number (e.g. +18885550142)");
+      return;
+    }
+    log("Executing " + mode.toUpperCase() + " transfer to " + dest + " (" + dept + ")...");
+    var xb = $("xfer-badge");
+    xb.textContent = "Transferring...";
+    xb.style.background = "var(--accent)";
+    xb.style.color = "#fff";
+    $("xfer-state-text").textContent = "Transferring to " + dept + "...";
+
+    // WebRTC data channel transfer request if in room
+    if (room && room.localParticipant) {
+      try {
+        await room.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({
+            action: "transfer_call",
+            target_number: dest,
+            mode: mode,
+            department: dept,
+            reason: "User requested transfer in web console"
+          })),
+          { reliable: true }
+        );
+      } catch (e) {
+        log("Data channel transfer notification warning: " + e);
+      }
+    }
+
+    // Call REST endpoint
+    try {
+      var resp = await fetch("/api/telephony/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          call_id: currentActiveCallId || $("room").value || "web-call",
+          target_number: dest,
+          mode: mode,
+          department: dept,
+          caller_name: $("who").value || "Web User",
+          reason: "User requested transfer in console"
+        })
+      });
+      var data = await resp.json();
+      if (resp.ok && data.transfer) {
+        xb.textContent = "✓ Transferred";
+        xb.style.background = "var(--ok)";
+        $("xfer-state-text").textContent = "Completed (" + data.transfer.mode + ")";
+        if (data.transfer.briefing_summary) {
+          $("xfer-briefing-text").textContent = data.transfer.briefing_summary;
+        }
+        log("✅ Transfer completed successfully! ID: " + data.transfer.transfer_id + " (dur=" + data.transfer.duration_seconds + "s)");
+      } else {
+        xb.textContent = "Transfer Failed";
+        xb.style.background = "var(--err)";
+        $("xfer-state-text").textContent = "Error: " + (data.error || "Unknown");
+        log("❌ Transfer failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      xb.textContent = "Transfer Error";
+      xb.style.background = "var(--err)";
+      log("❌ Failed to reach transfer service: " + err);
+    }
+  }
+
+  async function toggleHold() {
+    isCallOnHold = !isCallOnHold;
+    log((isCallOnHold ? "Holding" : "Resuming") + " call...");
+    var btn = $("btn-toggle-hold");
+    btn.textContent = isCallOnHold ? "Resume Call" : "Hold Call";
+    $("xfer-hold-text").textContent = isCallOnHold ? "ON HOLD (Music Playing)" : "Active (Talking)";
+    $("xfer-hold-text").style.color = isCallOnHold ? "var(--warn)" : "var(--ok)";
+
+    if (room && room.localParticipant) {
+      try {
+        await room.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({
+            action: "hold_call",
+            hold: isCallOnHold,
+            reason: isCallOnHold ? "manual_hold" : "resumed"
+          })),
+          { reliable: true }
+        );
+      } catch (e) {
+        log("Data channel hold notification warning: " + e);
+      }
+    }
+
+    try {
+      await fetch("/api/telephony/hold", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          call_id: currentActiveCallId || $("room").value || "web-call",
+          hold: isCallOnHold,
+          reason: isCallOnHold ? "manual_hold" : "resumed"
+        })
+      });
+      log("✅ Call hold state updated: " + (isCallOnHold ? "HELD" : "RESUMED"));
+    } catch (err) {
+      log("❌ Failed to update hold state: " + err);
+    }
+  }
+
+  $("btn-do-xfer").addEventListener("click", executeTransfer);
+  $("btn-toggle-hold").addEventListener("click", toggleHold);
 
   $("go").addEventListener("click", join);
   $("stop").addEventListener("click", leave);

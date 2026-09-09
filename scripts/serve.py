@@ -35,6 +35,7 @@ WS_URL = env("LIVEKIT_URL")
 
 
 from agent.telephony_manager import telephony_manager, asdict, normalize_phone_number
+from agent.transfer_manager import transfer_manager, TransferMode
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -73,6 +74,18 @@ class Handler(SimpleHTTPRequestHandler):
         elif parsed.path == "/api/telephony/calls":
             self._send_json({
                 "calls": telephony_manager.list_calls(),
+            })
+            return
+        elif parsed.path == "/api/telephony/transfers":
+            self._send_json({
+                "transfers": transfer_manager.list_transfers(),
+            })
+            return
+        elif parsed.path == "/api/telephony/hold":
+            q = parse_qs(parsed.query)
+            call_id = (q.get("call_id") or [""])[0]
+            self._send_json({
+                "hold": transfer_manager.get_hold_state(call_id) if call_id else None,
             })
             return
 
@@ -118,6 +131,58 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": "No matching route found"}, 404)
             else:
                 self._send_json({"status": "ok", "routed": routed})
+            return
+
+        elif parsed.path == "/api/telephony/transfer":
+            call_id = payload.get("call_id", "").strip() or "active-call"
+            target_number = payload.get("target_number", "").strip() or payload.get("destination", "").strip()
+            mode = str(payload.get("mode", payload.get("transfer_type", "blind"))).strip().lower()
+            dept = payload.get("department")
+            reason = payload.get("reason", "Caller request")
+            caller_name = payload.get("caller_name", "Customer")
+            inquiry = payload.get("inquiry", reason)
+
+            if not target_number:
+                self._send_json({"error": "Missing 'target_number' phone number"}, 400)
+                return
+
+            try:
+                loop = asyncio.new_event_loop()
+                if mode == "warm":
+                    record = loop.run_until_complete(
+                        transfer_manager.initiate_warm_transfer(
+                            call_id=call_id,
+                            target_number=target_number,
+                            caller_name=caller_name,
+                            caller_inquiry=inquiry,
+                            department=dept,
+                            reason=reason,
+                        )
+                    )
+                else:
+                    record = loop.run_until_complete(
+                        transfer_manager.initiate_blind_transfer(
+                            call_id=call_id,
+                            target_number=target_number,
+                            department=dept,
+                            reason=reason,
+                        )
+                    )
+                loop.close()
+                self._send_json({"status": "ok", "transfer": asdict(record)})
+            except Exception as err:
+                self._send_json({"status": "error", "error": str(err)}, 500)
+            return
+
+        elif parsed.path == "/api/telephony/hold":
+            call_id = payload.get("call_id", "").strip() or "active-call"
+            hold = bool(payload.get("hold", True))
+            reason = payload.get("reason", "manual_hold")
+            if hold:
+                state = transfer_manager.put_on_hold(call_id, reason=reason)
+            else:
+                state = transfer_manager.remove_from_hold(call_id)
+            self._send_json({"status": "ok", "hold": asdict(state)})
             return
 
         self.send_error(404, "Endpoint not found")

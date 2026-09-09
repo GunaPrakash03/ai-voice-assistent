@@ -403,3 +403,60 @@ class ToolRegistry:
                 timeout=3.5,
             )
         )
+
+        # 6. Transfer Call (Task 2.2)
+        async def transfer_call(
+            destination: str,
+            transfer_type: str = "blind",
+            department: Optional[str] = None,
+            reason: Optional[str] = None,
+        ) -> dict:
+            from agent.transfer_manager import transfer_manager, TransferMode
+            norm_type = TransferMode.WARM if str(transfer_type).lower() == "warm" else TransferMode.BLIND
+            if norm_type == TransferMode.WARM:
+                rec = await transfer_manager.initiate_warm_transfer(
+                    call_id=f"call-{int(time.time())}",
+                    target_number=destination,
+                    department=department,
+                    reason=reason,
+                    caller_inquiry=reason or "Customer inquiry",
+                )
+            else:
+                rec = await transfer_manager.initiate_blind_transfer(
+                    call_id=f"call-{int(time.time())}",
+                    target_number=destination,
+                    department=department,
+                    reason=reason,
+                )
+            return {
+                "transfer_id": rec.transfer_id,
+                "status": rec.status.value,
+                "target_number": rec.target_number,
+                "mode": rec.mode.value,
+                "department": department or "specialist",
+                "message": f"Transfer to {department or destination} ({rec.mode.value}) initiated successfully.",
+            }
+
+        self.register(
+            ToolDefinition(
+                name="transfer_call",
+                description="Transfer the current live caller to another telephone number, department, or human specialist.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "destination": {"type": "string", "description": "Target phone number or extension (E.164 format, e.g. +18885550142)"},
+                        "transfer_type": {"type": "string", "enum": ["blind", "warm"], "description": "Transfer mode: blind (immediate handoff) or warm (attended with briefing)"},
+                        "department": {"type": "string", "description": "Target department name, e.g. 'billing', 'technical support', 'sales'"},
+                        "reason": {"type": "string", "description": "Reason for the transfer to provide in handoff briefing"},
+                    },
+                    "required": ["destination"],
+                },
+                handler=transfer_call,
+                filler_phrases=[
+                    "Transferring you to our {department} specialist right now, please stay on the line...",
+                    "I am connecting you directly with a human representative, one moment please...",
+                    "Placing you on a brief hold while I conference in our specialist...",
+                ],
+                timeout=4.0,
+            )
+        )

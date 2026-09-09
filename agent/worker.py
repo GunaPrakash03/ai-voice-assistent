@@ -39,6 +39,7 @@ from agent.llm_manager import (
 )
 from agent.tts_manager import StreamingTTSManager
 from agent.telephony_manager import telephony_manager, asdict
+from agent.transfer_manager import transfer_manager
 
 load_dotenv()
 log = logging.getLogger("dialogue-worker")
@@ -578,6 +579,81 @@ async def entrypoint(ctx: agents.JobContext):
                 "rules": telephony_manager.list_dispatch_rules(),
                 "timestamp": time.time(),
             }, topic="telephony_trunks", reliable=True)
+        elif action == "transfer_call":
+            target = data.get("target_number", "").strip() or data.get("destination", "").strip()
+            mode_str = str(data.get("mode", data.get("transfer_type", "blind"))).strip().lower()
+            dept = data.get("department")
+            reason = data.get("reason", "Caller request")
+            participant_id = packet.participant.identity if packet.participant else "caller"
+            log.info("Call transfer requested over data channel: %s -> %s (mode=%s, dept=%s)", participant_id, target, mode_str, dept)
+
+            async def run_transfer():
+                try:
+                    publish({
+                        "type": "transfer_event",
+                        "event": "transfer_initiated",
+                        "call_id": ctx.room.name,
+                        "target_number": target,
+                        "mode": mode_str,
+                        "department": dept,
+                        "timestamp": time.time(),
+                    }, topic="transfer_event", reliable=True)
+
+                    if mode_str == "warm":
+                        rec = await transfer_manager.initiate_warm_transfer(
+                            call_id=ctx.room.name,
+                            target_number=target,
+                            source_participant=participant_id,
+                            department=dept,
+                            reason=reason,
+                        )
+                    else:
+                        rec = await transfer_manager.initiate_blind_transfer(
+                            call_id=ctx.room.name,
+                            target_number=target,
+                            source_participant=participant_id,
+                            department=dept,
+                            reason=reason,
+                        )
+
+                    publish({
+                        "type": "transfer_event",
+                        "event": f"transfer_{rec.status.value}",
+                        "transfer": asdict(rec),
+                        "timestamp": time.time(),
+                    }, topic="transfer_event", reliable=True)
+                except Exception as xfer_err:
+                    log.error("Transfer failed: %s", xfer_err)
+                    publish({
+                        "type": "transfer_event",
+                        "event": "transfer_failed",
+                        "error": str(xfer_err),
+                        "timestamp": time.time(),
+                    }, topic="transfer_event", reliable=True)
+
+            task = asyncio.create_task(run_transfer())
+            pending.add(task)
+            task.add_done_callback(pending.discard)
+        elif action == "hold_call":
+            hold = bool(data.get("hold", True))
+            reason = data.get("reason", "manual_hold")
+            if hold:
+                st = transfer_manager.put_on_hold(ctx.room.name, reason=reason)
+            else:
+                st = transfer_manager.remove_from_hold(ctx.room.name)
+            publish({
+                "type": "hold_state",
+                "call_id": ctx.room.name,
+                "is_held": st.is_held,
+                "reason": st.hold_reason,
+                "timestamp": time.time(),
+            }, topic="hold_state", reliable=True)
+        elif action == "get_transfers":
+            publish({
+                "type": "transfers_list",
+                "transfers": transfer_manager.list_transfers(),
+                "timestamp": time.time(),
+            }, topic="transfers_list", reliable=True)
         elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"
             log.info("Test speech requested by %s for barge-in verification", participant_id)

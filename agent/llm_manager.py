@@ -283,6 +283,21 @@ class StreamingDialogueManager:
                 "method": "POST",
                 "payload": {"event": "call_inquiry", "prompt": text},
             })
+        elif "transfer" in lower or "speak to human" in lower or "operator" in lower or "representative" in lower:
+            dept = "support"
+            if "billing" in lower:
+                dept = "billing"
+            elif "sales" in lower:
+                dept = "sales"
+            elif "tech" in lower or "engineer" in lower:
+                dept = "technical support"
+            mode = "warm" if ("warm" in lower or "brief" in lower) else "blind"
+            return ("transfer_call", {
+                "destination": "+18885550142",
+                "transfer_type": mode,
+                "department": dept,
+                "reason": "Caller requested human assistance",
+            })
         return None
 
     def _format_grounded_tool_response(self, tool_name: str, tool_result: dict) -> str:
@@ -312,6 +327,11 @@ class StreamingDialogueManager:
             return f"{res.get('snippet')} Let me know if you would like more information."
         elif tool_name == "execute_webhook":
             return f"The webhook request to {res.get('url')} was dispatched and acknowledged with status {res.get('status_code', 200)}."
+        elif tool_name == "transfer_call":
+            return (
+                f"I am transferring you to our {res.get('department', 'specialist')} department now "
+                f"at {res.get('target_number')}. Please hold while you are connected."
+            )
         else:
             return f"The tool '{tool_name}' completed successfully with result: {json.dumps(res)}."
 
