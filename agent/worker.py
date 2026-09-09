@@ -33,13 +33,17 @@ from agent.llm_manager import (
     ConversationContextBuffer,
     StreamingDialogueManager,
 )
+from agent.tts_manager import StreamingTTSManager
 
 load_dotenv()
 log = logging.getLogger("dialogue-worker")
 
-# nova-3 is default STT. Override with STT_MODEL if comparing models.
+# Model configuration
 STT_MODEL = os.getenv("STT_MODEL", "nova-3")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+TTS_MODEL = os.getenv("TTS_MODEL", "sonic-3")
+CARTESIA_VOICE_ID = os.getenv("CARTESIA_VOICE_ID", "f786b574-daa5-4673-aa0c-cbe3e8534c02")
+TTS_SAMPLE_RATE = int(os.getenv("TTS_SAMPLE_RATE", "24000"))
 
 
 class VoiceAssistantAgent(Agent):
@@ -102,6 +106,12 @@ async def entrypoint(ctx: agents.JobContext):
         prefix_padding_duration=0.2,   # 200ms audio buffer before speech start
     )
 
+    tts_manager = StreamingTTSManager(
+        model=TTS_MODEL,
+        voice=CARTESIA_VOICE_ID,
+        sample_rate=TTS_SAMPLE_RATE,
+    )
+
     session = AgentSession(
         vad=vad,
         stt=deepgram.STT(
@@ -110,6 +120,7 @@ async def entrypoint(ctx: agents.JobContext):
             interim_results=True,
             punctuate=True,
         ),
+        tts=tts_manager.tts,
         turn_handling={
             "turn_detection": "vad",
             "endpointing": {
@@ -144,6 +155,24 @@ async def entrypoint(ctx: agents.JobContext):
         )
         pending.add(task)
         task.add_done_callback(pending.discard)
+
+    @tts_manager.tts.on("metrics_collected")
+    def on_tts_metrics(m):
+        ttfa_ms = round(m.ttfb * 1000.0, 2) if getattr(m, "ttfb", None) and m.ttfb > 0 else None
+        dur_ms = round(m.duration * 1000.0, 2) if getattr(m, "duration", None) else None
+        audio_dur_ms = round(m.audio_duration * 1000.0, 2) if getattr(m, "audio_duration", None) else None
+        log.info("TTS metrics: TTFA=%sms, dur=%sms, audio_dur=%sms", ttfa_ms, dur_ms, audio_dur_ms)
+        publish({
+            "type": "tts_metrics",
+            "ttfa_ms": ttfa_ms,
+            "duration_ms": dur_ms,
+            "audio_duration_ms": audio_dur_ms,
+            "characters": getattr(m, "characters_count", 0),
+            "provider": getattr(tts_manager.tts, "provider", "cartesia"),
+            "model": getattr(tts_manager.tts, "model", TTS_MODEL),
+            "interrupted": getattr(m, "cancelled", False),
+            "timestamp": time.time(),
+        }, topic="tts_metrics", reliable=True)
 
     async def execute_llm_turn(user_input: str):
         if not user_input.strip():
@@ -206,12 +235,27 @@ async def entrypoint(ctx: agents.JobContext):
                     "messages": llm_manager.context.to_list(),
                     "timestamp": time.time(),
                 }, topic="chat_history", reliable=True)
-                publish({
-                    "type": "agent_state",
-                    "state": "listening",
-                    "old_state": "speaking",
-                    "timestamp": time.time(),
-                }, topic="agent_state", reliable=True)
+
+                # Streaming TTS speech synthesis via session.say
+                speech_handle = None
+                try:
+                    speech_handle = session.say(
+                        metrics["text"],
+                        allow_interruptions=True,
+                    )
+                    await speech_handle.wait_for_playout()
+                except asyncio.CancelledError:
+                    log.info("TTS playback cancelled in turn execution")
+                except Exception as play_err:
+                    log.error("TTS playback error in turn execution: %s", play_err)
+                finally:
+                    if not user_is_speaking and (speech_handle is None or not speech_handle.interrupted):
+                        publish({
+                            "type": "agent_state",
+                            "state": "listening",
+                            "old_state": "speaking",
+                            "timestamp": time.time(),
+                        }, topic="agent_state", reliable=True)
             else:
                 log.info("LLM response was interrupted by user barge-in.")
         except asyncio.CancelledError:
@@ -267,13 +311,27 @@ async def entrypoint(ctx: agents.JobContext):
 
         if ev.new_state == "speaking":
             user_is_speaking = True
-            # Caller starts speaking: instant barge-in interruption of any active LLM generation
+            # Caller starts speaking: instant barge-in interruption of any active LLM generation & TTS playback
+            interrupted_any = False
             if llm_manager.cancel_active_generation():
+                interrupted_any = True
                 log.info("Caller barge-in detected via VAD: cancelled in-flight LLM generation.")
+            if tts_manager.interrupt_playback():
+                interrupted_any = True
+                log.info("Caller barge-in detected via VAD: cancelled in-flight TTS playback stream.")
+            try:
+                if session.current_speech and not session.current_speech.done():
+                    session.interrupt(force=True)
+                    interrupted_any = True
+                    log.info("Caller barge-in detected via VAD: interrupted active speech handle.")
+            except Exception as e:
+                log.warning("Could not interrupt session speech: %s", e)
+
+            if interrupted_any:
                 publish({
                     "type": "interruption",
                     "interrupted": True,
-                    "reason": "user_barge_in_llm",
+                    "reason": "user_barge_in",
                     "timestamp": time.time(),
                 }, topic="interruption", reliable=True)
                 publish({
@@ -307,10 +365,15 @@ async def entrypoint(ctx: agents.JobContext):
         log.info("Overlapping speech detected: is_interruption=%s", ev.is_interruption)
         if ev.is_interruption:
             llm_manager.cancel_active_generation()
+            tts_manager.interrupt_playback()
+            try:
+                session.interrupt(force=True)
+            except Exception:
+                pass
             publish({
                 "type": "interruption",
                 "interrupted": True,
-                "reason": "user_barge_in",
+                "reason": "overlapping_speech",
                 "timestamp": time.time(),
             }, topic="interruption", reliable=True)
 
@@ -355,6 +418,55 @@ async def entrypoint(ctx: agents.JobContext):
                 "messages": [],
                 "timestamp": time.time(),
             }, topic="chat_history", reliable=True)
+        elif action in ("test_tts", "speak"):
+            text = data.get("text", "Hello! This is Cartesia Sonic streaming audio synthesis with sub-100 millisecond latency.")
+            participant_id = packet.participant.identity if packet.participant else "caller"
+            log.info("Test TTS requested by %s: '%s'", participant_id, text)
+            async def run_tts_say():
+                publish({
+                    "type": "agent_state",
+                    "state": "speaking",
+                    "old_state": "listening",
+                    "timestamp": time.time(),
+                }, topic="agent_state", reliable=True)
+                speech_handle = None
+                try:
+                    speech_handle = session.say(text, allow_interruptions=True)
+                    await speech_handle.wait_for_playout()
+                except asyncio.CancelledError:
+                    log.info("Test TTS playback task cancelled")
+                except Exception as err:
+                    log.error("Test TTS playback error: %s", err)
+                finally:
+                    if not user_is_speaking and (speech_handle is None or not speech_handle.interrupted):
+                        publish({
+                            "type": "agent_state",
+                            "state": "listening",
+                            "old_state": "speaking",
+                            "timestamp": time.time(),
+                        }, topic="agent_state", reliable=True)
+
+            task = asyncio.create_task(run_tts_say())
+            pending.add(task)
+            task.add_done_callback(pending.discard)
+        elif action == "measure_ttfa":
+            text = data.get("text", "Cartesia Sonic streaming text-to-speech test phrase.")
+            async def run_measure():
+                res = await tts_manager.measure_ttfa(text)
+                log.info("Measured TTFA: %sms (total: %sms, frames: %d)", res["ttfa_ms"], res["duration_ms"], res["frames_count"])
+                publish({
+                    "type": "tts_metrics",
+                    "ttfa_ms": res["ttfa_ms"],
+                    "duration_ms": res["duration_ms"],
+                    "frames_sent": res["frames_count"],
+                    "provider": res["provider"],
+                    "model": res["model"],
+                    "timestamp": time.time(),
+                }, topic="tts_metrics", reliable=True)
+
+            task = asyncio.create_task(run_measure())
+            pending.add(task)
+            task.add_done_callback(pending.discard)
         elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"
             log.info("Test speech requested by %s for barge-in verification", participant_id)
@@ -378,7 +490,7 @@ async def entrypoint(ctx: agents.JobContext):
             task.add_done_callback(pending.discard)
 
     await session.start(agent=VoiceAssistantAgent(), room=ctx.room)
-    log.info("dialogue worker active with Silero VAD & Streaming LLM (%s)", LLM_MODEL)
+    log.info("dialogue worker active with Silero VAD, Streaming LLM (%s) & Cartesia/TTS (%s)", LLM_MODEL, TTS_MODEL)
 
 
 if __name__ == "__main__":

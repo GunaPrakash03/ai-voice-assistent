@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI Voice Assistant — Task 1.4 Streaming LLM Dialogue Manager</title>
+<title>AI Voice Assistant — Task 1.5 Streaming TTS Engine</title>
 <style>
   :root {
     --ground:#F4F6F5; --panel:#fff; --ink:#10161B; --soft:#4B565C;
@@ -78,7 +78,7 @@
 <div class="wrap">
 
   <h1>AI Voice Assistant — Core Audio & Dialogue</h1>
-  <p class="sub">Task 1.4 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD Barge-in &bull; Streaming LLM Dialogue Manager</p>
+  <p class="sub">Task 1.5 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD Barge-in &bull; Streaming LLM &bull; Cartesia Sonic Streaming TTS</p>
 
   <div class="panel">
     <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
@@ -94,7 +94,8 @@
       <div><label for="who">Your name</label><input id="who" style="width:150px"></div>
       <button id="go">Join and speak</button>
       <button id="stop" class="ghost" disabled>Leave</button>
-      <button id="test-barge" class="ghost" disabled style="white-space:nowrap" title="Agent speaks; talk over it to test barge-in">Test Speech (Barge-in)</button>
+      <button id="test-tts-btn" class="ghost" disabled style="white-space:nowrap" title="Agent speaks using Cartesia Streaming TTS">Test Cartesia TTS</button>
+      <button id="test-barge" class="ghost" disabled style="white-space:nowrap" title="Agent speaks; talk over it to test barge-in">Test Tone (Barge-in)</button>
     </div>
   </div>
 
@@ -166,6 +167,42 @@
       <div class="row">
         <input id="prompt-input" style="flex:1;min-width:240px" placeholder="Type a message, e.g. 'Hello, how can you help me?'">
         <button id="send-prompt" disabled>Send Prompt</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label>Streaming TTS Engine (Cartesia Sonic & Opus RTP Packetizer — Task 1.5)</label>
+      <span id="tts-status" class="badge" style="background:var(--rule);color:var(--soft)">TTS Idle</span>
+    </div>
+
+    <!-- Live TTS Metrics -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">TTFA (First Audio)</div>
+        <div class="metric-val" id="m-ttfa">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Audio Duration</div>
+        <div class="metric-val" id="m-audio-dur">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Sample Rate</div>
+        <div class="metric-val" id="m-sample-rate">24 kHz</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Engine Provider</div>
+        <div class="metric-val" style="font-size:14px" id="m-tts-engine">Cartesia Sonic</div>
+      </div>
+    </div>
+
+    <!-- Direct TTS synthesis test -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <label for="tts-phrase">Test Streaming TTS Audio Synthesis</label>
+      <div class="row">
+        <input id="tts-phrase" style="flex:1;min-width:240px" value="Cartesia Sonic delivers crystal-clear speech with sub-100 millisecond response time.">
+        <button id="speak-phrase-btn" disabled>Speak Phrase</button>
       </div>
     </div>
   </div>
@@ -352,11 +389,14 @@
         } else if (topic === "agent_state") {
           var ab = $("agent-badge");
           var ls = $("llm-status");
+          var ttsBadge = $("tts-status");
           ab.textContent = msg.state.toUpperCase();
           if (msg.state === "thinking") {
             ab.style.background = "var(--warn)"; ab.style.color = "#fff";
             ls.textContent = "🧠 Thinking / Generating...";
             ls.style.background = "var(--warn)"; ls.style.color = "#fff";
+            ttsBadge.textContent = "Awaiting LLM clauses...";
+            ttsBadge.style.background = "var(--rule)"; ttsBadge.style.color = "var(--soft)";
             activeStreamingReply = "";
             $("llm-stream-box").innerHTML = '<span style="color:var(--faint)">Generating response...</span>';
             $("clause-box").innerHTML = "";
@@ -364,10 +404,14 @@
             ab.style.background = "var(--ok)"; ab.style.color = "#fff";
             ls.textContent = "🗣️ Streaming response...";
             ls.style.background = "var(--ok)"; ls.style.color = "#fff";
+            ttsBadge.textContent = "🗣️ Streaming Audio Frames...";
+            ttsBadge.style.background = "var(--ok)"; ttsBadge.style.color = "#fff";
           } else {
             ab.style.background = "var(--rule)"; ab.style.color = "var(--soft)";
             ls.textContent = "Listening";
             ls.style.background = "var(--rule)"; ls.style.color = "var(--soft)";
+            ttsBadge.textContent = "TTS Idle";
+            ttsBadge.style.background = "var(--rule)"; ttsBadge.style.color = "var(--soft)";
           }
           log("agent_state: " + msg.state);
         } else if (topic === "llm_stream") {
@@ -390,11 +434,31 @@
             $("m-clauses").textContent = msg.metrics.clause_count;
           }
           log("agent reply (" + (msg.metrics ? msg.metrics.ttft_ms + "ms TTFT" : "") + "): " + msg.text);
+        } else if (topic === "tts_metrics") {
+          if (msg.ttfa_ms != null) $("m-ttfa").textContent = msg.ttfa_ms + "ms";
+          if (msg.audio_duration_ms != null) $("m-audio-dur").textContent = msg.audio_duration_ms + "ms";
+          else if (msg.duration_ms != null) $("m-audio-dur").textContent = msg.duration_ms + "ms";
+          if (msg.provider) $("m-tts-engine").textContent = msg.provider + (msg.model ? " (" + msg.model + ")" : "");
+          var tb = $("tts-status");
+          if (msg.interrupted) {
+            tb.textContent = "⚡ Truncated (Barge-in)";
+            tb.style.background = "var(--warn)";
+            tb.style.color = "#fff";
+          } else {
+            tb.textContent = "✓ Playout Complete";
+            tb.style.background = "var(--ok)";
+            tb.style.color = "#fff";
+          }
+          log("TTS metrics: TTFA=" + msg.ttfa_ms + "ms, dur=" + (msg.audio_duration_ms || msg.duration_ms) + "ms, engine=" + msg.provider);
         } else if (topic === "chat_history") {
           renderHistory(msg.messages);
         } else if (topic === "interruption") {
           var banner = $("barge-banner");
           banner.style.display = "inline-block";
+          var tb = $("tts-status");
+          tb.textContent = "⚡ Audio Cut-off (<50ms)";
+          tb.style.background = "var(--warn)";
+          tb.style.color = "#fff";
           log("⚡ Barge-in cut-off triggered! Reason: " + msg.reason);
           setTimeout(function () { banner.style.display = "none"; }, 3500);
         }
@@ -415,6 +479,8 @@
 
       $("stop").disabled = false;
       $("test-barge").disabled = false;
+      $("test-tts-btn").disabled = false;
+      $("speak-phrase-btn").disabled = false;
       $("send-prompt").disabled = false;
       $("clear-hist").disabled = false;
     } catch (e) {
@@ -427,6 +493,8 @@
   async function leave() {
     $("stop").disabled = true;
     $("test-barge").disabled = true;
+    $("test-tts-btn").disabled = true;
+    $("speak-phrase-btn").disabled = true;
     $("send-prompt").disabled = true;
     $("clear-hist").disabled = true;
     $("vad-badge").textContent = "Silent (Listening)";
@@ -435,6 +503,9 @@
     $("agent-badge").textContent = "Idle";
     $("agent-badge").style.background = "var(--rule)";
     $("agent-badge").style.color = "var(--soft)";
+    $("tts-status").textContent = "TTS Idle";
+    $("tts-status").style.background = "var(--rule)";
+    $("tts-status").style.color = "var(--soft)";
     $("barge-banner").style.display = "none";
     if (raf) cancelAnimationFrame(raf);
     if (audioCtx) { audioCtx.close(); audioCtx = null; }
@@ -457,6 +528,33 @@
       );
     } catch (err) {
       log("error sending prompt: " + err);
+    }
+  });
+
+  $("test-tts-btn").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    log("Requesting Cartesia Streaming TTS playback...");
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_tts", text: "Cartesia Sonic streaming speech synthesis with low latency." })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error requesting TTS: " + err);
+    }
+  });
+
+  $("speak-phrase-btn").addEventListener("click", async function () {
+    var txt = $("tts-phrase").value.trim();
+    if (!txt || !room || !room.localParticipant) return;
+    log("Speaking TTS phrase: " + txt);
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_tts", text: txt })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error speaking TTS phrase: " + err);
     }
   });
 

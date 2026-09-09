@@ -42,6 +42,9 @@ services:
       STT_MODEL: ${STT_MODEL:-nova-3}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      CARTESIA_API_KEY: ${CARTESIA_API_KEY:-}
+      CARTESIA_VOICE_ID: ${CARTESIA_VOICE_ID:-f786b574-daa5-4673-aa0c-cbe3e8534c02}
+      TTS_MODEL: ${TTS_MODEL:-sonic-3}
     volumes:
       - ./agent:/app/agent:ro
       - ./samples:/app/samples:ro

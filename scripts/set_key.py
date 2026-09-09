@@ -4,6 +4,7 @@ Validate an API key against provider APIs, then write it to .env.
 Supports:
 - Deepgram: python3 scripts/set_key.py deepgram <key> (or python3 scripts/set_key.py <key>)
 - OpenAI:   python3 scripts/set_key.py openai <key>   (or python3 scripts/set_key.py sk-...)
+- Cartesia: python3 scripts/set_key.py cartesia <key>
 """
 
 import json
@@ -20,6 +21,7 @@ if len(sys.argv) < 2 or len(sys.argv) > 3:
         "Usage:\n"
         "  python3 scripts/set_key.py deepgram <key>\n"
         "  python3 scripts/set_key.py openai <key>\n"
+        "  python3 scripts/set_key.py cartesia <key>\n"
         "  python3 scripts/set_key.py <key> (auto-detects service)"
     )
 
@@ -28,6 +30,9 @@ if len(sys.argv) == 2:
     if arg.startswith("sk-"):
         provider = "openai"
         key = arg
+    elif "cartesia" in arg.lower():
+        provider = "cartesia"
+        key = arg
     else:
         provider = "deepgram"
         key = arg
@@ -35,7 +40,7 @@ else:
     provider = sys.argv[1].strip().lower()
     key = sys.argv[2].strip()
 
-if len(key) < 20:
+if len(key) < 16:
     raise SystemExit(f"That looks too short to be an API key ({len(key)} chars).")
 
 if provider == "deepgram":
@@ -76,8 +81,30 @@ elif provider == "openai":
     env_var = "OPENAI_API_KEY"
     print(f"  valid — OpenAI key accepted ({len(models_data)} models accessible)")
 
+elif provider == "cartesia":
+    print("Checking the key with Cartesia Sonic...")
+    req = urllib.request.Request(
+        "https://api.cartesia.ai/voices",
+        headers={
+            "X-API-Key": key,
+            "Cartesia-Version": "2025-04-16",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            voices_data = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise SystemExit("Cartesia rejected this key (HTTP 401 Unauthorized). Check your Cartesia console.")
+        raise SystemExit(f"Cartesia returned HTTP {e.code}")
+    except Exception as e:
+        raise SystemExit(f"Could not reach Cartesia: {e}")
+
+    env_var = "CARTESIA_API_KEY"
+    print(f"  valid — Cartesia key accepted ({len(voices_data)} voices available)")
+
 else:
-    raise SystemExit(f"Unknown provider: {provider}. Supported: deepgram, openai")
+    raise SystemExit(f"Unknown provider: {provider}. Supported: deepgram, openai, cartesia")
 
 # Write to .env
 lines = open(ENV).read().splitlines() if os.path.exists(ENV) else []
@@ -95,5 +122,7 @@ print("\nNext:")
 print("  docker compose up -d agent")
 if provider == "deepgram":
     print("  python3 scripts/verify_stt.py")
-else:
+elif provider == "openai":
     print("  python3 scripts/verify_llm.py")
+else:
+    print("  python3 scripts/verify_tts.py")

@@ -6,7 +6,5 @@ python-dotenv~=1.0
 
 livekit-plugins-silero~=1.0
 livekit-plugins-openai~=1.0
-
-# Added as the pipeline grows:
-#   livekit-plugins-cartesia  (task 1.5 — TTS)
+livekit-plugins-cartesia~=1.0
 

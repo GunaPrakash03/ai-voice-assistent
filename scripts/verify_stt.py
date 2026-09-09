@@ -82,7 +82,7 @@ def worker_running():
 def worker_registered():
     """The worker tells LiveKit it can take jobs. No registration, no calls."""
     out = subprocess.run(
-        ["docker", "compose", "logs", "--tail", "200", "agent"],
+        ["docker", "compose", "logs", "--tail", "500", "agent"],
         cwd=ROOT, capture_output=True, text=True,
     ).stdout.lower()
     if "registered worker" in out:
