@@ -9,7 +9,7 @@ path: in production Drupal mints the token (see BACKEND-FRONTEND-STACK).
 import json
 import os
 import sys
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -71,7 +71,7 @@ print(f"Test page:  http://localhost:{PORT}")
 print(f"Signalling: {WS_URL}")
 print("Ctrl+C to stop\n")
 try:
-    HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 except OSError as e:
     raise SystemExit(f"Port {PORT} is in use ({e}). Pass another: "
                      f"python3 scripts/serve.py 9090")
