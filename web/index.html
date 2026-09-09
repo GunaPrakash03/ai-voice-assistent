@@ -83,7 +83,7 @@
 <div class="wrap">
 
   <h1>AI Voice Assistant — Core Audio & Dialogue</h1>
-  <p class="sub">Task 2.3 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser SDK &bull; SIP Gateway &bull; Call Transfer &bull; <strong>DTMF &amp; IVR Keypad</strong> &bull; <a href="/call-desk.html" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:underline">Call Desk &rarr;</a> &bull; <a href="/code-walkthrough.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Walkthrough &rarr;</a></p>
+  <p class="sub">Task 2.4 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser SDK &bull; SIP Gateway &bull; Call Transfer &bull; DTMF &amp; IVR &bull; <strong>AMD &amp; Voicemail Drop</strong> &bull; <a href="/call-desk.html" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:underline">Call Desk &rarr;</a> &bull; <a href="/code-walkthrough.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Walkthrough &rarr;</a></p>
 
   <div class="panel">
     <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
@@ -368,6 +368,36 @@
             <div id="ivr-prompt-text" style="color:var(--text)">Thanks for calling Northgate Support. Press 1 for Sales, 2 for Technical Support, 3 for Billing, or 9 for a live operator.</div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Answering Machine Detection (AMD) & Voicemail Drop (Task 2.4) -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="margin-bottom:0">Answering Machine Detection (AMD) &amp; Voicemail Drop (Task 2.4)</label>
+        <span id="amd-badge" class="badge" style="background:var(--rule);color:var(--soft)">AMD: Monitoring</span>
+      </div>
+
+      <div style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:9px 12px;font-size:12px;line-height:1.6">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div><strong>Classification:</strong> <span id="amd-state-text" style="color:var(--accent);font-weight:600">Detecting</span></div>
+          <div><strong>Confidence:</strong> <span id="amd-conf-text" style="font-family:ui-monospace,monospace">0%</span></div>
+          <div><strong>Speech / Pause:</strong> <span id="amd-cadence-text" style="font-family:ui-monospace,monospace">0.0s / 0.0s</span></div>
+          <div><strong>Action:</strong> <span id="amd-action-text" style="font-weight:600">Continue Dialogue</span></div>
+        </div>
+        <div style="margin-top:4px"><strong>Reason:</strong> <span id="amd-reason-text" style="font-style:italic;color:var(--soft)">Listening for initial greeting cadence and tones...</span></div>
+      </div>
+
+      <div style="margin-top:8px">
+        <label style="font-size:11px;text-transform:uppercase;color:var(--faint);margin-bottom:3px">Voicemail Drop Message Template</label>
+        <input id="amd-drop-msg" type="text" value="Hello, this is Northgate Support calling regarding your inquiry. Please call us back at 800-555-0199 at your convenience. Thank you!" style="width:100%;font-size:12px;padding:6px 9px" />
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button id="btn-sim-human" class="ghost" style="flex:1;min-width:130px;font-size:11.5px">Simulate Human ("Hello?")</button>
+        <button id="btn-sim-machine" class="ghost" style="flex:1;min-width:140px;font-size:11.5px">Simulate Voicemail Prompt</button>
+        <button id="btn-sim-beep" class="ghost" style="flex:1;min-width:130px;font-size:11.5px">Simulate 1kHz Beep</button>
+        <button id="btn-drop-voicemail" style="flex:1;min-width:140px;font-size:11.5px;background:var(--accent);color:#fff">Drop Voicemail Message</button>
       </div>
     </div>
   </div>
@@ -715,6 +745,42 @@
           if (msg.state && msg.state.buffered_digits !== undefined) {
             $("dtmf-display").textContent = msg.state.buffered_digits || "—";
           }
+        } else if (topic === "amd_event" || topic === "amd_state") {
+          var state = msg.state && msg.state.state ? msg.state.state : (msg.state || "detecting");
+          var conf = msg.confidence !== undefined ? Math.round(msg.confidence * 100) : (msg.state && msg.state.confidence !== undefined ? Math.round(msg.state.confidence * 100) : 50);
+          var reason = msg.reason || (msg.state && msg.state.reason) || "";
+          var action = msg.action || (msg.state && msg.state.action) || "";
+          var gDur = msg.greeting_duration_s !== undefined ? msg.greeting_duration_s : (msg.state && msg.state.greeting_duration_s !== undefined ? msg.state.greeting_duration_s : 0.0);
+          var sDur = msg.silence_duration_s !== undefined ? msg.silence_duration_s : (msg.state && msg.state.silence_duration_s !== undefined ? msg.state.silence_duration_s : 0.0);
+
+          var badgeColor = "var(--rule)";
+          var badgeText = "AMD: Monitoring";
+          if (state === "human") {
+            badgeColor = "var(--ok)";
+            badgeText = "AMD: Human (Active)";
+          } else if (state === "machine_greeting") {
+            badgeColor = "var(--warn)";
+            badgeText = "AMD: Machine Greeting";
+          } else if (state === "voicemail_beep") {
+            badgeColor = "var(--accent)";
+            badgeText = "AMD: Beep Detected";
+          } else if (state === "voicemail_dropping") {
+            badgeColor = "var(--accent)";
+            badgeText = "AMD: Dropping Message";
+          } else if (state === "voicemail_completed" || state === "hangup") {
+            badgeColor = "var(--chip)";
+            badgeText = "AMD: Voicemail Dropped (Call Ended)";
+          }
+
+          $("amd-badge").style.background = badgeColor;
+          $("amd-badge").textContent = badgeText;
+          $("amd-state-text").textContent = state.toUpperCase();
+          $("amd-conf-text").textContent = conf + "%";
+          $("amd-cadence-text").textContent = gDur.toFixed(1) + "s / " + sDur.toFixed(1) + "s";
+          $("amd-action-text").textContent = action.replace(/_/g, " ").toUpperCase();
+          if (reason) $("amd-reason-text").textContent = reason;
+
+          log("🤖 AMD: state=" + state + " conf=" + conf + "% (" + reason + ")");
         }
       });
 
@@ -1252,6 +1318,102 @@
       log("🔄 IVR Phone tree reset to Main Menu");
     } catch (e) {
       log("Failed to reset IVR: " + e);
+    }
+  });
+
+  function playVoicemailBeepTone() {
+    try {
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      var ctx = new AudioCtx();
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.frequency.value = 1000.0;
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+    } catch (e) {}
+  }
+
+  // AMD & Voicemail Drop Controls (Task 2.4)
+  async function simulateAMDEvent(eventType) {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    if (eventType === "voicemail_beep") playVoicemailBeepTone();
+
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({
+          action: "simulate_amd",
+          event_type: eventType
+        }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+
+    try {
+      var res = await fetch("/api/telephony/amd/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId, event_type: eventType })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        if (data.amd) {
+          $("amd-state-text").textContent = data.amd.state.toUpperCase();
+          $("amd-conf-text").textContent = Math.round(data.amd.confidence * 100) + "%";
+          if (data.amd.reason) $("amd-reason-text").textContent = data.amd.reason;
+        }
+      }
+    } catch (e) {}
+  }
+
+  $("btn-sim-human").addEventListener("click", function () {
+    simulateAMDEvent("human_greeting");
+  });
+
+  $("btn-sim-machine").addEventListener("click", function () {
+    simulateAMDEvent("machine_greeting");
+  });
+
+  $("btn-sim-beep").addEventListener("click", function () {
+    simulateAMDEvent("voicemail_beep");
+  });
+
+  $("btn-drop-voicemail").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    var msg = $("amd-drop-msg").value || "Hello, please call us back.";
+    log("📞 Executing voicemail drop message...");
+
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({
+          action: "trigger_voicemail_drop",
+          message: msg
+        }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+
+    try {
+      var res = await fetch("/api/telephony/voicemail-drop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId, message: msg })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        $("amd-badge").style.background = "var(--chip)";
+        $("amd-badge").textContent = "AMD: Voicemail Dropped";
+        $("amd-state-text").textContent = "VOICEMAIL_COMPLETED";
+        $("amd-action-text").textContent = "CALL HUNG UP";
+        $("amd-reason-text").textContent = "Voicemail audio streamed successfully (" + (data.drop ? data.drop.audio_duration_s + "s" : "") + ")";
+        log("✅ Voicemail drop completed (" + (data.drop ? data.drop.audio_duration_s + "s" : "") + "). Call disconnected.");
+      }
+    } catch (e) {
+      log("❌ Failed to drop voicemail: " + e);
     }
   });
 

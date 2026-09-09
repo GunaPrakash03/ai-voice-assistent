@@ -37,6 +37,8 @@ WS_URL = env("LIVEKIT_URL")
 from agent.telephony_manager import telephony_manager, asdict, normalize_phone_number
 from agent.transfer_manager import transfer_manager, TransferMode
 from agent.dtmf_manager import dtmf_manager
+from agent.amd_manager import AMDManager, AMDState, AMDAction, VoicemailDropConfig
+amd_manager = AMDManager()
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -96,6 +98,15 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "ok", "state": dtmf_manager.get_call_state(call_id)})
             else:
                 self._send_json({"status": "ok", "menus": dtmf_manager.list_menus()})
+            return
+        elif parsed.path == "/api/telephony/amd":
+            q = parse_qs(parsed.query)
+            call_id = (q.get("call_id") or [""])[0]
+            if call_id:
+                session = amd_manager.get_session(call_id)
+                self._send_json({"status": "ok", "amd": session.to_result().dict() if session else None})
+            else:
+                self._send_json({"status": "ok", "default_config": amd_manager.default_config.dict()})
             return
 
         return super().do_GET()
@@ -213,6 +224,57 @@ class Handler(SimpleHTTPRequestHandler):
             call_id = payload.get("call_id", "").strip() or "active-call"
             dtmf_manager.reset_call(call_id)
             self._send_json({"status": "ok", "state": dtmf_manager.get_call_state(call_id)})
+            return
+
+        elif parsed.path == "/api/telephony/amd/configure":
+            call_id = payload.get("call_id", "").strip() or "active-call"
+            cfg_kwargs = {}
+            if "enabled" in payload:
+                cfg_kwargs["enabled"] = bool(payload["enabled"])
+            if "message" in payload:
+                cfg_kwargs["message"] = str(payload["message"])
+            if "action_on_machine" in payload:
+                cfg_kwargs["action_on_machine"] = AMDAction(payload["action_on_machine"])
+            if "beep_detection_enabled" in payload:
+                cfg_kwargs["beep_detection_enabled"] = bool(payload["beep_detection_enabled"])
+            cfg = VoicemailDropConfig(**cfg_kwargs)
+            session = amd_manager.get_or_create_session(call_id, cfg)
+            session.config = cfg
+            self._send_json({"status": "ok", "config": cfg.dict()})
+            return
+
+        elif parsed.path == "/api/telephony/amd/simulate":
+            call_id = payload.get("call_id", "").strip() or "active-call"
+            ev_type = payload.get("event_type", "machine_greeting")
+            session = amd_manager.get_or_create_session(call_id)
+            if ev_type == "human_greeting":
+                session.state = AMDState.HUMAN
+                session.confidence = 0.92
+                session.reason = "Simulated short human greeting ('Hello?')"
+                session.total_speech_duration = 1.1
+            elif ev_type == "machine_greeting":
+                session.state = AMDState.MACHINE_GREETING
+                session.confidence = 0.95
+                session.reason = "Simulated voicemail greeting ('Please leave a message after the tone...')"
+                session.total_speech_duration = 4.8
+            elif ev_type == "voicemail_beep":
+                session.state = AMDState.VOICEMAIL_BEEP
+                session.beep_detected = True
+                session.confidence = 0.99
+                session.reason = "Simulated 1000 Hz recording beep detected"
+            elif ev_type == "transcript":
+                text = payload.get("text", "Please leave a message after the tone")
+                amd_res = amd_manager.process_transcript(call_id, text)
+                self._send_json({"status": "ok", "amd": amd_res.dict()})
+                return
+            self._send_json({"status": "ok", "amd": session.to_result().dict()})
+            return
+
+        elif parsed.path == "/api/telephony/voicemail-drop":
+            call_id = payload.get("call_id", "").strip() or "active-call"
+            message = payload.get("message")
+            res = amd_manager.trigger_voicemail_drop(call_id, custom_message=message)
+            self._send_json({"status": "ok", "drop": res})
             return
 
         self.send_error(404, "Endpoint not found")

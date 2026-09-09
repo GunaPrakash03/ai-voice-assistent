@@ -20,7 +20,8 @@ See `../ai voice assistent/` for the estimation, stack and cost documents.
 | 2.1 SIP Gateway & Telephony Integration | Done — `verify_sip.py` 5/5, LiveKit SIP carrier trunk models, inbound DID routing, outbound dialer API, REST & WebRTC data channel events. |
 | 2.2 Call Transfer Engine | Done — `verify_transfer.py` 6/6, Blind & Warm transfer, SIP REFER, caller hold, consultation bridging, handoff briefing, decline recovery. |
 | 2.3 DTMF Digit Handling & IVR Navigation | Done — `verify_dtmf.py` 6/6, RFC 4733 & Goertzel dual-tone DSP, multi-digit buffer with `#` terminator, phone tree IVR routing engine, REST & WebRTC data channel events. |
-| 2.4 Answering Machine Detection (AMD) & Voicemail Drop | Next up — Audio energy analysis, temporal cadence classification, automated voicemail synthesis, and graceful hangup. |
+| 2.4 Answering Machine Detection (AMD) & Voicemail Drop | Done — `verify_amd.py` 6/6, temporal cadence classifier, Goertzel voicemail beep DSP, transcript keyword detector, automated voicemail drop, REST & WebRTC data channel events. |
+| 2.5 Real-Time Call Recording, Dual-Channel Stereo & Compliance | Next up — Call recording pipeline, dual-channel stereo split, beep compliance disclosures, and storage upload. |
 
 ## Run it
 
@@ -36,6 +37,7 @@ python3 scripts/verify_sdk.py      # browser WebRTC client SDK acceptance (1.7)
 python3 scripts/verify_sip.py      # SIP gateway & telephony integration acceptance (2.1)
 python3 scripts/verify_transfer.py # call transfer engine acceptance (2.2)
 python3 scripts/verify_dtmf.py     # DTMF keypad & IVR phone tree acceptance (2.3)
+python3 scripts/verify_amd.py      # Answering Machine Detection & Voicemail Drop (2.4)
 ```
 
 The verify script proves the four things task 1.1 promises: the server
@@ -232,6 +234,33 @@ Enables caller touch-tone interaction, RFC 4733 / RFC 2833 telephone events, in-
 
 ```bash
 python3 scripts/verify_dtmf.py # verifies all 6/6 checks for Task 2.3
+```
+
+## Answering Machine Detection (AMD) & Voicemail Drop (task 2.4)
+
+Enables real-time classification of live human callers versus automated voicemail systems during outbound phone calls, with automated voicemail message drop and graceful call disconnect:
+
+- **Temporal Cadence & Speech Energy Classifier**:
+  - Distinguishes human greetings (short speech < 2.4s followed by an interactive listening pause > 0.7s) from machine greetings (long continuous monologue > 3.2s without conversational pauses).
+- **Voicemail Prompt Beep Detection (Goertzel DSP)**:
+  - Real-time pure-Python Goertzel audio DSP targeting North American and international recording prompt tones (1000 Hz, 800 Hz, 440 Hz) with tone duration gating (> 120ms) and noise rejection.
+- **STT Transcript Semantic Keyword Detector**:
+  - Pattern matcher analyzing incoming caller transcripts for voicemail markers (*"leave a message"*, *"after the tone"*, *"record your message"*, *"not available right now"*, *"mailbox"*) with high classification confidence (>95%).
+- **Automated Voicemail Drop Engine**:
+  - When an answering machine is detected and prompt beep sounds: streams personalized audio message (*"Hello, this is Northgate Support calling..."*) and disconnects the call automatically without human agent intervention.
+- **Telephony AMD REST API Server (Port 8091)**:
+  - `GET /api/telephony/amd?call_id=<id>` — inspect live AMD session state or default configuration.
+  - `POST /api/telephony/amd/configure` — update AMD parameters (`message`, `action_on_machine`, `beep_detection_enabled`).
+  - `POST /api/telephony/amd/simulate` — simulate human/machine greetings and beep tones for automated testing.
+  - `POST /api/telephony/voicemail-drop` — programmatically trigger voicemail message drop.
+- **WebRTC Data Channel Integration**:
+  - LiveKit data channel events: emits `amd_event` and `amd_state` topics.
+  - Listens to `simulate_amd`, `trigger_voicemail_drop`, and `configure_amd` control actions.
+- **Interactive Browser Telephony Console**:
+  - Dedicated AMD control card on `http://localhost:8091` with live confidence meter, speech/pause duration timer, Web Audio 1000 Hz beep simulator, and single-click Voicemail Drop.
+
+```bash
+python3 scripts/verify_amd.py # verifies all 6/6 checks for Task 2.4
 ```
 
 

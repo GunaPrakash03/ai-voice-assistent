@@ -41,9 +41,11 @@ from agent.tts_manager import StreamingTTSManager
 from agent.telephony_manager import telephony_manager, asdict
 from agent.transfer_manager import transfer_manager
 from agent.dtmf_manager import dtmf_manager
+from agent.amd_manager import AMDManager, AMDState, AMDAction, VoicemailDropConfig
 
 load_dotenv()
 log = logging.getLogger("dialogue-worker")
+amd_manager = AMDManager()
 
 # Model configuration
 STT_MODEL = os.getenv("STT_MODEL", "nova-3")
@@ -331,6 +333,19 @@ async def entrypoint(ctx: agents.JobContext):
         }, topic="transcript", reliable=ev.is_final)
         log.info("%s %s", "FINAL " if ev.is_final else "interim", ev.transcript)
 
+        if ev.transcript.strip():
+            amd_res = amd_manager.process_transcript(ctx.room.name, ev.transcript)
+            if amd_res.state in (AMDState.MACHINE_GREETING, AMDState.VOICEMAIL_BEEP, AMDState.HUMAN):
+                publish({
+                    "type": "amd_event",
+                    "call_id": ctx.room.name,
+                    "state": amd_res.state.value,
+                    "confidence": amd_res.confidence,
+                    "reason": amd_res.reason,
+                    "action": amd_res.action.value,
+                    "timestamp": time.time(),
+                }, topic="amd_event", reliable=True)
+
         if ev.is_final and ev.transcript.strip():
             current_turn_texts.append(ev.transcript.strip())
             if not user_is_speaking:
@@ -347,6 +362,20 @@ async def entrypoint(ctx: agents.JobContext):
             "speaker": "caller",
             "timestamp": time.time(),
         }, topic="vad", reliable=True)
+
+        amd_res = amd_manager.process_vad_event(ctx.room.name, is_speech=(ev.new_state == "speaking"), timestamp=time.time())
+        if amd_res.state != AMDState.DETECTING:
+            publish({
+                "type": "amd_event",
+                "call_id": ctx.room.name,
+                "state": amd_res.state.value,
+                "confidence": amd_res.confidence,
+                "reason": amd_res.reason,
+                "action": amd_res.action.value,
+                "greeting_duration_s": amd_res.greeting_duration_s,
+                "silence_duration_s": amd_res.silence_duration_s,
+                "timestamp": time.time(),
+            }, topic="amd_event", reliable=True)
 
         if ev.new_state == "speaking":
             user_is_speaking = True
@@ -732,6 +761,77 @@ async def entrypoint(ctx: agents.JobContext):
                 "state": dtmf_manager.get_call_state(ctx.room.name),
                 "timestamp": time.time(),
             }, topic="ivr_state", reliable=True)
+
+        elif action == "get_amd_state":
+            s = amd_manager.get_session(ctx.room.name)
+            publish({
+                "type": "amd_state",
+                "call_id": ctx.room.name,
+                "state": s.to_result().dict() if s else None,
+                "timestamp": time.time(),
+            }, topic="amd_state", reliable=True)
+
+        elif action == "configure_amd":
+            cfg_kwargs = {}
+            if "enabled" in data:
+                cfg_kwargs["enabled"] = bool(data["enabled"])
+            if "message" in data:
+                cfg_kwargs["message"] = str(data["message"])
+            if "action_on_machine" in data:
+                cfg_kwargs["action_on_machine"] = AMDAction(data["action_on_machine"])
+            if "beep_detection_enabled" in data:
+                cfg_kwargs["beep_detection_enabled"] = bool(data["beep_detection_enabled"])
+            cfg = VoicemailDropConfig(**cfg_kwargs)
+            s = amd_manager.get_or_create_session(ctx.room.name, cfg)
+            s.config = cfg
+            publish({
+                "type": "amd_state",
+                "call_id": ctx.room.name,
+                "state": s.to_result().dict(),
+                "timestamp": time.time(),
+            }, topic="amd_state", reliable=True)
+
+        elif action == "trigger_voicemail_drop":
+            custom_msg = data.get("message")
+            drop_res = amd_manager.trigger_voicemail_drop(ctx.room.name, custom_message=custom_msg)
+            publish({
+                "type": "amd_event",
+                "call_id": ctx.room.name,
+                "state": drop_res.get("state"),
+                "action": "drop_voicemail",
+                "message": drop_res.get("message"),
+                "audio_duration_s": drop_res.get("audio_duration_s"),
+                "auto_hangup": drop_res.get("auto_hangup"),
+                "timestamp": time.time(),
+            }, topic="amd_event", reliable=True)
+
+        elif action == "simulate_amd":
+            ev_type = data.get("event_type", "machine_greeting")
+            s = amd_manager.get_or_create_session(ctx.room.name)
+            if ev_type == "human_greeting":
+                s.state = AMDState.HUMAN
+                s.confidence = 0.92
+                s.reason = "Simulated short human greeting ('Hello?')"
+                s.total_speech_duration = 1.1
+            elif ev_type == "machine_greeting":
+                s.state = AMDState.MACHINE_GREETING
+                s.confidence = 0.95
+                s.reason = "Simulated voicemail greeting ('Please leave a message after the tone...')"
+                s.total_speech_duration = 4.8
+            elif ev_type == "voicemail_beep":
+                s.state = AMDState.VOICEMAIL_BEEP
+                s.beep_detected = True
+                s.confidence = 0.99
+                s.reason = "Simulated 1000 Hz recording beep detected"
+            publish({
+                "type": "amd_event",
+                "call_id": ctx.room.name,
+                "state": s.state.value,
+                "confidence": s.confidence,
+                "reason": s.reason,
+                "action": s.to_result().action.value,
+                "timestamp": time.time(),
+            }, topic="amd_event", reliable=True)
         elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"
             log.info("Test speech requested by %s for barge-in verification", participant_id)
