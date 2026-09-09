@@ -10,6 +10,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -39,6 +40,7 @@ from agent.transfer_manager import transfer_manager, TransferMode
 from agent.dtmf_manager import dtmf_manager
 from agent.amd_manager import AMDManager, AMDState, AMDAction, VoicemailDropConfig
 from agent.recording_manager import recording_manager, RecordingConfig, ComplianceMode
+from agent.pipeline_worker import pipeline_worker
 amd_manager = AMDManager()
 
 
@@ -120,6 +122,22 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "ok", "recording": s.to_metadata().dict() if s else None})
             else:
                 self._send_json({"status": "ok", "recordings": recording_manager.list_recordings()})
+            return
+        elif parsed.path == "/api/pipeline/jobs":
+            q = parse_qs(parsed.query)
+            status_filter = (q.get("status") or [""])[0] or None
+            limit = int((q.get("limit") or ["50"])[0])
+            self._send_json({"status": "ok", "jobs": pipeline_worker.list_jobs(status=status_filter, limit=limit)})
+            return
+        elif parsed.path == "/api/pipeline/job":
+            q = parse_qs(parsed.query)
+            job_id = (q.get("job_id") or [""])[0] or None
+            call_id = (q.get("call_id") or [""])[0] or None
+            job = pipeline_worker.get_job(job_id=job_id, call_id=call_id)
+            self._send_json({"status": "ok", "job": job.to_dict() if job else None})
+            return
+        elif parsed.path == "/api/pipeline/stats":
+            self._send_json({"status": "ok", "stats": pipeline_worker.get_stats()})
             return
 
         return super().do_GET()
@@ -323,6 +341,44 @@ class Handler(SimpleHTTPRequestHandler):
             call_id = payload.get("call_id", "").strip() or "active-call"
             meta = recording_manager.stop_recording(call_id)
             self._send_json({"status": "ok", "recording": meta.dict()})
+            return
+
+        elif parsed.path == "/api/pipeline/enqueue":
+            call_id = payload.get("call_id", "").strip() or f"call-{int(time.time())}"
+            room_name = payload.get("room_name")
+            transcript_turns = payload.get("transcript_turns", [])
+            audio_path = payload.get("audio_path")
+            metadata = payload.get("metadata", {})
+            priority = int(payload.get("priority", 5))
+            execute_now = bool(payload.get("execute_now", True))
+
+            job = pipeline_worker.enqueue_call(
+                call_id=call_id,
+                room_name=room_name,
+                transcript_turns=transcript_turns,
+                audio_path=audio_path,
+                metadata=metadata,
+                priority=priority,
+            )
+            if execute_now:
+                loop = asyncio.new_event_loop()
+                job = loop.run_until_complete(pipeline_worker.execute_job(job.job_id))
+                loop.close()
+            self._send_json({"status": "ok", "job": job.to_dict()})
+            return
+
+        elif parsed.path == "/api/pipeline/retry":
+            job_id = payload.get("job_id", "").strip()
+            execute_now = bool(payload.get("execute_now", True))
+            job = pipeline_worker.retry_job(job_id)
+            if not job:
+                self._send_json({"status": "error", "error": f"Job '{job_id}' not found"}, 404)
+                return
+            if execute_now:
+                loop = asyncio.new_event_loop()
+                job = loop.run_until_complete(pipeline_worker.execute_job(job.job_id))
+                loop.close()
+            self._send_json({"status": "ok", "job": job.to_dict()})
             return
 
         self.send_error(404, "Endpoint not found")

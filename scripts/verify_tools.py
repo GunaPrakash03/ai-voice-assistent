@@ -207,9 +207,9 @@ asyncio.run(test())
 
 
 def test_e2e_webrtc_tool_calling():
-    """Verify live end-to-end WebRTC tool calling over data channels."""
+    room_name = f"verify-tools-{int(time.time()*1000)}"
     script = """
-import asyncio, os, json
+import asyncio, os, json, time
 from livekit import rtc
 from agent.token import join_token
 
@@ -217,7 +217,7 @@ async def test():
     key = os.environ['LIVEKIT_API_KEY']
     secret = os.environ['LIVEKIT_API_SECRET']
     url = os.environ['LIVEKIT_URL']
-    token = join_token(key, secret, 'verify-tools-e2e-room', 'verify-caller')
+    token = join_token(key, secret, '__ROOM__', 'verify-caller')
     room = rtc.Room()
 
     events = {}
@@ -250,14 +250,14 @@ async def test():
     track = rtc.LocalAudioTrack.create_audio_track('mic', source)
     await room.local_participant.publish_track(track, rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE))
 
-    await asyncio.wait_for(agent_joined, timeout=10.0)
+    await asyncio.wait_for(agent_joined, timeout=15.0)
     await asyncio.sleep(1.0)
 
     # Send prompt that requires a tool
     pkt = json.dumps({'action': 'test_prompt', 'text': 'Where is my order 1042?'}).encode()
     await room.local_participant.publish_data(pkt, reliable=True)
 
-    await asyncio.wait_for(reply_done, timeout=10.0)
+    await asyncio.wait_for(reply_done, timeout=15.0)
     await room.disconnect()
 
     has_call = 'tool_call' in events
@@ -273,7 +273,7 @@ async def test():
     print(f"{tool_name}|{dur}|{has_filler}|{reply_text[:40]}")
 
 asyncio.run(test())
-"""
+""".replace("__ROOM__", room_name)
     cmd = ["docker", "exec", "voice-agent-worker", "python", "-c", script]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:

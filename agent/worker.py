@@ -43,6 +43,7 @@ from agent.transfer_manager import transfer_manager
 from agent.dtmf_manager import dtmf_manager
 from agent.amd_manager import AMDManager, AMDState, AMDAction, VoicemailDropConfig
 from agent.recording_manager import recording_manager, RecordingConfig, ComplianceMode, RecordingStatus
+from agent.pipeline_worker import pipeline_worker
 
 load_dotenv()
 log = logging.getLogger("dialogue-worker")
@@ -893,6 +894,75 @@ async def entrypoint(ctx: agents.JobContext):
                 "recording": s.to_metadata().dict() if s else None,
                 "timestamp": time.time(),
             }, topic="recording_state", reliable=True)
+
+        elif action == "enqueue_post_call":
+            call_id = data.get("call_id", ctx.room.name)
+            turns = data.get("transcript_turns")
+            if not turns:
+                turns = []
+                for msg in llm_manager.context.to_list():
+                    turns.append({"role": msg.get("role", "caller"), "text": msg.get("content", "")})
+            audio_path = data.get("audio_path")
+            if not audio_path:
+                rec_session = recording_manager.get_session(ctx.room.name)
+                if rec_session:
+                    audio_path = rec_session.file_path
+            priority = int(data.get("priority", 5))
+
+            job = pipeline_worker.enqueue_call(
+                call_id=call_id,
+                room_name=ctx.room.name,
+                transcript_turns=turns,
+                audio_path=audio_path,
+                metadata={"worker_id": ctx.room.name},
+                priority=priority,
+            )
+
+            async def run_pipeline():
+                try:
+                    await pipeline_worker.execute_job(job.job_id)
+                    publish({
+                        "type": "pipeline_event",
+                        "event": "job_completed",
+                        "call_id": call_id,
+                        "job": job.to_dict(),
+                        "timestamp": time.time(),
+                    }, topic="pipeline_event", reliable=True)
+                except Exception as p_err:
+                    log.error("Post-call pipeline failed: %s", p_err)
+                    publish({
+                        "type": "pipeline_event",
+                        "event": "job_failed",
+                        "call_id": call_id,
+                        "error": str(p_err),
+                        "timestamp": time.time(),
+                    }, topic="pipeline_event", reliable=True)
+
+            task = asyncio.create_task(run_pipeline())
+            pending.add(task)
+            task.add_done_callback(pending.discard)
+
+            publish({
+                "type": "pipeline_event",
+                "event": "job_enqueued",
+                "call_id": call_id,
+                "job": job.to_dict(),
+                "timestamp": time.time(),
+            }, topic="pipeline_event", reliable=True)
+
+        elif action == "get_pipeline_jobs":
+            publish({
+                "type": "pipeline_jobs",
+                "jobs": pipeline_worker.list_jobs(limit=20),
+                "timestamp": time.time(),
+            }, topic="pipeline_jobs", reliable=True)
+
+        elif action == "get_pipeline_stats":
+            publish({
+                "type": "pipeline_stats",
+                "stats": pipeline_worker.get_stats(),
+                "timestamp": time.time(),
+            }, topic="pipeline_stats", reliable=True)
 
         elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"

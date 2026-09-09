@@ -438,6 +438,57 @@
   </div>
 
   <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+      <label style="margin-bottom:0">Post-Call Processing Queue Worker (Task 3.1)</label>
+      <span id="pipeline-badge" class="badge" style="background:var(--rule);color:var(--soft)">Queue Idle</span>
+    </div>
+
+    <div class="metrics-grid" style="margin-top:10px">
+      <div class="metric-card">
+        <div class="metric-label">Latest Job</div>
+        <div class="metric-val" id="pipe-job-id" style="font-size:13.5px;font-family:ui-monospace,monospace">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Pipeline Status</div>
+        <div class="metric-val" id="pipe-status" style="font-size:16px">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Total Duration</div>
+        <div class="metric-val" id="pipe-dur" style="font-size:16px">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Talk-Time Ratios</div>
+        <div class="metric-val" id="pipe-ratios" style="font-size:13px;font-family:ui-monospace,monospace">—</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
+      <div id="stg-mixdown" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
+        <div style="font-weight:600">1. Audio Mixdown</div>
+        <div id="stg-mixdown-st" style="color:var(--soft);font-size:11px">Pending</div>
+      </div>
+      <div id="stg-norm" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
+        <div style="font-weight:600">2. Transcript Norm</div>
+        <div id="stg-norm-st" style="color:var(--soft);font-size:11px">Pending</div>
+      </div>
+      <div id="stg-metrics" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
+        <div style="font-weight:600">3. Metrics Calc</div>
+        <div id="stg-metrics-st" style="color:var(--soft);font-size:11px">Pending</div>
+      </div>
+      <div id="stg-archive" style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:8px 10px;font-size:12px">
+        <div style="font-weight:600">4. Storage Archive</div>
+        <div id="stg-archive-st" style="color:var(--soft);font-size:11px">Pending</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button id="btn-trigger-pipeline" class="primary" style="font-size:12px;padding:6px 12px">Trigger Post-Call Pipeline</button>
+      <button id="btn-refresh-pipeline" class="ghost" style="font-size:12px;padding:6px 10px">Refresh Queue Stats</button>
+      <span id="pipe-storage-url" style="font-size:11.5px;color:var(--soft);font-family:ui-monospace,monospace"></span>
+    </div>
+  </div>
+
+  <div class="panel">
     <label>Event Log</label>
     <pre id="log">ready</pre>
   </div>
@@ -843,6 +894,13 @@
             }
           }
           log("🎙️ Recording: " + status.toUpperCase() + (rec.recording_id ? " [" + rec.recording_id + "]" : ""));
+        } else if (topic === "pipeline_event") {
+          var pEv = msg.event || "unknown";
+          var job = msg.job || {};
+          log("📦 Pipeline: " + pEv + " (job=" + (job.job_id || msg.job_id || "unknown") + " status=" + (job.status || msg.status || "unknown") + ")");
+          if (typeof updatePipelineUI === "function") {
+            updatePipelineUI(job);
+          }
         }
       });
 
@@ -1616,6 +1674,89 @@
     } catch (e) {
       log("❌ Failed to stop recording: " + e);
     }
+  });
+
+  // Task 3.1: Post-Call Processing Pipeline UI
+  function updatePipelineUI(job) {
+    if (!job || !job.job_id) return;
+    $("pipe-job-id").textContent = job.job_id;
+    var st = (job.status || "queued").toUpperCase();
+    $("pipe-status").textContent = st;
+    $("pipe-status").style.color = st === "COMPLETED" ? "var(--ok)" : (st === "FAILED" ? "var(--bad)" : "var(--warn)");
+    $("pipeline-badge").style.background = st === "COMPLETED" ? "var(--ok)" : (st === "FAILED" ? "var(--bad)" : "var(--warn)");
+    $("pipeline-badge").textContent = "Pipeline: " + st;
+
+    if (job.total_duration_ms) {
+      $("pipe-dur").textContent = job.total_duration_ms.toFixed(1) + " ms";
+    }
+
+    var m = job.metrics || {};
+    if (m.caller_talk_ratio !== undefined) {
+      $("pipe-ratios").textContent = "Caller: " + Math.round(m.caller_talk_ratio * 100) + "% / Agent: " + Math.round(m.agent_talk_ratio * 100) + "%";
+    }
+
+    var stages = job.stages || {};
+    var stageMapping = {
+      "audio_mixdown": "stg-mixdown-st",
+      "transcript_normalization": "stg-norm-st",
+      "metrics_calculation": "stg-metrics-st",
+      "storage_archive": "stg-archive-st"
+    };
+
+    for (var key in stageMapping) {
+      var elId = stageMapping[key];
+      var stageInfo = stages[key] || {};
+      var stStatus = (stageInfo.status || "pending").toLowerCase();
+      var dur = stageInfo.duration_ms ? " (" + stageInfo.duration_ms.toFixed(1) + "ms)" : "";
+      var el = $(elId);
+      if (el) {
+        el.textContent = stStatus.toUpperCase() + dur;
+        el.style.color = stStatus === "completed" ? "var(--ok)" : (stStatus === "failed" ? "var(--bad)" : "var(--warn)");
+      }
+    }
+
+    if (job.archive_url) {
+      $("pipe-storage-url").textContent = "Archive: " + job.archive_url;
+    }
+  }
+
+  $("btn-trigger-pipeline").addEventListener("click", async function () {
+    var callId = $("room").value || ("call-" + Date.now());
+    log("🚀 Triggering post-call processing pipeline for " + callId + "...");
+    $("pipeline-badge").textContent = "Processing...";
+    $("pipeline-badge").style.background = "var(--warn)";
+    try {
+      var res = await fetch("/api/pipeline/enqueue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          call_id: callId,
+          transcript_turns: [
+            { role: "caller", text: "Hello, I am following up on my legal consultation intake." },
+            { role: "agent", text: "Certainly, I have your file open and your consultation is confirmed." }
+          ],
+          execute_now: true
+        })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        updatePipelineUI(data.job);
+        log("✅ Post-call pipeline completed for " + callId + " in " + (data.job.total_duration_ms || 0).toFixed(1) + "ms");
+      }
+    } catch (e) {
+      log("❌ Pipeline trigger failed: " + e);
+    }
+  });
+
+  $("btn-refresh-pipeline").addEventListener("click", async function () {
+    try {
+      var res = await fetch("/api/pipeline/stats");
+      if (res.ok) {
+        var data = await res.json();
+        var s = data.stats || {};
+        log("📊 Pipeline Queue Stats: Total=" + s.total_jobs + ", Done=" + s.completed + ", Avg=" + s.avg_processing_time_ms + "ms");
+      }
+    } catch (e) {}
   });
 
   $("go").addEventListener("click", join);

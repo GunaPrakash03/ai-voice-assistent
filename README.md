@@ -23,6 +23,8 @@ See `../ai voice assistent/` for the estimation, stack and cost documents.
 | 2.4 Answering Machine Detection (AMD) & Voicemail Drop | Done — `verify_amd.py` 6/6, temporal cadence classifier, Goertzel voicemail beep DSP, transcript keyword detector, automated voicemail drop, REST & WebRTC data channel events. |
 | 2.5 Real-Time Call Recording, Dual-Channel Stereo & Compliance | Done — `verify_recording.py` 6/6, dual-channel stereo split, 1400 Hz compliance tone, PCI/HIPAA pause/resume redaction, RIFF WAV container, REST & WebRTC data channel events. |
 | 2.6 WebRTC Telephony Softphone / Web Calling Dialpad | Done — `verify_softphone.py` 6/6, standalone browser dialpad, Web Audio DTMF & ringback synthesizer, inbound call simulation, hardware selectors, and LiveKit WebRTC bridging. |
+| 3.1 Post-Call Processing Queue Worker | Done — `verify_pipeline.py` 6/6, async prioritized queue, stereo WAV mixdown, SHA256 checksum, conversation metrics, and metadata manifest archiving. |
+| 3.2 Summary & Sentiment Analyzer | Next up — Zero-shot sentiment classifier, narrative executive summary, speaker turn attribution, metrics logging. |
 
 ## Run it
 
@@ -41,6 +43,7 @@ python3 scripts/verify_dtmf.py     # DTMF keypad & IVR phone tree acceptance (2.
 python3 scripts/verify_amd.py      # Answering Machine Detection & Voicemail Drop (2.4)
 python3 scripts/verify_recording.py # Dual-channel stereo recording & compliance (2.5)
 python3 scripts/verify_softphone.py # WebRTC softphone & web dialpad acceptance (2.6)
+python3 scripts/verify_pipeline.py  # Post-call processing queue worker acceptance (3.1)
 ```
 
 The verify script proves the four things task 1.1 promises: the server
@@ -326,6 +329,38 @@ Provides a comprehensive, standalone WebRTC SIP softphone interface (`web/softph
 
 ```bash
 python3 scripts/verify_softphone.py # verifies all 6/6 checks for Task 2.6
+```
+
+## Post-Call Processing Queue Worker & Audio Archival (task 3.1)
+
+Provides an asynchronous background processing pipeline that executes immediately upon call termination:
+
+- **Asynchronous Priority Job Queue**:
+  - Thread-safe job queue supporting priority execution (urgent priority 1 precedes normal priority 5).
+  - Robust job lifecycle states: `QUEUED` &rarr; `PROCESSING` &rarr; `COMPLETED` / `FAILED` / `RETRYING`.
+  - Automatic exponential backoff retries (up to 3 attempts) and disk persistence (`recordings/pipeline_jobs.json`) to guarantee zero lost post-call jobs across restarts.
+- **Dual-Channel Stereo Audio Mixdown & Storage Archival**:
+  - Inspects stereo WAV audio containers from the call recording engine, verifies RIFF headers, channel counts, and sample rates.
+  - Computes audio duration, file size, RMS energy levels (dB), and SHA-256 cryptographic checksums for chain-of-custody compliance.
+  - Archives audio files into `recordings/archive/` and generates simulated S3/GCS object-store URIs (`s3://voice-archive/recordings/...`).
+  - Writes a comprehensive JSON metadata manifest alongside the audio file.
+- **Transcript Normalization & Conversation Metrics Engine**:
+  - Normalizes speech turns across user and AI assistant speakers with precise timing attributes.
+  - Calculates granular analytics: total turns, caller vs agent turn distribution, caller words vs agent words, talk duration estimates, caller/agent talk-time ratios, silence ratio, words-per-minute (WPM), and turns-per-minute cadence.
+- **Pipeline REST API Server (Port 8091)**:
+  - `GET /api/pipeline/jobs` — list recent post-call jobs with optional `status` filtering and pagination.
+  - `GET /api/pipeline/job?job_id=<id>&call_id=<id>` — inspect complete job details, individual stage timings, and metrics.
+  - `GET /api/pipeline/stats` — queue telemetry (total jobs, queued, processing, completed, average processing duration ms).
+  - `POST /api/pipeline/enqueue` — programmatically enqueue a call for post-processing (`call_id`, `transcript_turns`, `audio_path`, `priority`).
+  - `POST /api/pipeline/retry` — retry a failed or stuck post-call job.
+- **WebRTC Data Channel Integration**:
+  - LiveKit worker listens to `enqueue_post_call`, `get_pipeline_jobs`, and `get_pipeline_stats` control actions.
+  - Emits real-time `pipeline_event` (`job_enqueued`, `job_processing`, `job_completed`, `job_failed`) and `pipeline_state` over WebRTC data channels.
+- **Interactive Web Console**:
+  - Dedicated Post-Call Processing card on `http://localhost:8091` displaying live queue stats, 4-stage pipeline indicators, talk-time ratio progress bars, and single-click manual pipeline trigger.
+
+```bash
+python3 scripts/verify_pipeline.py # verifies all 6/6 checks for Task 3.1
 ```
 
 
