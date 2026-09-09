@@ -359,10 +359,10 @@
     </div>
     <div style="text-align:right">
       <span class="badge done" style="font-size:12px;padding:5px 10px">
-        &#x2714; Phases 1&ndash;3 &amp; Tasks 4.1&ndash;4.2 Verified
+        &#x2714; Phases 1&ndash;3 &amp; Tasks 4.1&ndash;4.3 Verified
       </span>
       <div style="font-size:11.5px;color:var(--soft);margin-top:6px;font-family:var(--font-mono)">
-        481 / 481 Acceptance Checks Passing (0 Regressions)
+        538 / 538 Acceptance Checks Passing (0 Regressions)
       </div>
     </div>
   </header>
@@ -371,45 +371,46 @@
   <div class="metrics-grid">
     <div class="metric-card">
       <div class="metric-label">Completed Tasks</div>
-      <div class="metric-val" style="color:var(--ok)">19 <span style="font-size:14px;color:var(--soft)">/ 21 total</span></div>
-      <div class="metric-sub">Phases 1&ndash;3 + Tasks 4.1&ndash;4.2 committed</div>
+      <div class="metric-val" style="color:var(--ok)">20 <span style="font-size:14px;color:var(--soft)">/ 21 total</span></div>
+      <div class="metric-sub">Phases 1&ndash;3 + Tasks 4.1&ndash;4.3 committed</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Acceptance Verification</div>
-      <div class="metric-val" style="color:var(--accent)">481 / 481</div>
-      <div class="metric-sub">18 test suites passing (100%)</div>
+      <div class="metric-val" style="color:var(--accent)">538 / 538</div>
+      <div class="metric-sub">19 test suites passing (100%)</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Delivered Dev Hours</div>
-      <div class="metric-val" style="color:var(--ok)">460 h <span style="font-size:14px;color:var(--soft)">/ 532 h</span></div>
-      <div class="metric-sub">86.5% total engineering budget</div>
+      <div class="metric-val" style="color:var(--ok)">494 h <span style="font-size:14px;color:var(--soft)">/ 532 h</span></div>
+      <div class="metric-sub">92.9% total engineering budget</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Next Task</div>
-      <div class="metric-val" style="color:var(--warn)">Task 4.3</div>
-      <div class="metric-sub">REST API &amp; Multi-Tenant Access</div>
+      <div class="metric-val" style="color:var(--warn)">Task 4.4</div>
+      <div class="metric-sub">Automated Testing, CI/CD &amp; Hardening</div>
     </div>
   </div>
 
   <!-- Overall Progress Track -->
   <div class="progress-section">
     <div class="progress-head">
-      <div><strong>Platform Delivery Completion</strong>: 86.5% (460h realistic hours delivered)</div>
-      <div style="font-family:var(--font-mono);font-size:12px;color:var(--ok)">Tasks 1.1&ndash;4.2: DONE &bull; Task 4.3: NEXT UP</div>
+      <div><strong>Platform Delivery Completion</strong>: 92.9% (494h realistic hours delivered)</div>
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--ok)">Tasks 1.1&ndash;4.3: DONE &bull; Task 4.4: FINAL TASK NEXT UP</div>
     </div>
     <div class="progress-track">
       <div class="prog-seg seg-p1" title="Phase 1: Real-Time Core (204h) — 100% Complete"></div>
       <div class="prog-seg seg-p2" title="Phase 2: Telephony & SIP (92h) — 100% Complete"></div>
       <div class="prog-seg seg-p3" style="background:var(--ok);width:16.9%" title="Phase 3: Post-Call Intelligence (90h) — 100% Complete"></div>
-      <div class="prog-seg seg-p4" style="width:13.9%" title="Tasks 4.1–4.2: Agent Builder & Call Inspector (74h) — Complete"></div>
+      <div class="prog-seg seg-p4" style="width:20.3%" title="Tasks 4.1–4.3: Agent Builder, Call Inspector & Multi-Tenant Access (108h) — Complete"></div>
     </div>
     <div class="progress-legend">
       <div class="leg-item"><div class="leg-dot" style="background:var(--ok)"></div><span>Phase 1: Real-Time Audio Core (100% Done &bull; 204h)</span></div>
       <div class="leg-item"><div class="leg-dot" style="background:var(--accent)"></div><span>Phase 2: Telephony &amp; SIP Gateway (100% Done &bull; 92h)</span></div>
       <div class="leg-item"><div class="leg-dot" style="background:var(--ok)"></div><span>Phase 3: Post-Call Intelligence (100% Done &bull; 90h)</span></div>
-      <div class="leg-item"><div class="leg-dot" style="background:var(--purple)"></div><span>Phase 4: Management Platform (Tasks 4.1&ndash;4.2 Done &bull; 74h of 146h)</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--purple)"></div><span>Phase 4: Management Platform (Tasks 4.1&ndash;4.3 Done &bull; 108h of 146h)</span></div>
     </div>
   </div>
+
 
   <!-- Filter Buttons -->
   <div class="tab-bar">
@@ -838,19 +839,21 @@
             </div>
           </td>
         </tr>
-        <tr>
+        <tr class="done-row">
           <td class="task-id">4.3</td>
           <td>
             <div class="task-name">REST API &amp; Multi-Tenant Access</div>
             <div class="task-desc">API key management, rate limiting, workspace data isolation, role-based access control (Admin, Operator, Analyst).</div>
           </td>
-          <td><span class="badge planned">Planned</span></td>
+          <td><span class="badge done">Done</span></td>
           <td>34 h</td>
           <td>
-            FastAPI/Flask API routes for external integration, programmatic call dispatch, JWT token issuance, and multi-tenant DB segregation.
+            Multi-tenant workspace data isolation, rotatable live/test API keys with SHA-256 hashed storage, RBAC matrices (Admin, Operator, Analyst), token-bucket sliding-window rate limiting with standard headers, JWT/Bearer token issuance &amp; verification, and programmatic call dispatch API (<code>/api/v1/calls/dispatch</code>). 57/57 checks passing.
             <div class="task-artifacts">
-              <span>agent/api_server.py</span>
+              <span>verify_api_tenant.py (57/57 checks)</span>
               <span>agent/auth_manager.py</span>
+              <span>scripts/verify_api_tenant.py</span>
+              <span>scripts/serve.py</span>
             </div>
           </td>
         </tr>
@@ -860,16 +863,17 @@
             <div class="task-name">Automated Testing, CI/CD &amp; Hardening</div>
             <div class="task-desc">Load testing to 100 concurrent calls, SIP stress testing, PII redaction security audit, automated GitHub Actions CI/CD.</div>
           </td>
-          <td><span class="badge planned">Planned</span></td>
+          <td><span class="badge next">Next Up</span></td>
           <td>38 h</td>
           <td>
-            Synthetic WebRTC load generator, memory leak profiling, automated test runner across all 16+ verification scripts, production container builds.
+            Synthetic WebRTC load generator, memory leak profiling, automated test runner across all 19+ verification scripts, production container builds and GitHub Actions CI workflow.
             <div class="task-artifacts">
               <span>scripts/load_test.py</span>
               <span>.github/workflows/ci.yml</span>
             </div>
           </td>
         </tr>
+
       </tbody>
     </table>
   </div>

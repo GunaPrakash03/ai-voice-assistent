@@ -13,7 +13,9 @@ import re
 import sys
 import time
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse, parse_qs
+
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, ROOT)
@@ -45,6 +47,7 @@ from agent.pipeline_worker import pipeline_worker
 from agent.webhook_dispatcher import webhook_dispatcher, WebhookEvent
 from agent.agent_builder import agent_builder
 from agent.call_history import call_history
+from agent.auth_manager import auth_manager, ApiScope, UserRole
 amd_manager = AMDManager()
 
 
@@ -52,13 +55,29 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=WEB, **kw)
 
-    def _send_json(self, data: dict, status: int = 200):
+    def _send_json(self, data: dict, status: int = 200, extra_headers: Optional[Dict[str, str]] = None):
         body = json.dumps(data).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        if extra_headers:
+            for k, v in extra_headers.items():
+                self.send_header(k, str(v))
         self.end_headers()
         self.wfile.write(body)
+
+    def _extract_headers(self) -> Dict[str, str]:
+        return {k: self.headers.get(k, "") for k in self.headers.keys()}
+
+    def _auth_err_code(self, err: Optional[str]) -> int:
+        err_str = str(err).lower()
+        if "forbidden" in err_str or "scope" in err_str:
+            return 403
+        if "rate limit" in err_str:
+            return 429
+        return 401
+
+
 
     def _send_audio(self, call_id: str):
         """Streams a call recording, honouring Range requests so the player can seek."""
@@ -365,6 +384,53 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(csv_body)
             return
+
+        # --- Task 4.3: REST API & Multi-Tenant v1 GET Endpoints ---
+        elif parsed.path == "/api/v1/health":
+            self._send_json({"status": "ok", "service": "voice-agent-service", "version": "1.0.0", "timestamp": time.time()})
+            return
+        elif parsed.path == "/api/v1/auth/me":
+            ok, ctx, err = auth_manager.authenticate_request(self._extract_headers())
+            if not ok:
+                self._send_json({"status": "error", "error": err}, 401)
+                return
+            self._send_json({"status": "ok", "auth": ctx})
+            return
+        elif parsed.path == "/api/v1/workspaces":
+            ok, ctx, err = auth_manager.authenticate_request(self._extract_headers(), required_scope=ApiScope.WORKSPACES_ADMIN.value)
+            if not ok:
+                self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
+                return
+            self._send_json({"status": "ok", "workspaces": auth_manager.list_workspaces()})
+            return
+        elif parsed.path == "/api/v1/api-keys":
+            ok, ctx, err = auth_manager.authenticate_request(self._extract_headers(), required_scope=ApiScope.WORKSPACES_ADMIN.value)
+            if not ok:
+                self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
+                return
+            q = parse_qs(parsed.query)
+            ws_id = (q.get("workspace_id") or [""])[0] or ctx["workspace_id"]
+            self._send_json({"status": "ok", "api_keys": auth_manager.list_api_keys(workspace_id=ws_id)})
+            return
+        elif parsed.path == "/api/v1/users":
+            ok, ctx, err = auth_manager.authenticate_request(self._extract_headers(), required_scope=ApiScope.WORKSPACES_ADMIN.value)
+            if not ok:
+                self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
+                return
+            q = parse_qs(parsed.query)
+            ws_id = (q.get("workspace_id") or [""])[0] or ctx["workspace_id"]
+            self._send_json({"status": "ok", "users": auth_manager.list_users(workspace_id=ws_id)})
+            return
+        elif parsed.path == "/api/v1/calls":
+            ok, ctx, err = auth_manager.authenticate_request(self._extract_headers(), required_scope=ApiScope.CALLS_READ.value)
+            if not ok:
+                self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
+                return
+            q = parse_qs(parsed.query)
+            self._send_json({"status": "ok", "workspace_id": ctx["workspace_id"], **call_history.list_calls(page=int((q.get("page") or ["1"])[0] or 1), page_size=int((q.get("page_size") or ["25"])[0] or 25))})
+            return
+
+
 
         return super().do_GET()
 
@@ -834,7 +900,116 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"status": "ok", "preview": preview})
             return
 
+        # --- Task 4.3: REST API & Multi-Tenant v1 POST Endpoints ---
+        elif parsed.path == "/api/v1/auth/token":
+            # Issues signed JWT Bearer token
+            subject = payload.get("username", payload.get("email", payload.get("subject", "operator")))
+            ws_id = payload.get("workspace_id", "ws-default")
+            role = payload.get("role", "operator")
+            ttl = int(payload.get("ttl_seconds", 3600))
+            token = auth_manager.issue_token(workspace_id=ws_id, subject=subject, role=role, ttl_seconds=ttl)
+            self._send_json({"status": "ok", "token": token, "token_type": "Bearer", "expires_in": ttl, "workspace_id": ws_id})
+            return
+
+        elif parsed.path == "/api/v1/workspaces":
+            ok, ctx, err = auth_manager.authenticate_request(self._extract_headers(), required_scope=ApiScope.WORKSPACES_ADMIN.value)
+            if not ok:
+                self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
+                return
+            name = payload.get("name", "").strip()
+            if not name:
+                self._send_json({"status": "error", "error": "Workspace 'name' is required"}, 400)
+                return
+            ws = auth_manager.create_workspace(name=name, slug=payload.get("slug"), rate_limit_rpm=int(payload.get("rate_limit_rpm", 120)))
+            self._send_json({"status": "ok", "workspace": ws.to_dict()}, 201)
+            return
+
+        elif parsed.path == "/api/v1/api-keys":
+            ok, ctx, err = auth_manager.authenticate_request(self._extract_headers(), required_scope=ApiScope.WORKSPACES_ADMIN.value)
+            if not ok:
+                self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
+                return
+            name = payload.get("name", "Default Key").strip()
+            ws_id = payload.get("workspace_id", ctx["workspace_id"])
+            scopes = payload.get("scopes")
+            is_test = bool(payload.get("is_test", False))
+            try:
+                key_obj, raw_secret = auth_manager.generate_api_key(workspace_id=ws_id, name=name, scopes=scopes, is_test=is_test)
+                self._send_json({"status": "ok", "api_key": key_obj.to_dict(include_hash=False), "secret_token": raw_secret}, 201)
+            except KeyError as e:
+                self._send_json({"status": "error", "error": str(e)}, 404)
+            return
+
+        elif parsed.path == "/api/v1/api-keys/revoke":
+            ok, ctx, err = auth_manager.authenticate_request(self._extract_headers(), required_scope=ApiScope.WORKSPACES_ADMIN.value)
+            if not ok:
+                self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
+                return
+            key_id = payload.get("key_id", "").strip()
+            if not auth_manager.revoke_api_key(key_id):
+                self._send_json({"status": "error", "error": f"API Key '{key_id}' not found"}, 404)
+                return
+            self._send_json({"status": "ok", "revoked_key_id": key_id})
+            return
+
+        elif parsed.path == "/api/v1/users":
+            ok, ctx, err = auth_manager.authenticate_request(self._extract_headers(), required_scope=ApiScope.WORKSPACES_ADMIN.value)
+            if not ok:
+                self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
+                return
+            email = payload.get("email", "").strip()
+            role = payload.get("role", "operator").strip()
+            ws_id = payload.get("workspace_id", ctx["workspace_id"])
+            try:
+                user = auth_manager.create_user(workspace_id=ws_id, email=email, role=role)
+                self._send_json({"status": "ok", "user": user.to_dict()}, 201)
+            except (KeyError, ValueError) as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+            return
+
+        elif parsed.path == "/api/v1/calls/dispatch":
+            # Programmatic Call Dispatching with RBAC & Rate Limiting
+            ok, ctx, err = auth_manager.authenticate_request(self._extract_headers(), required_scope=ApiScope.CALLS_DISPATCH.value)
+            if not ok:
+                self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
+                return
+
+            destination = payload.get("to", payload.get("destination", "")).strip()
+            if not destination:
+                self._send_json({"status": "error", "error": "Destination number 'to' is required"}, 400)
+                return
+            caller_id = payload.get("from", payload.get("caller_id", None))
+            agent_id = payload.get("agent_id", "intake-agent")
+            custom_metadata = payload.get("metadata", {})
+            room_name = f"dispatch-{ctx['workspace_id']}-{int(time.time()*1000)}"
+
+            try:
+                loop = asyncio.new_event_loop()
+                record = loop.run_until_complete(
+                    telephony_manager.dial_phone_number(
+                        destination_number=destination,
+                        caller_id=caller_id,
+                        room_name=room_name,
+                    )
+                )
+                loop.close()
+                dispatch_res = {
+                    "status": "dispatched",
+                    "call_id": record.call_id,
+                    "workspace_id": ctx["workspace_id"],
+                    "agent_id": agent_id,
+                    "destination": destination,
+                    "room": room_name,
+                    "dispatched_by": ctx["identity"],
+                    "timestamp": time.time(),
+                }
+                self._send_json({"status": "ok", "dispatch": dispatch_res}, 200)
+            except Exception as err:
+                self._send_json({"status": "error", "error": str(err)}, 500)
+            return
+
         self.send_error(404, "Endpoint not found")
+
 
 
 
