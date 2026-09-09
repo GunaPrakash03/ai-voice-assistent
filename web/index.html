@@ -3,24 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Media Server Test — Task 1.1</title>
+<title>AI Voice Assistant — Task 1.4 Streaming LLM Dialogue Manager</title>
 <style>
   :root {
     --ground:#F4F6F5; --panel:#fff; --ink:#10161B; --soft:#4B565C;
     --faint:#78848A; --rule:#D8DEDB; --accent:#127C8E; --ok:#3F8F5B;
-    --warn:#B8791F; --bad:#A8412F;
+    --warn:#B8791F; --bad:#A8412F; --chip:#E9F1F3;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --ground:#0E1315; --panel:#171E21; --ink:#E8EDEB; --soft:#A6B2B4;
       --faint:#748085; --rule:#29343A; --accent:#45B6C9; --ok:#6FBF87;
-      --warn:#E0A94E; --bad:#E08272;
+      --warn:#E0A94E; --bad:#E08272; --chip:#1A262B;
     }
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--ground);color:var(--ink);
     font:15px/1.5 "IBM Plex Sans",system-ui,-apple-system,sans-serif;padding:28px 20px 60px}
-  .wrap{max-width:760px;margin:0 auto}
+  .wrap{max-width:820px;margin:0 auto}
   h1{font-size:22px;margin:0 0 4px}
   .sub{color:var(--soft);font-size:14px;margin:0 0 22px}
   .panel{background:var(--panel);border:1px solid var(--rule);border-radius:6px;
@@ -54,33 +54,38 @@
     border:1px solid var(--warn);border-radius:5px;padding:12px 15px;margin-bottom:14px;
     font-size:13.5px}
   .warn-hp{color:var(--soft);font-size:12.5px;margin-top:3px}
-  .transcript{margin-top:8px;min-height:96px;max-height:240px;overflow:auto;
+  .transcript{margin-top:8px;min-height:80px;max-height:200px;overflow:auto;
     background:var(--ground);border:1px solid var(--rule);border-radius:4px;
-    padding:12px;font-size:15px;line-height:1.6}
+    padding:12px;font-size:14.5px;line-height:1.6}
   .transcript p{margin:0 0 7px}
   .transcript .interim{color:var(--faint);font-style:italic}
   .hint{background:color-mix(in srgb,var(--accent) 10%,transparent);
     border:1px solid var(--accent);border-radius:5px;padding:12px 15px;font-size:13.5px}
+  .badge{display:inline-block;padding:3px 9px;border-radius:4px;font-size:11.5px;font-weight:600;font-family:ui-monospace,Menlo,monospace}
+  .metrics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px}
+  .metric-card{background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:9px 12px}
+  .metric-label{font-size:10.5px;text-transform:uppercase;color:var(--faint);font-family:ui-monospace,monospace}
+  .metric-val{font-size:18px;font-weight:700;color:var(--accent);margin-top:2px}
+  .clause-chip{display:inline-block;padding:4px 9px;background:var(--chip);border:1px solid var(--rule);border-radius:4px;font-size:12.5px;margin:3px 4px 3px 0}
+  .clause-chip.final{border-color:var(--accent)}
+  .chat-turn{padding:8px 12px;border-radius:5px;margin-bottom:8px;font-size:13.5px}
+  .chat-turn.user{background:color-mix(in srgb,var(--accent) 12%,transparent);border-left:3px solid var(--accent)}
+  .chat-turn.assistant{background:var(--ground);border-left:3px solid var(--ok)}
+  .chat-turn.interrupted{border-left-color:var(--warn)}
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <h1>Media Server Test</h1>
-  <p class="sub">Task 1.1 acceptance — browser to media server, real audio, no AI yet.</p>
+  <h1>AI Voice Assistant — Core Audio & Dialogue</h1>
+  <p class="sub">Task 1.4 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD Barge-in &bull; Streaming LLM Dialogue Manager</p>
 
-  <div class="hint">
-    <strong>The real test:</strong> open this page in <strong>two tabs</strong>, join the same
-    room in both, then talk. Hearing yourself in the other tab proves the full duplex
-    media path works end to end — the thing everything else is built on.
-  </div>
-
-  <div class="panel" style="margin-top:14px">
+  <div class="panel">
     <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
     <div id="alone" class="alone" hidden>
       <div>
-        <strong>You are alone in this room.</strong> Audio needs two participants.
-        <div class="warn-hp">Use headphones, or the two tabs will screech at each other.</div>
+        <strong>You are alone in this room.</strong> Audio needs the agent or another participant.
+        <div class="warn-hp">Ensure the worker container is running: <code>docker compose up -d</code></div>
       </div>
       <button id="second" class="ghost" style="white-space:nowrap">Open second tab</button>
     </div>
@@ -89,33 +94,94 @@
       <div><label for="who">Your name</label><input id="who" style="width:150px"></div>
       <button id="go">Join and speak</button>
       <button id="stop" class="ghost" disabled>Leave</button>
-      <button id="test-barge" class="ghost" disabled style="white-space:nowrap" title="Agent speaks; talk over it to test barge-in">Test Agent Speech (Barge-in)</button>
+      <button id="test-barge" class="ghost" disabled style="white-space:nowrap" title="Agent speaks; talk over it to test barge-in">Test Speech (Barge-in)</button>
     </div>
   </div>
 
   <div class="panel">
-    <label>Your microphone</label>
+    <label>Voice Activity & Interruption State</label>
     <div class="meter"><div id="level"></div></div>
     <div style="margin-top:12px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
       <div>
-        <label style="margin-bottom:4px">Voice Activity (Silero VAD)</label>
-        <span id="vad-badge" style="display:inline-block;padding:3px 9px;border-radius:4px;font-size:12px;font-weight:600;background:var(--rule);color:var(--soft)">Silent (Listening)</span>
+        <label style="margin-bottom:4px">Caller VAD (Silero)</label>
+        <span id="vad-badge" class="badge" style="background:var(--rule);color:var(--soft)">Silent (Listening)</span>
+      </div>
+      <div>
+        <label style="margin-bottom:4px">Agent State</label>
+        <span id="agent-badge" class="badge" style="background:var(--rule);color:var(--soft)">Idle</span>
       </div>
       <div id="barge-banner" style="display:none;padding:3px 9px;border-radius:4px;font-size:12px;font-weight:600;background:color-mix(in srgb,var(--warn) 20%,transparent);border:1px solid var(--warn);color:var(--warn)">
-        ⚡ Barge-In Interrupted!
+        ⚡ Instant Barge-In Cut-Off!
       </div>
     </div>
-    <label style="margin-top:16px">In this room</label>
+    <label style="margin-top:16px">Participants in room</label>
     <ul id="people"><li><span style="color:var(--faint)">nobody yet</span></li></ul>
   </div>
 
   <div class="panel">
-    <label>Live transcript</label>
-    <div id="tx" class="transcript"><span style="color:var(--faint)">Speak once connected. Grey text is Deepgram&rsquo;s running guess; it goes solid when the result is final.</span></div>
+    <label>Live Caller Transcript (Deepgram STT)</label>
+    <div id="tx" class="transcript"><span style="color:var(--faint)">Speak once connected. Deepgram streams interim tokens and commits final transcripts.</span></div>
   </div>
 
   <div class="panel">
-    <label>Event log</label>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label>Streaming LLM Dialogue Response (Task 1.4)</label>
+      <span id="llm-status" class="badge" style="background:var(--rule);color:var(--soft)">Awaiting user speech</span>
+    </div>
+
+    <!-- Live streaming text -->
+    <div id="llm-stream-box" class="transcript" style="margin-top:8px;min-height:75px">
+      <span style="color:var(--faint)">Agent response tokens will stream here in real time with sub-200ms TTFT...</span>
+    </div>
+
+    <!-- Clause Boundary Splitter Chunks (Task 1.5 TTS preparation) -->
+    <label style="margin-top:14px">Clause Boundary Splitter (sub-200ms chunks for TTS)</label>
+    <div id="clause-box" style="margin-top:6px;min-height:36px;padding:6px;background:var(--ground);border:1px solid var(--rule);border-radius:4px">
+      <span style="color:var(--faint);font-size:12.5px">Completed clauses will appear here as tokens stream...</span>
+    </div>
+
+    <!-- Live LLM Performance Metrics -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">TTFT (First Token)</div>
+        <div class="metric-val" id="m-ttft">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Total Duration</div>
+        <div class="metric-val" id="m-dur">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Tokens Emitted</div>
+        <div class="metric-val" id="m-tok">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Clauses Split</div>
+        <div class="metric-val" id="m-clauses">—</div>
+      </div>
+    </div>
+
+    <!-- Manual Prompt Test without Microphone -->
+    <div style="margin-top:16px;border-top:1px solid var(--rule);padding-top:14px">
+      <label for="prompt-input">Test Dialogue Directly (without microphone)</label>
+      <div class="row">
+        <input id="prompt-input" style="flex:1;min-width:240px" placeholder="Type a message, e.g. 'Hello, how can you help me?'">
+        <button id="send-prompt" disabled>Send Prompt</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label>Conversation Context Buffer (Multi-Turn History)</label>
+      <button id="clear-hist" class="ghost" style="padding:3px 8px;font-size:12px" disabled>Clear History</button>
+    </div>
+    <div id="chat-history" style="margin-top:8px;max-height:220px;overflow:auto">
+      <span style="color:var(--faint);font-size:13px">No conversation history yet.</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <label>Event Log</label>
     <pre id="log">ready</pre>
   </div>
 </div>
@@ -128,7 +194,7 @@
   var room = null, audioCtx = null, raf = null;
 
   var $ = function (id) { return document.getElementById(id); };
-  $("who").value = "tab-" + Math.random().toString(36).slice(2, 6);
+  $("who").value = "caller-" + Math.random().toString(36).slice(2, 6);
 
   function log(msg) {
     var t = new Date().toTimeString().slice(0, 8);
@@ -141,7 +207,7 @@
 
   if (!LK) {
     setState("livekit-client failed to load", "err");
-    log("The CDN script did not load. Check your network, then reload.");
+    log("The CDN script did not load. Check network and reload.");
     $("go").disabled = true;
     return;
   }
@@ -166,7 +232,6 @@
     });
   }
 
-  // Local mic level, straight from the published track.
   function startMeter(track) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     var src = audioCtx.createMediaStreamSource(new MediaStream([track.mediaStreamTrack]));
@@ -178,51 +243,81 @@
       analyser.getByteTimeDomainData(buf);
       var peak = 0;
       for (var i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
-      $("level").style.width = Math.min(100, (peak / 128) * 240) + "%";
+      var pct = Math.min(100, Math.round((peak / 128) * 160));
+      $("level").style.width = pct + "%";
       raf = requestAnimationFrame(tick);
     })();
   }
 
+  function renderHistory(messages) {
+    var box = $("chat-history");
+    if (!messages || messages.length === 0) {
+      box.innerHTML = '<span style="color:var(--faint);font-size:13px">No conversation history yet.</span>';
+      return;
+    }
+    box.innerHTML = "";
+    messages.forEach(function (m) {
+      var div = document.createElement("div");
+      var isUser = m.role === "user";
+      div.className = "chat-turn " + (isUser ? "user" : "assistant") + (m.interrupted ? " interrupted" : "");
+      var timeStr = new Date(m.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+      div.innerHTML = '<strong>' + (isUser ? 'Caller' : 'AI Assistant') + '</strong> ' +
+                      '<span class="tag" style="float:right">' + timeStr + (m.interrupted ? ' [interrupted]' : '') + '</span>' +
+                      '<div style="margin-top:4px">' + m.content + '</div>';
+      box.appendChild(div);
+    });
+    box.scrollTop = box.scrollHeight;
+  }
+
   async function join() {
     $("go").disabled = true;
-    setState("Connecting…", "busy");
-    try {
-      var q = "?room=" + encodeURIComponent($("room").value) +
-              "&identity=" + encodeURIComponent($("who").value);
-      var cfg = await (await fetch("/token" + q)).json();
-      log("token issued for " + cfg.identity);
+    setState("Minting token...", "busy");
+    var r = $("room").value.trim() || "test-room";
+    var u = $("who").value.trim() || "caller";
 
-      room = new LK.Room({ adaptiveStream: true, dynacast: true });
+    try {
+      var res = await fetch("/token?room=" + encodeURIComponent(r) + "&user=" + encodeURIComponent(u));
+      if (!res.ok) throw new Error("token fetch HTTP " + res.status);
+      var cfg = await res.json();
+
+      setState("Connecting to LiveKit...", "busy");
+      room = new LK.Room({
+        adaptiveStream: true,
+        dynacast: true,
+        audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
 
       room.on(LK.RoomEvent.Connected, function () {
-        setState("Connected to " + cfg.room, "on");
+        setState("Connected to " + room.name, "on");
+        log("connected to " + room.name);
         checkAlone();
-        log("connected as " + cfg.identity + " in " + room.name);
         renderPeople([]);
       });
-      room.on(LK.RoomEvent.Disconnected, function (r) {
-        // A bare numeric code tells nobody anything. Name it.
-        var WHY = {
-          0: "unknown", 1: "you left", 2: "duplicate identity",
-          3: "server shutdown", 4: "removed by server", 5: "room deleted",
-          6: "state mismatch", 7: "join failed", 8: "migrating",
-          9: "signal connection closed", 10: "room closed",
-          11: "user unavailable", 12: "call rejected"
-        };
-        var why = WHY[r] !== undefined ? WHY[r] : "code " + r;
-        setState("Disconnected", r === 1 || r === undefined ? "" : "err");
-        log("disconnected — " + why);
+
+      room.on(LK.RoomEvent.Disconnected, function () {
+        setState("Disconnected", "");
+        log("disconnected");
+        leave();
       });
+
       room.on(LK.RoomEvent.ParticipantConnected, function (p) {
-        log("joined: " + p.identity); renderPeople([]); checkAlone();
+        log("joined: " + p.identity);
+        checkAlone();
+        renderPeople();
       });
+
       room.on(LK.RoomEvent.ParticipantDisconnected, function (p) {
-        log("left: " + p.identity); renderPeople([]); checkAlone();
+        log("left: " + p.identity);
+        checkAlone();
+        renderPeople();
       });
-      room.on(LK.RoomEvent.ActiveSpeakersChanged, function (list) {
-        renderPeople(list.map(function (p) { return p.identity; }));
+
+      room.on(LK.RoomEvent.ActiveSpeakersChanged, function (speakers) {
+        renderPeople(speakers.map(function (s) { return s.identity; }));
       });
-      // Transcripts, VAD state, and barge-in events arrive as data messages.
+
+      var activeStreamingReply = "";
+
       room.on(LK.RoomEvent.DataReceived, function (payload, participant, kind, topic) {
         var msg;
         try { msg = JSON.parse(new TextDecoder().decode(payload)); }
@@ -231,8 +326,6 @@
         if (topic === "transcript") {
           var box = $("tx");
           if (box.dataset.empty !== "no") { box.innerHTML = ""; box.dataset.empty = "no"; }
-
-          // One live line, replaced as it is revised, committed when final.
           var live = box.querySelector("p.interim");
           if (!msg.is_final) {
             if (!live) { live = document.createElement("p"); live.className = "interim"; box.appendChild(live); }
@@ -240,7 +333,7 @@
           } else {
             if (live) { live.className = ""; live.textContent = msg.text; }
             else { var p = document.createElement("p"); p.textContent = msg.text; box.appendChild(p); }
-            log("final: " + msg.text);
+            log("caller: " + msg.text);
           }
           box.scrollTop = box.scrollHeight;
         } else if (topic === "vad") {
@@ -249,26 +342,66 @@
             badge.textContent = "🗣️ Speaking (Active)";
             badge.style.background = "var(--ok)";
             badge.style.color = "#fff";
-            log("VAD speech start detected");
+            log("VAD: caller started speaking");
           } else if (msg.state === "listening") {
-            badge.textContent = "Silent (Listening / Turn Endpointed)";
+            badge.textContent = "Silent (Listening / Endpointed)";
             badge.style.background = "var(--rule)";
             badge.style.color = "var(--soft)";
-            log("VAD speech end detected");
+            log("VAD: caller stopped speaking (endpointed)");
           }
+        } else if (topic === "agent_state") {
+          var ab = $("agent-badge");
+          var ls = $("llm-status");
+          ab.textContent = msg.state.toUpperCase();
+          if (msg.state === "thinking") {
+            ab.style.background = "var(--warn)"; ab.style.color = "#fff";
+            ls.textContent = "🧠 Thinking / Generating...";
+            ls.style.background = "var(--warn)"; ls.style.color = "#fff";
+            activeStreamingReply = "";
+            $("llm-stream-box").innerHTML = '<span style="color:var(--faint)">Generating response...</span>';
+            $("clause-box").innerHTML = "";
+          } else if (msg.state === "speaking") {
+            ab.style.background = "var(--ok)"; ab.style.color = "#fff";
+            ls.textContent = "🗣️ Streaming response...";
+            ls.style.background = "var(--ok)"; ls.style.color = "#fff";
+          } else {
+            ab.style.background = "var(--rule)"; ab.style.color = "var(--soft)";
+            ls.textContent = "Listening";
+            ls.style.background = "var(--rule)"; ls.style.color = "var(--soft)";
+          }
+          log("agent_state: " + msg.state);
+        } else if (topic === "llm_stream") {
+          activeStreamingReply += msg.token;
+          $("llm-stream-box").textContent = activeStreamingReply;
+          $("llm-stream-box").scrollTop = $("llm-stream-box").scrollHeight;
+        } else if (topic === "llm_clause") {
+          var cb = $("clause-box");
+          if (cb.innerHTML.indexOf("Completed clauses") > -1) cb.innerHTML = "";
+          var chip = document.createElement("span");
+          chip.className = "clause-chip" + (msg.is_final ? " final" : "");
+          chip.textContent = "[" + msg.index + "] " + msg.clause;
+          cb.appendChild(chip);
+        } else if (topic === "agent_reply") {
+          $("llm-stream-box").textContent = msg.text;
+          if (msg.metrics) {
+            $("m-ttft").textContent = (msg.metrics.ttft_ms != null ? msg.metrics.ttft_ms + "ms" : "—");
+            $("m-dur").textContent = msg.metrics.duration_ms + "ms";
+            $("m-tok").textContent = msg.metrics.token_count;
+            $("m-clauses").textContent = msg.metrics.clause_count;
+          }
+          log("agent reply (" + (msg.metrics ? msg.metrics.ttft_ms + "ms TTFT" : "") + "): " + msg.text);
+        } else if (topic === "chat_history") {
+          renderHistory(msg.messages);
         } else if (topic === "interruption") {
           var banner = $("barge-banner");
           banner.style.display = "inline-block";
-          log("⚡ Barge-in interruption triggered! Agent speech buffer truncated.");
+          log("⚡ Barge-in cut-off triggered! Reason: " + msg.reason);
           setTimeout(function () { banner.style.display = "none"; }, 3500);
-        } else if (topic === "agent_state") {
-          log("agent state: " + msg.state);
         }
       });
 
       room.on(LK.RoomEvent.TrackSubscribed, function (track, pub, participant) {
         if (track.kind !== "audio") return;
-        // Attaching the element is what actually plays the far side.
         document.body.appendChild(track.attach());
         log("hearing " + participant.identity);
       });
@@ -282,6 +415,8 @@
 
       $("stop").disabled = false;
       $("test-barge").disabled = false;
+      $("send-prompt").disabled = false;
+      $("clear-hist").disabled = false;
     } catch (e) {
       setState("Failed", "err");
       log("error: " + (e && e.message ? e.message : e));
@@ -292,9 +427,14 @@
   async function leave() {
     $("stop").disabled = true;
     $("test-barge").disabled = true;
+    $("send-prompt").disabled = true;
+    $("clear-hist").disabled = true;
     $("vad-badge").textContent = "Silent (Listening)";
     $("vad-badge").style.background = "var(--rule)";
     $("vad-badge").style.color = "var(--soft)";
+    $("agent-badge").textContent = "Idle";
+    $("agent-badge").style.background = "var(--rule)";
+    $("agent-badge").style.color = "var(--soft)";
     $("barge-banner").style.display = "none";
     if (raf) cancelAnimationFrame(raf);
     if (audioCtx) { audioCtx.close(); audioCtx = null; }
@@ -305,9 +445,38 @@
     $("go").disabled = false;
   }
 
+  $("send-prompt").addEventListener("click", async function () {
+    var txt = $("prompt-input").value.trim();
+    if (!txt || !room || !room.localParticipant) return;
+    log("Sending test prompt: " + txt);
+    $("prompt-input").value = "";
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "test_prompt", text: txt })),
+        { reliable: true }
+      );
+    } catch (err) {
+      log("error sending prompt: " + err);
+    }
+  });
+
+  $("clear-hist").addEventListener("click", async function () {
+    if (!room || !room.localParticipant) return;
+    try {
+      await room.localParticipant.publishData(
+        new TextEncoder().encode(JSON.stringify({ action: "clear_history" })),
+        { reliable: true }
+      );
+      $("chat-history").innerHTML = '<span style="color:var(--faint);font-size:13px">Cleared.</span>';
+      log("Conversation history cleared.");
+    } catch (err) {
+      log("error clearing history: " + err);
+    }
+  });
+
   $("test-barge").addEventListener("click", async function () {
     if (!room || !room.localParticipant) return;
-    log("Requesting agent test speech to verify barge-in...");
+    log("Requesting test speech to verify barge-in...");
     try {
       await room.localParticipant.publishData(
         new TextEncoder().encode(JSON.stringify({ action: "test_speech" })),
@@ -322,10 +491,9 @@
     var u = location.origin + location.pathname + "?room=" +
             encodeURIComponent($("room").value);
     window.open(u, "_blank");
-    log("second tab opened — click Join and speak in it");
+    log("second tab opened");
   });
 
-  // Let a room name arrive by URL so the second tab lands in the same room.
   var fromUrl = new URLSearchParams(location.search).get("room");
   if (fromUrl) $("room").value = fromUrl;
 

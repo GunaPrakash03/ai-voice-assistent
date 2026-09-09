@@ -13,8 +13,8 @@ See `../ai voice assistent/` for the estimation, stack and cost documents.
 | 1.1 Media server setup | Done — local stack running, acceptance check 5/5. Cloud deploy pending. |
 | 1.2 Streaming STT | Done — `verify_stt.py` 5/5, speech transcribed end to end. |
 | 1.3 VAD & barge-in | Done — `verify_vad.py` 5/5, Silero VAD speech boundaries + barge-in cutoff. |
-| 1.4 LLM dialogue manager | Next up |
-| 1.5 Streaming TTS | Pending — needs `CARTESIA_API_KEY` |
+| 1.4 LLM dialogue manager | Done — `verify_llm.py` 5/5, streaming model wrapper, clause boundary splitter, context buffer. |
+| 1.5 Streaming TTS | Next up — pending `CARTESIA_API_KEY` |
 
 ## Run it
 
@@ -23,6 +23,7 @@ docker compose up -d
 python3 scripts/verify.py     # media server acceptance (1.1)
 python3 scripts/verify_stt.py # speech-to-text acceptance (1.2)
 python3 scripts/verify_vad.py # VAD & barge-in acceptance (1.3)
+python3 scripts/verify_llm.py # streaming LLM dialogue manager acceptance (1.4)
 ```
 
 The verify script proves the four things task 1.1 promises: the server
@@ -71,6 +72,23 @@ on CPU via ONNX Runtime inside the agent container.
 
 ```bash
 python3 scripts/verify_vad.py
+```
+
+## Streaming LLM Dialogue Manager (task 1.4)
+
+Provides real-time conversational reasoning with sub-200ms Time-To-First-Token (TTFT),
+sentence/clause boundary chunking for downstream TTS, and multi-turn context buffering.
+
+- **Streaming Model Wrapper**: integrates OpenAI (`gpt-4o-mini`, `gpt-4o`) via `livekit-plugins-openai` and provides an offline local conversational streaming simulator when no API key is provided.
+- **Clause Boundary Splitter**: segments incoming token streams at natural punctuation boundaries (`,`, `;`, `:`, `—`, `.`, `?`, `!`, `\n`) with configurable character/word minimums, ensuring downstream TTS (Task 1.5) receives fluent conversational units with sub-200ms TTFT instead of waiting for full paragraphs.
+- **Conversation History Context Buffer**: maintains multi-turn user/assistant dialogue, tracks role turns, performs sliding window context trimming, and serializes state over WebRTC data channels (`chat_history`).
+- **Instant Barge-in Interruption**: cancels active LLM generation in real time whenever the caller begins speaking during thought generation or response playback, annotating the context buffer with `[interrupted]`.
+- **Key configuration & acceptance check**:
+
+```bash
+python3 scripts/set_key.py openai <your-openai-key> # validates with OpenAI and updates .env
+docker compose up -d agent
+python3 scripts/verify_llm.py                       # verifies 5/5 checks
 ```
 
 ## Ports

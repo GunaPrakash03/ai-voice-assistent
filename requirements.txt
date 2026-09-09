@@ -5,8 +5,8 @@ livekit-plugins-deepgram~=1.0
 python-dotenv~=1.0
 
 livekit-plugins-silero~=1.0
+livekit-plugins-openai~=1.0
 
 # Added as the pipeline grows:
-#   livekit-plugins-openai    (task 1.4 — LLM)
 #   livekit-plugins-cartesia  (task 1.5 — TTS)
 

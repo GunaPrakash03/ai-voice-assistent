@@ -66,6 +66,6 @@ def join_token(api_key: str, api_secret: str, room: str, identity: str) -> str:
         "roomJoin": True,
         "canPublish": True,
         "canSubscribe": True,
-        # The caller sends audio only; no camera, no screen share.
-        "canPublishData": False,
+        # Caller can publish audio and data messages (transcripts, UI actions, prompts)
+        "canPublishData": True,
     }, ttl_seconds=300)

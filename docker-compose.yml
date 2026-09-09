@@ -40,6 +40,8 @@ services:
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
       STT_MODEL: ${STT_MODEL:-nova-3}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
     volumes:
       - ./agent:/app/agent:ro
       - ./samples:/app/samples:ro

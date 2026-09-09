@@ -44,7 +44,7 @@ class Handler(SimpleHTTPRequestHandler):
 
         q = parse_qs(parsed.query)
         room = (q.get("room") or ["test-room"])[0]
-        identity = (q.get("identity") or ["caller"])[0]
+        identity = (q.get("identity") or q.get("user") or ["caller"])[0]
 
         # Development harness only. A real endpoint authenticates the
         # visitor and rate-limits before minting anything.

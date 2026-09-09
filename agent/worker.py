@@ -1,15 +1,17 @@
 """
-Task 1.3 — Voice Activity Detection (VAD) & Barge-In Interruption Engine.
+Task 1.4 — Streaming LLM Dialogue Manager.
 
-Replaces the cloud STT-based turn detection with local Silero VAD running via
-ONNX Runtime. Provides:
-1. Speech boundary detection (speech start & speech end / turn endpointing).
-2. Local VAD turn detection without external cloud gateway dependencies.
-3. Instant barge-in / interruption handling: when the user starts speaking while
-   the agent is playing audio, the playback buffer is immediately truncated,
-   agent speech is cancelled, and an interruption event is published.
-4. Real-time VAD state broadcasting over WebRTC data messages (topics:
-   `transcript`, `vad`, `interruption`, `agent_state`).
+Integrates:
+1. Speech-to-Text (STT) via Deepgram Nova-3.
+2. Local Silero VAD for speech boundary detection and dynamic turn endpointing.
+3. Streaming LLM Dialogue Manager with clause boundary splitter (sub-200ms TTFT)
+   and multi-turn conversation history buffer.
+4. Instant barge-in interruption: when the caller speaks while the agent is generating
+   or speaking, generation is immediately aborted, playback buffers truncated,
+   and interruption events broadcast.
+5. Real-time WebRTC data broadcasting over topics:
+   `transcript`, `vad`, `interruption`, `agent_state`, `llm_stream`, `llm_clause`,
+   `agent_reply`, `chat_history`.
 """
 
 import asyncio
@@ -19,25 +21,37 @@ import math
 import os
 import time
 import wave
-from typing import AsyncIterable
+from typing import AsyncIterable, Optional
 
 from dotenv import load_dotenv
 from livekit import agents, rtc
 from livekit.agents import Agent, AgentSession
 from livekit.plugins import deepgram, silero
 
+from agent.llm_manager import (
+    ClauseBoundarySplitter,
+    ConversationContextBuffer,
+    StreamingDialogueManager,
+)
+
 load_dotenv()
-log = logging.getLogger("vad-worker")
+log = logging.getLogger("dialogue-worker")
 
-# nova-3 is the plugin default. Override with STT_MODEL if comparing models.
+# nova-3 is default STT. Override with STT_MODEL if comparing models.
 STT_MODEL = os.getenv("STT_MODEL", "nova-3")
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 
 
-class Transcriber(Agent):
-    """Listens and transcribes, ready for dialogue manager in Task 1.4."""
+class VoiceAssistantAgent(Agent):
+    """Voice assistant agent with dialogue management capabilities."""
 
     def __init__(self) -> None:
-        super().__init__(instructions="You transcribe and monitor speech boundaries.")
+        super().__init__(
+            instructions=(
+                "You are a friendly, helpful, and concise AI voice assistant. "
+                "Speak in conversational English without bullet points or emojis."
+            )
+        )
 
 
 async def tone_speech_frames(secs: float = 6.0, rate: int = 16000) -> AsyncIterable[rtc.AudioFrame]:
@@ -82,7 +96,6 @@ async def entrypoint(ctx: agents.JobContext):
     log.info("joined room %s", ctx.room.name)
 
     # Local Silero VAD model running on CPU via ONNX Runtime.
-    # Completely self-hosted; eliminates reliance on cloud turn-detector endpoints.
     vad = silero.VAD.load(
         min_speech_duration=0.05,      # 50ms speech triggers start-of-speech
         min_silence_duration=0.45,     # 450ms silence marks end-of-speech
@@ -98,14 +111,12 @@ async def entrypoint(ctx: agents.JobContext):
             punctuate=True,
         ),
         turn_handling={
-            # Local Silero VAD drives turn boundaries and speech endpointing
             "turn_detection": "vad",
             "endpointing": {
                 "mode": "dynamic",
                 "min_delay": 0.4,
                 "max_delay": 1.8,
             },
-            # Barge-in interruption enabled: instant cutoff upon detected speech
             "interruption": {
                 "enabled": True,
                 "mode": "vad",
@@ -115,6 +126,10 @@ async def entrypoint(ctx: agents.JobContext):
         },
     )
 
+    llm_manager = StreamingDialogueManager(model=LLM_MODEL)
+    current_turn_texts: list[str] = []
+    user_is_speaking = False
+    turn_process_task: Optional[asyncio.Task] = None
     pending: set[asyncio.Task] = set()
 
     def publish(payload: dict, topic: str, reliable: bool = False):
@@ -130,6 +145,98 @@ async def entrypoint(ctx: agents.JobContext):
         pending.add(task)
         task.add_done_callback(pending.discard)
 
+    async def execute_llm_turn(user_input: str):
+        if not user_input.strip():
+            return
+        log.info("Starting streaming LLM turn for input: '%s'", user_input)
+        publish({
+            "type": "agent_state",
+            "state": "thinking",
+            "old_state": "listening",
+            "timestamp": time.time(),
+        }, topic="agent_state", reliable=True)
+
+        async def on_token_cb(token: str):
+            publish({
+                "type": "llm_stream",
+                "token": token,
+                "timestamp": time.time(),
+            }, topic="llm_stream", reliable=False)
+
+        async def on_clause_cb(clause: str, is_final: bool, index: int):
+            log.info("LLM Clause [%d%s]: %s", index, " (final)" if is_final else "", clause)
+            publish({
+                "type": "llm_clause",
+                "clause": clause,
+                "is_final": is_final,
+                "index": index,
+                "timestamp": time.time(),
+            }, topic="llm_clause", reliable=True)
+
+        try:
+            publish({
+                "type": "agent_state",
+                "state": "speaking",
+                "old_state": "thinking",
+                "timestamp": time.time(),
+            }, topic="agent_state", reliable=True)
+
+            metrics = await llm_manager.generate_response(
+                user_text=user_input,
+                on_token=on_token_cb,
+                on_clause=on_clause_cb,
+            )
+
+            if not metrics["interrupted"]:
+                log.info(
+                    "LLM response complete in %.2fms (TTFT: %sms, tokens: %d, clauses: %d)",
+                    metrics["duration_ms"],
+                    metrics["ttft_ms"],
+                    metrics["token_count"],
+                    metrics["clause_count"],
+                )
+                publish({
+                    "type": "agent_reply",
+                    "text": metrics["text"],
+                    "metrics": metrics,
+                    "timestamp": time.time(),
+                }, topic="agent_reply", reliable=True)
+                publish({
+                    "type": "chat_history",
+                    "messages": llm_manager.context.to_list(),
+                    "timestamp": time.time(),
+                }, topic="chat_history", reliable=True)
+                publish({
+                    "type": "agent_state",
+                    "state": "listening",
+                    "old_state": "speaking",
+                    "timestamp": time.time(),
+                }, topic="agent_state", reliable=True)
+            else:
+                log.info("LLM response was interrupted by user barge-in.")
+        except asyncio.CancelledError:
+            log.info("LLM turn task cancelled.")
+        except Exception as err:
+            log.error("Error during LLM generation: %s", err, exc_info=True)
+            publish({
+                "type": "agent_state",
+                "state": "listening",
+                "old_state": "error",
+                "timestamp": time.time(),
+            }, topic="agent_state", reliable=True)
+
+    def schedule_turn():
+        nonlocal turn_process_task
+        if turn_process_task and not turn_process_task.done():
+            return
+        if not current_turn_texts:
+            return
+        combined = " ".join(current_turn_texts)
+        current_turn_texts.clear()
+        turn_process_task = asyncio.create_task(execute_llm_turn(combined))
+        pending.add(turn_process_task)
+        turn_process_task.add_done_callback(pending.discard)
+
     @session.on("user_input_transcribed")
     def on_transcript(ev):
         publish({
@@ -141,8 +248,14 @@ async def entrypoint(ctx: agents.JobContext):
         }, topic="transcript", reliable=ev.is_final)
         log.info("%s %s", "FINAL " if ev.is_final else "interim", ev.transcript)
 
+        if ev.is_final and ev.transcript.strip():
+            current_turn_texts.append(ev.transcript.strip())
+            if not user_is_speaking:
+                schedule_turn()
+
     @session.on("user_state_changed")
     def on_user_state(ev):
+        nonlocal user_is_speaking
         log.info("VAD speech boundary: %s -> %s", ev.old_state, ev.new_state)
         publish({
             "type": "vad",
@@ -151,6 +264,33 @@ async def entrypoint(ctx: agents.JobContext):
             "speaker": "caller",
             "timestamp": time.time(),
         }, topic="vad", reliable=True)
+
+        if ev.new_state == "speaking":
+            user_is_speaking = True
+            # Caller starts speaking: instant barge-in interruption of any active LLM generation
+            if llm_manager.cancel_active_generation():
+                log.info("Caller barge-in detected via VAD: cancelled in-flight LLM generation.")
+                publish({
+                    "type": "interruption",
+                    "interrupted": True,
+                    "reason": "user_barge_in_llm",
+                    "timestamp": time.time(),
+                }, topic="interruption", reliable=True)
+                publish({
+                    "type": "agent_state",
+                    "state": "listening",
+                    "old_state": "speaking",
+                    "timestamp": time.time(),
+                }, topic="agent_state", reliable=True)
+        elif ev.new_state == "listening":
+            user_is_speaking = False
+            # Caller finished speaking: small debounce to collect final transcript packet
+            async def delayed_schedule():
+                await asyncio.sleep(0.12)
+                schedule_turn()
+            t = asyncio.create_task(delayed_schedule())
+            pending.add(t)
+            t.add_done_callback(pending.discard)
 
     @session.on("agent_state_changed")
     def on_agent_state(ev):
@@ -166,6 +306,7 @@ async def entrypoint(ctx: agents.JobContext):
     def on_overlapping(ev):
         log.info("Overlapping speech detected: is_interruption=%s", ev.is_interruption)
         if ev.is_interruption:
+            llm_manager.cancel_active_generation()
             publish({
                 "type": "interruption",
                 "interrupted": True,
@@ -193,7 +334,28 @@ async def entrypoint(ctx: agents.JobContext):
             data = json.loads(packet.data.decode())
         except Exception:
             return
-        if data.get("action") == "test_speech":
+        action = data.get("action")
+        if action == "test_prompt":
+            prompt = data.get("text", "Hello, how can you help me today?")
+            participant_id = packet.participant.identity if packet.participant else "caller"
+            log.info("Test prompt received from %s: '%s'", participant_id, prompt)
+            task = asyncio.create_task(execute_llm_turn(prompt))
+            pending.add(task)
+            task.add_done_callback(pending.discard)
+        elif action == "get_history":
+            publish({
+                "type": "chat_history",
+                "messages": llm_manager.context.to_list(),
+                "timestamp": time.time(),
+            }, topic="chat_history", reliable=True)
+        elif action == "clear_history":
+            llm_manager.context.clear()
+            publish({
+                "type": "chat_history",
+                "messages": [],
+                "timestamp": time.time(),
+            }, topic="chat_history", reliable=True)
+        elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"
             log.info("Test speech requested by %s for barge-in verification", participant_id)
             async def run_say():
@@ -215,8 +377,8 @@ async def entrypoint(ctx: agents.JobContext):
             pending.add(task)
             task.add_done_callback(pending.discard)
 
-    await session.start(agent=Transcriber(), room=ctx.room)
-    log.info("listening with Silero VAD — model=%s, vad=silero", STT_MODEL)
+    await session.start(agent=VoiceAssistantAgent(), room=ctx.room)
+    log.info("dialogue worker active with Silero VAD & Streaming LLM (%s)", LLM_MODEL)
 
 
 if __name__ == "__main__":
