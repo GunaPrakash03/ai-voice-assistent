@@ -23,6 +23,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from agent.sentiment_analyzer import sentiment_analyzer
+from agent.schema_extractor import schema_extractor, list_schemas
 
 log = logging.getLogger("voice-agent.pipeline")
 if not log.handlers:
@@ -42,11 +43,13 @@ class JobStatus(str, Enum):
 
 
 class PipelineStage(str, Enum):
-    AUDIO_MIXDOWN = "audio_mixdown"
+    AUDIO_MIXDOWN            = "audio_mixdown"
     TRANSCRIPT_NORMALIZATION = "transcript_normalization"
-    METRICS_CALCULATION = "metrics_calculation"
-    SENTIMENT_ANALYSIS = "sentiment_analysis"
-    STORAGE_ARCHIVE = "storage_archive"
+    METRICS_CALCULATION      = "metrics_calculation"
+    SENTIMENT_ANALYSIS       = "sentiment_analysis"
+    SCHEMA_EXTRACTION        = "schema_extraction"
+    STORAGE_ARCHIVE          = "storage_archive"
+
 
 
 class StageStatus(str, Enum):
@@ -447,11 +450,66 @@ class PostCallPipelineWorker:
             self._emit_event("stage_completed", job, {"stage": PipelineStage.SENTIMENT_ANALYSIS.value})
 
             # -------------------------------------------------------------
-            # Stage 5: Storage Archive Verification & Metadata Manifest
+            # Stage 5: Schema-Driven Entity Extraction
             # -------------------------------------------------------------
             s5_start = time.time()
+            job.stages[PipelineStage.SCHEMA_EXTRACTION.value]["status"] = StageStatus.RUNNING.value
+            job.stages[PipelineStage.SCHEMA_EXTRACTION.value]["started_at"] = s5_start
+
+            # Auto-detect schemas from sentiment topics; always run legal_intake as default
+            detected_topics = job.metadata.get("summary", {}).get("topics", [])
+            topic_to_schema = {
+                "billing": "billing",
+                "scheduling": "scheduling",
+                "legal_intake": "legal_intake",
+                "technical_support": "technical_support",
+            }
+            schema_ids_to_run = list({
+                topic_to_schema[t]
+                for t in detected_topics
+                if t in topic_to_schema
+            })
+            if not schema_ids_to_run:
+                schema_ids_to_run = ["legal_intake"]
+
+            extraction_results = schema_extractor.extract_multi(
+                schema_ids=schema_ids_to_run,
+                call_id=job.call_id,
+                transcript_turns=job.transcript_turns,
+                metadata=job.metadata,
+            )
+            # Store serializable results
+            job.metadata["extractions"] = {
+                sid: res.to_dict() for sid, res in extraction_results.items()
+            }
+            job.metadata["crm_payloads"] = {
+                sid: res.to_crm_payload() for sid, res in extraction_results.items()
+            }
+
+            best_coverage = max(
+                (r.extraction_coverage for r in extraction_results.values()), default=0.0
+            )
+            job.stages[PipelineStage.SCHEMA_EXTRACTION.value].update({
+                "status": StageStatus.COMPLETED.value,
+                "completed_at": time.time(),
+                "duration_ms": round((time.time() - s5_start) * 1000, 2),
+                "output": {
+                    "schemas_run": schema_ids_to_run,
+                    "best_coverage": round(best_coverage, 3),
+                    "crm_fields_extracted": sum(
+                        len([f for f in r.fields if f.value is not None])
+                        for r in extraction_results.values()
+                    ),
+                },
+            })
+            self._emit_event("stage_completed", job, {"stage": PipelineStage.SCHEMA_EXTRACTION.value})
+
+            # -------------------------------------------------------------
+            # Stage 6: Storage Archive Verification & Metadata Manifest
+            # -------------------------------------------------------------
+            s6_start = time.time()
             job.stages[PipelineStage.STORAGE_ARCHIVE.value]["status"] = StageStatus.RUNNING.value
-            job.stages[PipelineStage.STORAGE_ARCHIVE.value]["started_at"] = s5_start
+            job.stages[PipelineStage.STORAGE_ARCHIVE.value]["started_at"] = s6_start
 
             manifest = {
                 "job_id": job.job_id,
@@ -464,6 +522,8 @@ class PostCallPipelineWorker:
                 "words_count": metrics.get("total_words"),
                 "sentiment": job.metadata.get("sentiment"),
                 "summary": job.metadata.get("summary"),
+                "extractions": job.metadata.get("extractions"),
+                "crm_payloads": job.metadata.get("crm_payloads"),
                 "archived_at": time.time(),
             }
             # Write manifest JSON alongside audio file
@@ -474,10 +534,11 @@ class PostCallPipelineWorker:
             job.stages[PipelineStage.STORAGE_ARCHIVE.value].update({
                 "status": StageStatus.COMPLETED.value,
                 "completed_at": time.time(),
-                "duration_ms": round((time.time() - s5_start) * 1000, 2),
+                "duration_ms": round((time.time() - s6_start) * 1000, 2),
                 "output": {"manifest_path": manifest_path, "archive_url": job.archive_url},
             })
             self._emit_event("stage_completed", job, {"stage": PipelineStage.STORAGE_ARCHIVE.value})
+
 
             # Mark Job Completed
             job.status = JobStatus.COMPLETED.value

@@ -131,7 +131,7 @@ def test_conversation_metrics_processor():
 
 
 def test_async_pipeline_worker_execution():
-    """Verify asynchronous queue worker execution across all 5 stages and retry recovery."""
+    """Verify asynchronous queue worker execution across every pipeline stage and retry recovery."""
     worker = PostCallPipelineWorker(concurrency=2)
     sample_call_id = f"worker-test-{int(time.time()*1000)}"
 
@@ -153,7 +153,9 @@ def test_async_pipeline_worker_execution():
 
     assert executed_job.status == JobStatus.COMPLETED.value
     assert executed_job.total_duration_ms > 0
-    assert len(executed_job.stages) == 5, f"Expected 5 stages, got {len(executed_job.stages)}: {list(executed_job.stages.keys())}"
+    expected_stages = {st.value for st in PipelineStage}
+    assert set(executed_job.stages) == expected_stages, (
+        f"Expected stages {sorted(expected_stages)}, got {sorted(executed_job.stages)}")
     for st_name, st_res in executed_job.stages.items():
         assert st_res["status"] == StageStatus.COMPLETED.value, f"Stage {st_name} failed: {st_res}"
 
@@ -174,7 +176,8 @@ def test_async_pipeline_worker_execution():
     assert retried_job is not None
     assert retried_job.status == JobStatus.QUEUED.value
 
-    return f"5/5 stages completed (dur={executed_job.total_duration_ms:.2f}ms), manifest verified & retry logic validated"
+    return (f"{len(executed_job.stages)}/{len(expected_stages)} stages completed "
+            f"(dur={executed_job.total_duration_ms:.2f}ms), manifest verified & retry logic validated")
 
 
 
@@ -327,7 +330,8 @@ asyncio.run(test())
         raise AssertionError(f"No pipeline event received: {res.stdout}")
 
     ev, status, stages_count = lines[-1].split("|", 2)
-    return f"event='{ev}', status='{status}', completed_stages={stages_count}/5 verified over WebRTC data channel"
+    return (f"event='{ev}', status='{status}', completed_stages={stages_count}/{len(PipelineStage)} "
+            f"verified over WebRTC data channel")
 
 
 

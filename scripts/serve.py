@@ -41,6 +41,7 @@ from agent.dtmf_manager import dtmf_manager
 from agent.amd_manager import AMDManager, AMDState, AMDAction, VoicemailDropConfig
 from agent.recording_manager import recording_manager, RecordingConfig, ComplianceMode
 from agent.pipeline_worker import pipeline_worker
+from agent.webhook_dispatcher import webhook_dispatcher, WebhookEvent
 amd_manager = AMDManager()
 
 
@@ -158,8 +159,63 @@ class Handler(SimpleHTTPRequestHandler):
             })
             return
 
+        elif parsed.path == "/api/pipeline/extraction":
+            q = parse_qs(parsed.query)
+            job_id  = (q.get("job_id")  or [""])[0] or None
+            call_id = (q.get("call_id") or [""])[0] or None
+            job = pipeline_worker.get_job(job_id=job_id, call_id=call_id)
+            if not job:
+                self._send_json({"status": "error", "error": "Job not found"}, 404)
+                return
+            self._send_json({
+                "status": "ok",
+                "call_id": job.call_id,
+                "job_id": job.job_id,
+                "extractions": job.metadata.get("extractions"),
+                "crm_payloads": job.metadata.get("crm_payloads"),
+            })
+            return
+        elif parsed.path == "/api/extraction/schemas":
+            from agent.schema_extractor import list_schemas, get_schema
+            q = parse_qs(parsed.query)
+            schema_id = (q.get("id") or [""])[0] or None
+            if schema_id:
+                schema = get_schema(schema_id)
+                if not schema:
+                    self._send_json({"status": "error", "error": f"Schema '{schema_id}' not found"}, 404)
+                    return
+                self._send_json({"status": "ok", "schema_id": schema_id, "schema": schema})
+            else:
+                self._send_json({"status": "ok", "schemas": list_schemas()})
+            return
+
+        elif parsed.path == "/api/webhooks/endpoints":
+            self._send_json({"status": "ok", "endpoints": webhook_dispatcher.list_endpoints()})
+            return
+        elif parsed.path == "/api/webhooks/deliveries":
+            q = parse_qs(parsed.query)
+            self._send_json({
+                "status": "ok",
+                "deliveries": webhook_dispatcher.list_deliveries(
+                    endpoint_id=(q.get("endpoint_id") or [""])[0] or None,
+                    event=(q.get("event") or [""])[0] or None,
+                    status=(q.get("delivery_status") or [""])[0] or None,
+                    call_id=(q.get("call_id") or [""])[0] or None,
+                    limit=int((q.get("limit") or ["50"])[0]),
+                ),
+                "dead_letters": webhook_dispatcher.list_dead_letters(limit=20),
+            })
+            return
+        elif parsed.path == "/api/webhooks/stats":
+            self._send_json({
+                "status": "ok",
+                "stats": webhook_dispatcher.get_stats(),
+                "events": [e.value for e in WebhookEvent],
+            })
+            return
 
         return super().do_GET()
+
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -413,7 +469,116 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"status": "ok", "analytics": result})
             return
 
+        elif parsed.path == "/api/extraction/extract":
+            schema_id = payload.get("schema_id", "legal_intake")
+            call_id = payload.get("call_id", f"extract-{int(time.time())}")
+            transcript_turns = payload.get("transcript_turns", [])
+            metadata = payload.get("metadata", {})
+            from agent.schema_extractor import schema_extractor
+            try:
+                result = schema_extractor.extract(
+                    schema_id=schema_id,
+                    call_id=call_id,
+                    transcript_turns=transcript_turns,
+                    metadata=metadata,
+                )
+                self._send_json({
+                    "status": "ok",
+                    "extraction": result.to_dict(),
+                    "crm_payload": result.to_crm_payload(),
+                })
+            except KeyError as e:
+                self._send_json({"status": "error", "error": str(e)}, 404)
+            return
+
+        elif parsed.path == "/api/extraction/register":
+            schema_id = payload.get("schema_id", "").strip()
+            schema = payload.get("schema", {})
+            if not schema_id or not schema:
+                self._send_json({"status": "error", "error": "schema_id and schema required"}, 400)
+                return
+            from agent.schema_extractor import register_schema, list_schemas
+            try:
+                register_schema(schema_id, schema)
+                self._send_json({"status": "ok", "registered": schema_id, "all_schemas": list_schemas()})
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+            return
+
+        elif parsed.path == "/api/webhooks/register":
+            url = (payload.get("url") or "").strip()
+            if not url:
+                self._send_json({"status": "error", "error": "url required"}, 400)
+                return
+            try:
+                ep = webhook_dispatcher.register_endpoint(
+                    url=url,
+                    events=payload.get("events"),
+                    secret=payload.get("secret"),
+                    description=payload.get("description", ""),
+                    max_attempts=int(payload.get("max_attempts", 4)),
+                    timeout_s=float(payload.get("timeout_s", 10)),
+                    headers=payload.get("headers"),
+                )
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            # The plaintext secret is returned once, at registration time only.
+            self._send_json({
+                "status": "ok",
+                "endpoint": ep.to_dict(redact_secret=False),
+                "endpoints": webhook_dispatcher.list_endpoints(),
+            })
+            return
+
+        elif parsed.path == "/api/webhooks/test":
+            endpoint_id = payload.get("endpoint_id", "")
+            ep = webhook_dispatcher.get_endpoint(endpoint_id)
+            if not ep:
+                self._send_json({"status": "error", "error": "Endpoint not found"}, 404)
+                return
+            event = payload.get("event", WebhookEvent.CALL_COMPLETED.value)
+            body = payload.get("payload", {"test": True, "sent_at": time.time()})
+            loop = asyncio.new_event_loop()
+            try:
+                record = loop.run_until_complete(
+                    webhook_dispatcher.deliver(ep, event, body, payload.get("call_id"), sleep=False)
+                )
+            finally:
+                loop.close()
+            self._send_json({"status": "ok", "delivery": record.to_dict()})
+            return
+
+        elif parsed.path == "/api/webhooks/rotate":
+            ep = webhook_dispatcher.rotate_secret(payload.get("endpoint_id", ""))
+            if not ep:
+                self._send_json({"status": "error", "error": "Endpoint not found"}, 404)
+                return
+            self._send_json({"status": "ok", "endpoint": ep.to_dict(redact_secret=False)})
+            return
+
+        elif parsed.path == "/api/webhooks/delete":
+            removed = webhook_dispatcher.delete_endpoint(payload.get("endpoint_id", ""))
+            self._send_json({"status": "ok" if removed else "error",
+                             "removed": removed}, 200 if removed else 404)
+            return
+
+        elif parsed.path == "/api/webhooks/replay":
+            loop = asyncio.new_event_loop()
+            try:
+                record = loop.run_until_complete(
+                    webhook_dispatcher.replay_delivery(payload.get("delivery_id", ""))
+                )
+            finally:
+                loop.close()
+            if not record:
+                self._send_json({"status": "error", "error": "Delivery not found"}, 404)
+                return
+            self._send_json({"status": "ok", "delivery": record.to_dict()})
+            return
+
         self.send_error(404, "Endpoint not found")
+
 
 
     def log_message(self, fmt, *args):
@@ -426,6 +591,7 @@ print(f"Test page:  http://localhost:{PORT}")
 print(f"Signalling: {WS_URL}")
 print("Ctrl+C to stop\n")
 try:
+    webhook_dispatcher.attach_to_pipeline(pipeline_worker)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 except OSError as e:
     raise SystemExit(f"Port {PORT} is in use ({e}). Pass another: "

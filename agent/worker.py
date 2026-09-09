@@ -985,6 +985,40 @@ async def entrypoint(ctx: agents.JobContext):
                 "timestamp": time.time(),
             }, topic="analytics_event", reliable=True)
 
+        elif action == "extract_schema":
+            from agent.schema_extractor import schema_extractor, list_schemas
+            call_id = data.get("call_id", ctx.room.name)
+            schema_id = data.get("schema_id", "legal_intake")
+            turns = data.get("transcript_turns")
+            if not turns:
+                turns = []
+                for msg in llm_manager.context.to_list():
+                    turns.append({"role": msg.get("role", "caller"), "text": msg.get("content", "")})
+            try:
+                result = schema_extractor.extract(
+                    schema_id=schema_id,
+                    call_id=call_id,
+                    transcript_turns=turns,
+                    metadata=data.get("metadata", {}),
+                )
+                publish({
+                    "type": "extraction_event",
+                    "event": "extraction_completed",
+                    "call_id": call_id,
+                    "schema_id": schema_id,
+                    "extraction": result.to_dict(),
+                    "crm_payload": result.to_crm_payload(),
+                    "timestamp": time.time(),
+                }, topic="extraction_event", reliable=True)
+            except KeyError as ke:
+                publish({
+                    "type": "extraction_event",
+                    "event": "extraction_error",
+                    "call_id": call_id,
+                    "error": str(ke),
+                    "available_schemas": list_schemas(),
+                    "timestamp": time.time(),
+                }, topic="extraction_event", reliable=True)
 
         elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"
