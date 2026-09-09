@@ -1,0 +1,74 @@
+name: Voice Agent CI/CD & Regression Suite
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Regression & Compliance Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Start LiveKit Server (Development)
+        run: |
+          docker run -d --name livekit-server \
+            -p 7880:7880 \
+            -p 7881:7881 \
+            -p 7882:7882/udp \
+            livekit/livekit-server:latest \
+            --dev --bind 0.0.0.0
+
+      - name: Start Local HTTP Harness
+        run: |
+          python3 scripts/serve.py 8091 &
+          sleep 3
+
+      - name: Run Security & Compliance Audit
+        run: |
+          python3 scripts/security_audit.py
+
+      - name: Run Full 19-Suite Regression Test
+        run: |
+          python3 scripts/run_all_tests.py 8091
+
+      - name: Run Synthetic Concurrency Load Test
+        run: |
+          python3 scripts/load_test.py 20 50
+
+      - name: Archive Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-audit-results
+          path: |
+            recordings/pipeline_jobs.json
+            config/auth_store.json
