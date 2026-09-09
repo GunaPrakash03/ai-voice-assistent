@@ -70,7 +70,7 @@ print(f"Test page:  http://localhost:{PORT}")
 print(f"Signalling: {WS_URL}")
 print("Ctrl+C to stop\n")
 try:
-    HTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 except OSError as e:
     raise SystemExit(f"Port {PORT} is in use ({e}). Pass another: "
                      f"python3 scripts/serve.py 9090")
