@@ -36,6 +36,7 @@ WS_URL = env("LIVEKIT_URL")
 
 from agent.telephony_manager import telephony_manager, asdict, normalize_phone_number
 from agent.transfer_manager import transfer_manager, TransferMode
+from agent.dtmf_manager import dtmf_manager
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -87,6 +88,14 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({
                 "hold": transfer_manager.get_hold_state(call_id) if call_id else None,
             })
+            return
+        elif parsed.path == "/api/telephony/ivr":
+            q = parse_qs(parsed.query)
+            call_id = (q.get("call_id") or [""])[0]
+            if call_id:
+                self._send_json({"status": "ok", "state": dtmf_manager.get_call_state(call_id)})
+            else:
+                self._send_json({"status": "ok", "menus": dtmf_manager.list_menus()})
             return
 
         return super().do_GET()
@@ -183,6 +192,27 @@ class Handler(SimpleHTTPRequestHandler):
             else:
                 state = transfer_manager.remove_from_hold(call_id)
             self._send_json({"status": "ok", "hold": asdict(state)})
+            return
+
+        elif parsed.path == "/api/telephony/dtmf":
+            call_id = payload.get("call_id", "").strip() or "active-call"
+            digit = str(payload.get("digit", "")).strip().upper()
+            duration_ms = int(payload.get("duration_ms", 160))
+            if not digit:
+                self._send_json({"error": "Missing 'digit' parameter"}, 400)
+                return
+            result = dtmf_manager.process_dtmf_digit(
+                call_id=call_id,
+                digit=digit,
+                duration_ms=duration_ms,
+            )
+            self._send_json({"status": "ok", "result": result})
+            return
+
+        elif parsed.path == "/api/telephony/ivr/reset":
+            call_id = payload.get("call_id", "").strip() or "active-call"
+            dtmf_manager.reset_call(call_id)
+            self._send_json({"status": "ok", "state": dtmf_manager.get_call_state(call_id)})
             return
 
         self.send_error(404, "Endpoint not found")

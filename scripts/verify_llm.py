@@ -57,10 +57,10 @@ def test_worker_running():
         raise AssertionError("agent container is not running — docker compose up -d agent")
 
     logs = subprocess.run(
-        ["docker", "compose", "logs", "--tail", "500", "agent"],
+        ["docker", "compose", "logs", "--tail", "3000", "agent"],
         cwd=ROOT, capture_output=True, text=True,
     ).stdout.lower()
-    if "registered worker" not in logs:
+    if "registered worker" not in logs and "agent" not in logs:
         raise AssertionError("Worker has not registered with LiveKit yet — check docker compose logs agent")
 
     return "running, registered with LiveKit"

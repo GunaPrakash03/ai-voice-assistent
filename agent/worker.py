@@ -40,6 +40,7 @@ from agent.llm_manager import (
 from agent.tts_manager import StreamingTTSManager
 from agent.telephony_manager import telephony_manager, asdict
 from agent.transfer_manager import transfer_manager
+from agent.dtmf_manager import dtmf_manager
 
 load_dotenv()
 log = logging.getLogger("dialogue-worker")
@@ -654,6 +655,83 @@ async def entrypoint(ctx: agents.JobContext):
                 "transfers": transfer_manager.list_transfers(),
                 "timestamp": time.time(),
             }, topic="transfers_list", reliable=True)
+        elif action == "send_dtmf":
+            digit = str(data.get("digit", "")).strip().upper()
+            dur = int(data.get("duration_ms", 160))
+            participant_id = packet.participant.identity if packet.participant else "caller"
+            log.info("DTMF digit received from %s: '%s' (dur=%dms)", participant_id, digit, dur)
+
+            ivr_res = dtmf_manager.process_dtmf_digit(
+                call_id=ctx.room.name,
+                digit=digit,
+                duration_ms=dur,
+                source_participant=participant_id,
+            )
+
+            publish({
+                "type": "dtmf_event",
+                "digit": digit,
+                "status": ivr_res.get("status"),
+                "action": ivr_res.get("action"),
+                "buffered_digits": ivr_res.get("buffered_digits"),
+                "prompt": ivr_res.get("prompt"),
+                "timestamp": time.time(),
+            }, topic="dtmf_event", reliable=True)
+
+            publish({
+                "type": "ivr_state",
+                "state": dtmf_manager.get_call_state(ctx.room.name),
+                "timestamp": time.time(),
+            }, topic="ivr_state", reliable=True)
+
+            # If IVR action triggers a transfer automatically
+            if ivr_res.get("action") == "transfer":
+                target_num = ivr_res.get("transfer_number", "+18885550142")
+                dept = ivr_res.get("department", "support")
+                async def run_ivr_xfer():
+                    rec = await transfer_manager.initiate_warm_transfer(
+                        call_id=ctx.room.name,
+                        target_number=target_num,
+                        source_participant=participant_id,
+                        department=dept,
+                        reason=f"IVR Menu Keypad '{digit}' selection",
+                    )
+                    publish({
+                        "type": "transfer_event",
+                        "event": f"transfer_{rec.status.value}",
+                        "transfer": asdict(rec),
+                        "timestamp": time.time(),
+                    }, topic="transfer_event", reliable=True)
+                task = asyncio.create_task(run_ivr_xfer())
+                pending.add(task)
+                task.add_done_callback(pending.discard)
+
+            elif ivr_res.get("prompt"):
+                # Announce prompt to user
+                prompt_text = ivr_res["prompt"]
+                async def run_ivr_announce():
+                    try:
+                        session.say(prompt_text, allow_interruptions=True)
+                    except Exception as e:
+                        log.debug("IVR prompt announce exception: %s", e)
+                task = asyncio.create_task(run_ivr_announce())
+                pending.add(task)
+                task.add_done_callback(pending.discard)
+
+        elif action == "get_ivr_state":
+            publish({
+                "type": "ivr_state",
+                "state": dtmf_manager.get_call_state(ctx.room.name),
+                "timestamp": time.time(),
+            }, topic="ivr_state", reliable=True)
+
+        elif action == "reset_ivr":
+            dtmf_manager.reset_call(ctx.room.name)
+            publish({
+                "type": "ivr_state",
+                "state": dtmf_manager.get_call_state(ctx.room.name),
+                "timestamp": time.time(),
+            }, topic="ivr_state", reliable=True)
         elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"
             log.info("Test speech requested by %s for barge-in verification", participant_id)

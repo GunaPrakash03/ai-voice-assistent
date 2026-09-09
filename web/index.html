@@ -72,13 +72,18 @@
   .chat-turn.user{background:color-mix(in srgb,var(--accent) 12%,transparent);border-left:3px solid var(--accent)}
   .chat-turn.assistant{background:var(--ground);border-left:3px solid var(--ok)}
   .chat-turn.interrupted{border-left-color:var(--warn)}
+  .keypad-btn{width:44px;height:40px;background:var(--ground);border:1px solid var(--rule);border-radius:4px;
+    font-size:16px;font-weight:700;font-family:ui-monospace,monospace;color:var(--text);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;transition:background .1s,transform .05s}
+  .keypad-btn:hover{background:var(--chip);border-color:var(--accent)}
+  .keypad-btn:active{background:var(--accent);color:#fff;transform:scale(0.95)}
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <h1>AI Voice Assistant — Core Audio & Dialogue</h1>
-  <p class="sub">Task 2.2 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser SDK &bull; SIP Gateway &bull; <strong>Call Transfer (Blind &amp; Warm)</strong> &bull; <a href="/code-walkthrough.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Line-by-Line Code Walkthrough &rarr;</a></p>
+  <p class="sub">Task 2.3 — WebRTC Core &bull; Deepgram STT &bull; Silero VAD &bull; Streaming LLM &bull; Cartesia/Deepgram TTS &bull; Mid-Call Tools &bull; Browser SDK &bull; SIP Gateway &bull; Call Transfer &bull; <strong>DTMF &amp; IVR Keypad</strong> &bull; <a href="/call-desk.html" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:underline">Call Desk &rarr;</a> &bull; <a href="/code-walkthrough.html" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:600">Walkthrough &rarr;</a></p>
 
   <div class="panel">
     <div class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></div>
@@ -318,6 +323,51 @@
         <div><strong>Hold:</strong> <span id="xfer-hold-text">Active (Talking)</span></div>
         <div>&bull;</div>
         <div><strong>Briefing:</strong> <span id="xfer-briefing-text" style="font-style:italic">—</span></div>
+      </div>
+    </div>
+
+    <!-- DTMF Keypad & IVR Phone Tree (Task 2.3) -->
+    <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <label style="margin-bottom:0">DTMF Keypad &amp; IVR Navigation (Task 2.3)</label>
+        <span id="ivr-badge" class="badge" style="background:var(--rule);color:var(--soft)">IVR: Main Menu</span>
+      </div>
+
+      <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+        <!-- 3x4 Telephone Keypad -->
+        <div style="display:grid;grid-template-columns:repeat(3,44px);gap:6px">
+          <button class="keypad-btn" data-key="1">1</button>
+          <button class="keypad-btn" data-key="2">2</button>
+          <button class="keypad-btn" data-key="3">3</button>
+          <button class="keypad-btn" data-key="4">4</button>
+          <button class="keypad-btn" data-key="5">5</button>
+          <button class="keypad-btn" data-key="6">6</button>
+          <button class="keypad-btn" data-key="7">7</button>
+          <button class="keypad-btn" data-key="8">8</button>
+          <button class="keypad-btn" data-key="9">9</button>
+          <button class="keypad-btn" data-key="*">*</button>
+          <button class="keypad-btn" data-key="0">0</button>
+          <button class="keypad-btn" data-key="#">#</button>
+        </div>
+
+        <!-- IVR State Card & Buffer -->
+        <div style="flex:1;min-width:240px">
+          <div style="background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:9px 12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:11px;font-family:ui-monospace,monospace;color:var(--faint);text-transform:uppercase">Keypad Digits Buffer</span>
+              <div>
+                <button id="btn-clear-dtmf" class="ghost" style="padding:2px 6px;font-size:11px">Clear</button>
+                <button id="btn-reset-ivr" class="ghost" style="padding:2px 6px;font-size:11px">Reset IVR</button>
+              </div>
+            </div>
+            <div id="dtmf-display" style="font-family:ui-monospace,monospace;font-size:18px;font-weight:700;color:var(--accent);letter-spacing:2px;min-height:24px">—</div>
+          </div>
+
+          <div style="margin-top:8px;background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:9px 12px;font-size:12.5px;line-height:1.5">
+            <div style="font-size:11px;font-family:ui-monospace,monospace;color:var(--faint);text-transform:uppercase;margin-bottom:2px">Active IVR Prompt</div>
+            <div id="ivr-prompt-text" style="color:var(--text)">Thanks for calling Northgate Support. Press 1 for Sales, 2 for Technical Support, 3 for Billing, or 9 for a live operator.</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -649,6 +699,22 @@
           $("xfer-hold-text").style.color = isHeld ? "var(--warn)" : "var(--ok)";
           $("btn-toggle-hold").textContent = isHeld ? "Resume Call" : "Hold Call";
           log("⏸️ Hold state changed: " + (isHeld ? "ON HOLD (" + msg.reason + ")" : "RESUMED"));
+        } else if (topic === "dtmf_event") {
+          log("🔢 DTMF Keypad: '" + msg.digit + "' -> " + msg.status + (msg.action ? " (" + msg.action + ")" : ""));
+          if (msg.buffered_digits) {
+            $("dtmf-display").textContent = msg.buffered_digits;
+          }
+          if (msg.prompt) {
+            $("ivr-prompt-text").textContent = msg.prompt;
+          }
+        } else if (topic === "ivr_state") {
+          if (msg.state && msg.state.active_node) {
+            $("ivr-badge").textContent = "IVR: " + msg.state.active_node.name;
+            $("ivr-prompt-text").textContent = msg.state.active_node.prompt;
+          }
+          if (msg.state && msg.state.buffered_digits !== undefined) {
+            $("dtmf-display").textContent = msg.state.buffered_digits || "—";
+          }
         }
       });
 
@@ -1074,6 +1140,120 @@
 
   $("btn-do-xfer").addEventListener("click", executeTransfer);
   $("btn-toggle-hold").addEventListener("click", toggleHold);
+
+  // DTMF Keypad & IVR Navigation (Task 2.3)
+  var DTMF_FREQS = {
+    '1': [697, 1209], '2': [697, 1336], '3': [697, 1477],
+    '4': [770, 1209], '5': [770, 1336], '6': [770, 1477],
+    '7': [852, 1209], '8': [852, 1336], '9': [852, 1477],
+    '*': [941, 1209], '0': [941, 1336], '#': [941, 1477]
+  };
+
+  function playDTMFTone(digit) {
+    var freqs = DTMF_FREQS[digit];
+    if (!freqs) return;
+    try {
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      var ctx = new AudioCtx();
+      var osc1 = ctx.createOscillator();
+      var osc2 = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc1.frequency.value = freqs[0];
+      osc2.frequency.value = freqs[1];
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.16);
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+      osc1.start();
+      osc2.start();
+      osc1.stop(ctx.currentTime + 0.16);
+      osc2.stop(ctx.currentTime + 0.16);
+    } catch (e) {
+      // AudioContext might be muted or unavailable
+    }
+  }
+
+  async function sendDTMFDigit(digit) {
+    playDTMFTone(digit);
+    log("🔢 Keypad pressed: '" + digit + "'");
+
+    // 1. Send via WebRTC Data Channel if connected
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({
+          action: "send_dtmf",
+          digit: digit
+        }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {
+        log("Data channel DTMF error: " + e);
+      }
+    }
+
+    // 2. Also send via REST API for Telephony/SIP callers
+    try {
+      var callId = currentActiveCallId || $("room").value || "web-call";
+      var res = await fetch("/api/telephony/dtmf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          call_id: callId,
+          digit: digit
+        })
+      });
+      if (res.ok) {
+        var data = await res.json();
+        if (data.session) {
+          $("dtmf-display").textContent = data.session.buffer || "—";
+          if (data.session.active_node) {
+            $("ivr-badge").textContent = "IVR: " + (data.session.active_node.name || "Active");
+            if (data.session.active_node.prompt) {
+              $("ivr-prompt-text").textContent = data.session.active_node.prompt;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // Offline / REST fallback
+    }
+  }
+
+  document.querySelectorAll(".keypad-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var key = btn.getAttribute("data-key");
+      sendDTMFDigit(key);
+    });
+  });
+
+  $("btn-clear-dtmf").addEventListener("click", function () {
+    $("dtmf-display").textContent = "—";
+    log("Keypad buffer cleared");
+  });
+
+  $("btn-reset-ivr").addEventListener("click", async function () {
+    var callId = currentActiveCallId || $("room").value || "web-call";
+    if (room && room.state === "connected") {
+      try {
+        var payload = new TextEncoder().encode(JSON.stringify({ action: "reset_ivr" }));
+        await room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
+      } catch (e) {}
+    }
+    try {
+      await fetch("/api/telephony/ivr/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId })
+      });
+      $("ivr-badge").textContent = "IVR: Main Menu";
+      $("ivr-prompt-text").textContent = "Thanks for calling Northgate Support. Press 1 for Sales, 2 for Technical Support, 3 for Billing, or 9 for a live operator.";
+      $("dtmf-display").textContent = "—";
+      log("🔄 IVR Phone tree reset to Main Menu");
+    } catch (e) {
+      log("Failed to reset IVR: " + e);
+    }
+  });
 
   $("go").addEventListener("click", join);
   $("stop").addEventListener("click", leave);

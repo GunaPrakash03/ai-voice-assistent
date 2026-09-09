@@ -19,21 +19,23 @@ See `../ai voice assistent/` for the estimation, stack and cost documents.
 | 1.7 Browser WebRTC Client SDK | Done — `verify_sdk.py` 5/5, standalone browser SDK, UMD module, TypeScript definitions, audio visualizer, reconnect logic. |
 | 2.1 SIP Gateway & Telephony Integration | Done — `verify_sip.py` 5/5, LiveKit SIP carrier trunk models, inbound DID routing, outbound dialer API, REST & WebRTC data channel events. |
 | 2.2 Call Transfer Engine | Done — `verify_transfer.py` 6/6, Blind & Warm transfer, SIP REFER, caller hold, consultation bridging, handoff briefing, decline recovery. |
-| 2.3 DTMF Digit Handling & IVR Navigation | Next up — In-band and RFC 4733 / RFC 2833 DTMF detection, phone keypad IVR menus. |
+| 2.3 DTMF Digit Handling & IVR Navigation | Done — `verify_dtmf.py` 6/6, RFC 4733 & Goertzel dual-tone DSP, multi-digit buffer with `#` terminator, phone tree IVR routing engine, REST & WebRTC data channel events. |
+| 2.4 Answering Machine Detection (AMD) & Voicemail Drop | Next up — Audio energy analysis, temporal cadence classification, automated voicemail synthesis, and graceful hangup. |
 
 ## Run it
 
 ```bash
 docker compose up -d
-python3 scripts/verify.py       # media server acceptance (1.1)
-python3 scripts/verify_stt.py   # speech-to-text acceptance (1.2)
-python3 scripts/verify_vad.py   # VAD & barge-in acceptance (1.3)
-python3 scripts/verify_llm.py   # streaming LLM dialogue manager acceptance (1.4)
-python3 scripts/verify_tts.py   # streaming TTS engine acceptance (1.5)
-python3 scripts/verify_tools.py # mid-call function calling & tools acceptance (1.6)
-python3 scripts/verify_sdk.py   # browser WebRTC client SDK acceptance (1.7)
-python3 scripts/verify_sip.py   # SIP gateway & telephony integration acceptance (2.1)
+python3 scripts/verify.py          # media server acceptance (1.1)
+python3 scripts/verify_stt.py      # speech-to-text acceptance (1.2)
+python3 scripts/verify_vad.py      # VAD & barge-in acceptance (1.3)
+python3 scripts/verify_llm.py      # streaming LLM dialogue manager acceptance (1.4)
+python3 scripts/verify_tts.py      # streaming TTS engine acceptance (1.5)
+python3 scripts/verify_tools.py    # mid-call function calling & tools acceptance (1.6)
+python3 scripts/verify_sdk.py      # browser WebRTC client SDK acceptance (1.7)
+python3 scripts/verify_sip.py      # SIP gateway & telephony integration acceptance (2.1)
 python3 scripts/verify_transfer.py # call transfer engine acceptance (2.2)
+python3 scripts/verify_dtmf.py     # DTMF keypad & IVR phone tree acceptance (2.3)
 ```
 
 The verify script proves the four things task 1.1 promises: the server
@@ -203,6 +205,33 @@ Enables human-in-the-loop escalation, attended call handoffs, and carrier redire
 
 ```bash
 python3 scripts/verify_transfer.py # verifies all 6/6 checks for Task 2.2
+```
+
+## DTMF Digit Handling & IVR Navigation (task 2.3)
+
+Enables caller touch-tone interaction, RFC 4733 / RFC 2833 telephone events, in-band dual-tone audio frequency detection, and multi-level IVR phone tree navigation:
+
+- **RFC 4733 Out-of-Band & Goertzel In-Band Audio DSP**:
+  - Full support for standard DTMF telephony digits (`0`-`9`, `*`, `#`, `A`-`D`).
+  - Pure-Python **Goertzel Algorithm DSP**: extracts dual-tone frequencies directly from raw 8kHz/16kHz/24kHz PCM audio frames by computing spectral energy at low-band (697, 770, 852, 941 Hz) and high-band (1209, 1336, 1477, 1633 Hz) target frequencies.
+- **Multi-Digit Buffer & Digit Sequences**:
+  - `DTMFDigitBuffer`: supports collecting multi-digit strings (e.g. account numbers, PINs, extensions) with configurable minimum/maximum length, timeout windows, backspace correction, and `#` terminator completion.
+- **Tree-Structured IVR Routing Engine**:
+  - `IVRMenuNode` & `IVRMenuOption`: defines flexible hierarchical phone trees (Main Menu -> Sales -> Support -> Billing -> Live Operator).
+  - Handles branching navigation (`navigate`), department warm transfers (`transfer`), audio replay (`repeat`), and custom mid-call tool invocation (`tool`).
+  - Built-in retry limits with gentle automated fallback guidance (*"I'm sorry, that wasn't a valid option. Let me connect you with an operator."*).
+- **DTMF & IVR REST API Server (Port 8091)**:
+  - `GET /api/telephony/ivr` — inspect live IVR session state or list configured menu trees.
+  - `POST /api/telephony/dtmf` — inject DTMF digits programmatically (`call_id`, `digit`, `duration_ms`).
+  - `POST /api/telephony/ivr/reset` — reset an active call session back to the main menu.
+- **WebRTC Data Channel Integration**:
+  - LiveKit data channel events: emits `dtmf_event` and `ivr_state` topics.
+  - Listens to `send_dtmf`, `get_ivr_state`, and `reset_ivr` control actions.
+- **Interactive Browser Telephone Dialpad**:
+  - Full 3x4 touch dialpad grid on `http://localhost:8091` with Web Audio API dual-tone sound synthesis, live buffered digit display, and real-time active IVR prompt updates.
+
+```bash
+python3 scripts/verify_dtmf.py # verifies all 6/6 checks for Task 2.3
 ```
 
 
