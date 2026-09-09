@@ -59,6 +59,7 @@ def test_job_models_and_priority_queue():
     assert "transcript_normalization" in stages
     assert "metrics_calculation" in stages
     assert "sentiment_analysis" in stages
+    assert "schema_extraction" in stages
     assert "storage_archive" in stages
 
     # Test PostCallJob instantiation and serialization
@@ -85,7 +86,7 @@ def test_job_models_and_priority_queue():
     p2, _, id2 = worker._queue.get_nowait()
     assert id2 == j_low.job_id, f"Expected low priority job {j_low.job_id}, got {id2}"
 
-    return "Job states (5), stages (5), priority ordering (p1 > p10) & serialization verified"
+    return f"Job states ({len(JobStatus)}), stages ({len(PipelineStage)}), priority ordering (p1 > p10) & serialization verified"
 
 
 

@@ -1,0 +1,64 @@
+{
+  "agents": [
+    {
+      "agent_id": "intake-agent",
+      "name": "Intake Agent",
+      "first_message": "Thanks for calling. How can I help you today?",
+      "system_prompt": "You are the intake agent for a law firm.\n\nAnswer in one or two short sentences, then stop.\nDo not recap what the caller just said.\nDo not list options unless asked \u2014 offer the single best one.\nNever read case numbers or URLs aloud unless asked.\n\nIf the caller describes an emergency, transfer immediately\nusing transfer_call.",
+      "voice_id": "f786b574-daa5-4673-aa0c-cbe3e8534c02",
+      "llm_model": "gpt-4o-mini",
+      "temperature": 0.7,
+      "tools": [
+        "check_availability",
+        "book_appointment",
+        "transfer_call"
+      ],
+      "language": "en-US",
+      "description": "Default agent seeded from the legal intake preset",
+      "interruption_enabled": true,
+      "filler_speech_enabled": true,
+      "max_response_words": 60,
+      "active": true,
+      "revision": 1,
+      "created_at": 1788940287.4521556,
+      "updated_at": 1788944590.8492758
+    }
+  ],
+  "revisions": {
+    "intake-agent": [
+      {
+        "revision": 1,
+        "agent_id": "intake-agent",
+        "config": {
+          "agent_id": "intake-agent",
+          "name": "Intake Agent",
+          "first_message": "Thanks for calling. How can I help you today?",
+          "system_prompt": "You are the intake agent for a law firm.\n\nAnswer in one or two short sentences, then stop.\nDo not recap what the caller just said.\nDo not list options unless asked \u2014 offer the single best one.\nNever read case numbers or URLs aloud unless asked.\n\nIf the caller describes an emergency, transfer immediately\nusing transfer_call.",
+          "voice_id": "f786b574-daa5-4673-aa0c-cbe3e8534c02",
+          "llm_model": "gpt-4o-mini",
+          "temperature": 0.7,
+          "tools": [
+            "check_availability",
+            "book_appointment",
+            "transfer_call"
+          ],
+          "language": "en-US",
+          "description": "Default agent seeded from the legal intake preset",
+          "interruption_enabled": true,
+          "filler_speech_enabled": true,
+          "max_response_words": 60,
+          "active": false,
+          "revision": 1,
+          "created_at": 1788940287.4521556,
+          "updated_at": 1788940287.4521558
+        },
+        "changed_fields": [
+          "created"
+        ],
+        "note": "Initial version",
+        "created_at": 1788940287.4521904
+      }
+    ]
+  },
+  "updated_at": 1788944590.853733
+}

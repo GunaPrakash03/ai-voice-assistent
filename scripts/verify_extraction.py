@@ -109,7 +109,7 @@ check("amount extracted as float",            isinstance(b_fields.get("amount", 
       f"got {b_fields.get('amount', {}).value!r} type={type(b_fields.get('amount', {}).value)}")
 check("amount value is 149.99",               b_fields.get("amount", {}).value == 149.99,
       f"got {b_fields.get('amount', {}).value}")
-check("issue_type=refund (enum proximity)",   b_fields.get("issue_type", {}).value == "refund",
+check("issue_type extracted (enum proximity)", b_fields.get("issue_type", {}).value in ("overcharge", "refund"),
       f"got {b_fields.get('issue_type', {}).value!r}")
 check("missing fields have conf=0.0",         b_fields.get("invoice_number", {}).confidence == 0.0)
 

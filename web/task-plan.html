@@ -353,15 +353,16 @@
         <a href="/softphone.html">&#x1F4DE; Web Softphone (Task 2.6)</a>
         <a href="/call-desk.html">Call Desk Analytics</a>
         <a href="/code-walkthrough.html">Code Walkthrough</a>
+        <a href="/agent-builder.html">Agent Builder (Task 4.1)</a>
         <span class="active">Engineering Task Plan</span>
       </div>
     </div>
     <div style="text-align:right">
       <span class="badge done" style="font-size:12px;padding:5px 10px">
-        &#x2714; Phases 1, 2 &amp; 3 Verified
+        &#x2714; Phases 1&ndash;3 &amp; Tasks 4.1&ndash;4.2 Verified
       </span>
       <div style="font-size:11.5px;color:var(--soft);margin-top:6px;font-family:var(--font-mono)">
-        238 / 238 Acceptance Checks Passing (0 Regressions)
+        481 / 481 Acceptance Checks Passing (0 Regressions)
       </div>
     </div>
   </header>
@@ -370,43 +371,43 @@
   <div class="metrics-grid">
     <div class="metric-card">
       <div class="metric-label">Completed Tasks</div>
-      <div class="metric-val" style="color:var(--ok)">17 <span style="font-size:14px;color:var(--soft)">/ 21 total</span></div>
-      <div class="metric-sub">Phases 1, 2 &amp; 3 committed</div>
+      <div class="metric-val" style="color:var(--ok)">19 <span style="font-size:14px;color:var(--soft)">/ 21 total</span></div>
+      <div class="metric-sub">Phases 1&ndash;3 + Tasks 4.1&ndash;4.2 committed</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Acceptance Verification</div>
-      <div class="metric-val" style="color:var(--accent)">238 / 238</div>
-      <div class="metric-sub">16 test suites passing (100%)</div>
+      <div class="metric-val" style="color:var(--accent)">481 / 481</div>
+      <div class="metric-sub">18 test suites passing (100%)</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Delivered Dev Hours</div>
-      <div class="metric-val" style="color:var(--ok)">386 h <span style="font-size:14px;color:var(--soft)">/ 532 h</span></div>
-      <div class="metric-sub">72.6% total engineering budget</div>
+      <div class="metric-val" style="color:var(--ok)">460 h <span style="font-size:14px;color:var(--soft)">/ 532 h</span></div>
+      <div class="metric-sub">86.5% total engineering budget</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Next Task</div>
-      <div class="metric-val" style="color:var(--warn)">Task 4.1</div>
-      <div class="metric-sub">Agent Builder &amp; Prompt Editor UI</div>
+      <div class="metric-val" style="color:var(--warn)">Task 4.3</div>
+      <div class="metric-sub">REST API &amp; Multi-Tenant Access</div>
     </div>
   </div>
 
   <!-- Overall Progress Track -->
   <div class="progress-section">
     <div class="progress-head">
-      <div><strong>Platform Delivery Completion</strong>: 72.6% (386h realistic hours delivered)</div>
-      <div style="font-family:var(--font-mono);font-size:12px;color:var(--ok)">Tasks 1.1&ndash;3.4: DONE &bull; Task 4.1: NEXT UP</div>
+      <div><strong>Platform Delivery Completion</strong>: 86.5% (460h realistic hours delivered)</div>
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--ok)">Tasks 1.1&ndash;4.2: DONE &bull; Task 4.3: NEXT UP</div>
     </div>
     <div class="progress-track">
       <div class="prog-seg seg-p1" title="Phase 1: Real-Time Core (204h) — 100% Complete"></div>
       <div class="prog-seg seg-p2" title="Phase 2: Telephony & SIP (92h) — 100% Complete"></div>
       <div class="prog-seg seg-p3" style="background:var(--ok);width:16.9%" title="Phase 3: Post-Call Intelligence (90h) — 100% Complete"></div>
-      <div class="prog-seg seg-p4" title="Phase 4: Management Platform (146h) — Planned"></div>
+      <div class="prog-seg seg-p4" style="width:13.9%" title="Tasks 4.1–4.2: Agent Builder & Call Inspector (74h) — Complete"></div>
     </div>
     <div class="progress-legend">
       <div class="leg-item"><div class="leg-dot" style="background:var(--ok)"></div><span>Phase 1: Real-Time Audio Core (100% Done &bull; 204h)</span></div>
       <div class="leg-item"><div class="leg-dot" style="background:var(--accent)"></div><span>Phase 2: Telephony &amp; SIP Gateway (100% Done &bull; 92h)</span></div>
       <div class="leg-item"><div class="leg-dot" style="background:var(--ok)"></div><span>Phase 3: Post-Call Intelligence (100% Done &bull; 90h)</span></div>
-      <div class="leg-item"><div class="leg-dot" style="background:var(--purple)"></div><span>Phase 4: Management Platform (Planned &bull; 146h)</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--purple)"></div><span>Phase 4: Management Platform (Tasks 4.1&ndash;4.2 Done &bull; 74h of 146h)</span></div>
     </div>
   </div>
 
@@ -416,7 +417,7 @@
     <button class="tab-btn" onclick="filterPhase('p1', this)">Phase 1: Real-Time Core (Done)</button>
     <button class="tab-btn" onclick="filterPhase('p2', this)">Phase 2: Telephony &amp; SIP (Done)</button>
     <button class="tab-btn" onclick="filterPhase('p3', this)">Phase 3: Post-Call Intelligence (Done)</button>
-    <button class="tab-btn" onclick="filterPhase('p4', this)">Phase 4: Management Platform (Next)</button>
+    <button class="tab-btn" onclick="filterPhase('p4', this)">Phase 4: Management Platform (In Progress)</button>
   </div>
 
   <!-- PHASE 1 -->
@@ -785,7 +786,7 @@
         Phase 4: Management Platform &amp; Developer Tooling (Weeks 8&ndash;10)
       </div>
       <div class="phase-meta">
-        <span class="badge next">&#x26A0; Next Up</span> &bull; 146 Realistic Hours &bull; 4 Tasks
+        <span class="badge next">&#x25B6; In Progress</span> &bull; 146 Realistic Hours &bull; 4 Tasks &bull; 2 Done
       </div>
     </div>
     <table>
@@ -799,35 +800,41 @@
         </tr>
       </thead>
       <tbody>
-        <tr>
+        <tr class="done-row">
           <td class="task-id">4.1</td>
           <td>
             <div class="task-name">Agent Builder &amp; Prompt Editor UI</div>
             <div class="task-desc">Visual agent prompt editor, voice persona selector with real-time TTS preview, dynamic tool configurator, web sandbox test widget.</div>
           </td>
-          <td><span class="badge planned">Planned</span></td>
+          <td><span class="badge done">Done</span></td>
           <td>42 h</td>
           <td>
-            Empowers non-technical operators to create custom voice agents, adjust temperature/tone, attach mid-call tools, and test immediately.
+            Visual editor over a versioned agent registry: 6-voice catalogue with latency/cost facts, 4 LLM options, 4 prompt presets, live tool toggles bound to the real tool registry, spoken-dialogue prompt linting, revision history with diff and rollback, and a sandbox that previews opening turns, tool picks, latency and cost. Applies live to the worker over the <code>apply_agent_config</code> data-channel action. 117/117 checks passing.
             <div class="task-artifacts">
+              <span>verify_agent_builder.py (117/117 checks)</span>
+              <span>agent/agent_builder.py</span>
               <span>web/agent-builder.html</span>
               <span>scripts/serve.py</span>
+              <span>agent/worker.py</span>
             </div>
           </td>
         </tr>
-        <tr>
+        <tr class="done-row">
           <td class="task-id">4.2</td>
           <td>
             <div class="task-name">Call History, Audio Player &amp; Inspector</div>
             <div class="task-desc">Paginated call logs, filters by sentiment/duration/agent, interactive waveform audio player with time-aligned speaker turns.</div>
           </td>
-          <td><span class="badge planned">Planned</span></td>
+          <td><span class="badge done">Done</span></td>
           <td>32 h</td>
           <td>
-            Connects live call records to the Call Desk dashboard (<code>web/call-desk.html</code>), streaming stereo audio and synchronized transcript viewer.
+            Unified call records assembled from pipeline jobs, telephony records and stereo recordings, with paginated filtering by sentiment, agent, outcome, duration, audio and free text. Time-aligned transcript, per-channel waveform peaks (left = caller, right = agent), HTTP <code>206</code> range-streamed audio for seeking, CSV export and dashboard aggregates. 126/126 checks passing.
             <div class="task-artifacts">
-              <span>web/call-desk.html</span>
+              <span>verify_call_history.py (126/126 checks)</span>
+              <span>agent/call_history.py</span>
               <span>web/inspector.js</span>
+              <span>web/call-desk.html</span>
+              <span>scripts/serve.py</span>
             </div>
           </td>
         </tr>
@@ -871,9 +878,9 @@
   <div class="arch-box">
     <div class="arch-title">&#x1F6E0; Regression Test Suite &amp; Verification Execution</div>
     <p style="font-size:13.5px;color:var(--soft);margin-bottom:12px">
-      All Phase 1, Phase 2 and Phase 3 tasks are rigorously validated with independent, automated acceptance test scripts. Every test enforces sub-second latency SLAs and zero backward regressions:
+      All Phase 1, Phase 2, Phase 3 and Phase 4 tasks delivered so far are rigorously validated with independent, automated acceptance test scripts. Every test enforces sub-second latency SLAs and zero backward regressions:
     </p>
-    <pre><code># Run Full Regression Suite (All 16 Modules &bull; 238/238 Checks):
+    <pre><code># Run Full Regression Suite (All 18 Modules &bull; 481/481 Checks):
 python3 scripts/verify.py          # 1.1 Media server & room management (5/5)
 python3 scripts/verify_vad.py      # 1.3 Silero VAD & barge-in cutoff (5/5)
 python3 scripts/verify_llm.py      # 1.4 Streaming LLM & clause splitter (5/5)
@@ -889,7 +896,9 @@ python3 scripts/verify_softphone.py# 2.6 WebRTC Softphone & Dialpad (6/6)
 python3 scripts/verify_pipeline.py # 3.1 Post-Call Processing Queue Worker (6/6)
 python3 scripts/verify_analytics.py# 3.2 Summary &amp; Sentiment Analyzer (29/29)
 python3 scripts/verify_extraction.py # 3.3 Custom Schema Data Extractor (41/41)
-python3 scripts/verify_webhooks.py   # 3.4 Signed Webhook Delivery System (97/97)</code></pre>
+python3 scripts/verify_webhooks.py   # 3.4 Signed Webhook Delivery System (97/97)
+python3 scripts/verify_agent_builder.py # 4.1 Agent Builder &amp; Prompt Editor (117/117)
+python3 scripts/verify_call_history.py  # 4.2 Call History, Player &amp; Inspector (126/126)</code></pre>
   </div>
 
 </div>

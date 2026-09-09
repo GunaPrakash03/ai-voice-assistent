@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Voice Assistant — Agent Builder &amp; Prompt Editor (Task 4.1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --ground: #0d1117;
+    --panel: #161b22;
+    --panel-elevated: #1c2128;
+    --panel-border: #30363d;
+    --rule: #21262d;
+    --ink: #c9d1d9;
+    --ink-white: #f0f6fc;
+    --soft: #8b949e;
+    --faint: #6e7681;
+    --accent: #58a6ff;
+    --accent-bg: rgba(88, 166, 255, 0.12);
+    --ok: #3fb950;
+    --ok-bg: rgba(63, 185, 80, 0.12);
+    --warn: #d29922;
+    --warn-bg: rgba(210, 153, 34, 0.12);
+    --danger: #f85149;
+    --danger-bg: rgba(248, 81, 73, 0.12);
+    --purple: #bc8cff;
+    --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Menlo, Monaco, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--font-ui); font-size: 14.5px; line-height: 1.6;
+    padding: 24px 20px 80px;
+  }
+  .container { max-width: 1340px; margin: 0 auto; }
+
+  header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    flex-wrap: wrap; gap: 16px; padding-bottom: 18px;
+    border-bottom: 1px solid var(--panel-border); margin-bottom: 22px;
+  }
+  h1 { font-size: 23px; font-weight: 700; color: var(--ink-white); margin: 0 0 6px; }
+  .sub { color: var(--soft); font-size: 13.5px; }
+  .nav-links { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
+  .nav-links a { color: var(--accent); text-decoration: none; }
+  .nav-links a:hover { text-decoration: underline; }
+  .nav-links .active { color: var(--ink-white); font-weight: 600; }
+
+  .badge {
+    display: inline-block; padding: 3px 9px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; font-family: var(--font-mono);
+  }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.info { background: var(--accent-bg); color: var(--accent); }
+  .badge.muted { background: var(--rule); color: var(--soft); }
+
+  .layout { display: grid; grid-template-columns: 250px minmax(0, 1.35fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+  @media (max-width: 1180px) { .layout { grid-template-columns: 240px minmax(0, 1fr); } .col-right { grid-column: 1 / -1; } }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 8px; margin-bottom: 16px; overflow: hidden;
+  }
+  .card-h {
+    padding: 11px 15px; border-bottom: 1px solid var(--rule);
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .card-h h2 { font-size: 13.5px; font-weight: 600; color: var(--ink-white); margin: 0; }
+  .card-h .meta { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+  .card-b { padding: 14px 15px; }
+
+  .agent-row {
+    width: 100%; text-align: left; background: transparent; border: none;
+    border-bottom: 1px solid var(--rule); padding: 11px 15px; cursor: pointer;
+    color: var(--ink); font-family: var(--font-ui); font-size: 13.5px;
+  }
+  .agent-row:hover { background: var(--panel-elevated); }
+  .agent-row[aria-current="true"] { background: var(--accent-bg); box-shadow: inset 2px 0 0 var(--accent); }
+  .agent-row .nm { font-weight: 600; color: var(--ink-white); display: flex; justify-content: space-between; gap: 8px; }
+  .agent-row .dt { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+
+  label { display: block; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--faint); margin-bottom: 6px; }
+  input[type=text], textarea, select {
+    width: 100%; font-family: inherit; font-size: 13.5px; color: var(--ink);
+    background: var(--ground); border: 1px solid var(--panel-border);
+    border-radius: 6px; padding: 9px 11px;
+  }
+  textarea { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65; resize: vertical; min-height: 210px; }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .field { margin-bottom: 15px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .counter { float: right; font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); text-transform: none; letter-spacing: 0; }
+
+  .btn {
+    cursor: pointer; background: var(--accent); color: #05121f; font-weight: 600;
+    font-size: 13px; padding: 8px 15px; border: 1px solid transparent; border-radius: 6px;
+    font-family: var(--font-ui);
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost { background: transparent; color: var(--accent); border-color: var(--panel-border); }
+  .btn.danger { background: transparent; color: var(--danger); border-color: var(--panel-border); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .chip {
+    cursor: pointer; background: var(--ground); color: var(--soft);
+    border: 1px solid var(--panel-border); border-radius: 16px;
+    padding: 5px 12px; font-size: 12.5px; font-family: var(--font-ui);
+  }
+  .chip[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
+  .chip-row { display: flex; gap: 7px; flex-wrap: wrap; }
+
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0;
+    border-bottom: 1px solid var(--rule); font-size: 13px; }
+  .kv:last-child { border-bottom: none; }
+  .kv .k { color: var(--faint); }
+  .kv .v { font-family: var(--font-mono); color: var(--ink-white); }
+
+  .lint-item { border-left: 2px solid var(--warn); padding: 7px 0 7px 11px; margin-bottom: 9px; font-size: 12.5px; }
+  .lint-item.info { border-left-color: var(--accent); }
+  .lint-item .msg { color: var(--ink-white); }
+  .lint-item .hint { color: var(--soft); font-size: 12px; }
+  .lint-clean { color: var(--ok); font-size: 12.5px; font-family: var(--font-mono); }
+
+  .turn { display: grid; grid-template-columns: 62px 1fr; gap: 10px; padding: 8px 0;
+    border-bottom: 1px solid var(--rule); font-size: 13px; }
+  .turn:last-child { border-bottom: none; }
+  .turn .who { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--faint); }
+  .turn.agent .who { color: var(--accent); }
+  .turn .tool { font-family: var(--font-mono); font-size: 11px; color: var(--purple); }
+
+  .rev { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 12.5px; }
+  .rev:last-child { border-bottom: none; }
+  .rev .fields { color: var(--soft); font-family: var(--font-mono); font-size: 11px; }
+
+  .toast {
+    position: fixed; right: 20px; bottom: 20px; z-index: 20;
+    background: var(--panel-elevated); border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--ok); border-radius: 6px; padding: 11px 15px;
+    font-size: 13px; color: var(--ink-white); max-width: 380px; display: none;
+  }
+  .toast.err { border-left-color: var(--danger); }
+  .note { background: var(--accent-bg); border: 1px solid var(--accent); border-radius: 6px;
+    padding: 10px 13px; font-size: 12.5px; margin-bottom: 18px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div>
+      <h1>Agent Builder &amp; Prompt Editor</h1>
+      <div class="sub">Author a voice agent's persona, prompt, voice and tools — then test it before it answers a call.</div>
+      <div class="nav-links">
+        <a href="/">&larr; Live Agent Console</a>
+        <a href="/softphone.html">Web Softphone</a>
+        <a href="/call-desk.html">Call Desk Analytics</a>
+        <a href="/task-plan.html">Engineering Task Plan</a>
+        <span class="active">Agent Builder (Task 4.1)</span>
+      </div>
+    </div>
+    <div style="text-align:right">
+      <span class="badge ok" id="statusBadge">Loading…</span>
+      <div style="font-size:11.5px;color:var(--soft);margin-top:6px;font-family:var(--font-mono)" id="statusLine">
+        GET /api/agents
+      </div>
+    </div>
+  </header>
+
+  <div class="note">
+    Edits save to <code>config/agents.json</code> through <code>/api/agents/*</code>. Activating an agent makes it the
+    persona the LiveKit worker applies on its next <code>apply_agent_config</code> — every other agent is deactivated.
+  </div>
+
+  <div class="layout">
+
+    <!-- ── Agent list ───────────────────────────────────────────── -->
+    <div class="col-left">
+      <div class="card">
+        <div class="card-h">
+          <h2>Agents</h2>
+          <span class="meta" id="agentCount">0</span>
+        </div>
+        <div id="agentList"></div>
+        <div class="card-b">
+          <button class="btn ghost" style="width:100%" id="btnNew">+ New agent</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2>Prompt presets</h2></div>
+        <div class="card-b">
+          <div class="chip-row" id="presetList"></div>
+          <div style="color:var(--faint);font-size:12px;margin-top:10px">
+            Loads a starting point into the editor. Nothing is saved until you press Save.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Editor ───────────────────────────────────────────────── -->
+    <div class="col-mid">
+      <div class="card">
+        <div class="card-h">
+          <h2 id="editorTitle">Agent</h2>
+          <span class="meta" id="editorMeta">—</span>
+        </div>
+        <div class="card-b">
+          <div class="field-row">
+            <div class="field">
+              <label for="fName">Agent name</label>
+              <input id="fName" type="text" placeholder="Intake Agent">
+            </div>
+            <div class="field">
+              <label for="fLang">Language</label>
+              <select id="fLang">
+                <option value="en-US">English (US)</option>
+                <option value="en-GB">English (UK)</option>
+                <option value="es-US">Spanish (US)</option>
+                <option value="fr-FR">French</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="fFirst">First message <span class="counter" id="firstCount">0 / 400</span></label>
+            <input id="fFirst" type="text" placeholder="Thanks for calling. How can I help?">
+          </div>
+
+          <div class="field">
+            <label for="fPrompt">System prompt <span class="counter" id="promptCount">0 / 6000</span></label>
+            <textarea id="fPrompt" spellcheck="false"></textarea>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn" id="btnSave">Save changes</button>
+            <button class="btn ghost" id="btnTest">Run sandbox test</button>
+            <button class="btn ghost" id="btnActivate">Set live</button>
+            <button class="btn ghost" id="btnClone">Clone</button>
+            <button class="btn danger" id="btnDelete">Delete</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <h2>Prompt review</h2>
+          <span class="meta">spoken-dialogue rules</span>
+        </div>
+        <div class="card-b" id="lintPanel">
+          <span class="lint-clean">Nothing to review yet.</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <h2>Sandbox transcript</h2>
+          <span class="meta" id="sandboxMeta">not run</span>
+        </div>
+        <div class="card-b">
+          <div class="field">
+            <label for="fUtterances">Caller utterances (one per line)</label>
+            <textarea id="fUtterances" style="min-height:80px" spellcheck="false">I need to book an appointment for Thursday
+This is urgent, can someone help right now?</textarea>
+          </div>
+          <div id="sandboxTurns"><span style="color:var(--faint);font-size:12.5px">Run the sandbox to preview the opening turns.</span></div>
+          <div id="sandboxStats" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Voice / model / tools / revisions ────────────────────── -->
+    <div class="col-right">
+      <div class="card">
+        <div class="card-h"><h2>Voice</h2><span class="meta" id="voiceMeta">—</span></div>
+        <div class="card-b">
+          <div class="field">
+            <label for="fVoice">Model &amp; voice</label>
+            <select id="fVoice"></select>
+          </div>
+          <div id="voiceFacts"></div>
+          <button class="btn ghost" style="width:100%;margin-top:12px" id="btnPreview">Preview voice</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2>Dialogue model</h2></div>
+        <div class="card-b">
+          <div class="field">
+            <label for="fModel">LLM</label>
+            <select id="fModel"></select>
+          </div>
+          <div class="field">
+            <label for="fTemp">Temperature <span class="counter" id="tempVal">0.7</span></label>
+            <input id="fTemp" type="range" min="0" max="1.5" step="0.05" value="0.7">
+          </div>
+          <div class="field">
+            <label for="fWords">Max response words <span class="counter" id="wordsVal">60</span></label>
+            <input id="fWords" type="range" min="15" max="150" step="5" value="60">
+          </div>
+          <div class="chip-row">
+            <button class="chip" id="fInterrupt" aria-pressed="true">Barge-in</button>
+            <button class="chip" id="fFiller" aria-pressed="true">Filler speech</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2>Tools</h2><span class="meta" id="toolMeta">0 enabled</span></div>
+        <div class="card-b" id="toolList"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2>Revision history</h2><span class="meta" id="revMeta">—</span></div>
+        <div class="card-b" id="revList"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (s) { return document.querySelector(s); };
+
+  var state = {
+    agents: [], voices: [], models: [], tools: [], presets: {},
+    current: null, dirty: false
+  };
+
+  // ── HTTP helpers ──────────────────────────────────────────────────────────
+  function get(path) {
+    return fetch(path).then(function (r) { return r.json(); });
+  }
+  function post(path, body) {
+    return fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {})
+    }).then(function (r) {
+      return r.json().then(function (data) {
+        if (!r.ok || data.status === "error") {
+          throw new Error(data.error || ("HTTP " + r.status));
+        }
+        return data;
+      });
+    });
+  }
+  function toast(msg, isError) {
+    var el = $("#toast");
+    el.textContent = msg;
+    el.className = "toast" + (isError ? " err" : "");
+    el.style.display = "block";
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.style.display = "none"; }, 3600);
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  // ── Rendering ─────────────────────────────────────────────────────────────
+  function renderAgentList() {
+    $("#agentCount").textContent = state.agents.length;
+    $("#agentList").innerHTML = state.agents.map(function (a) {
+      var live = a.active ? '<span class="badge ok">live</span>' : '';
+      return '<button class="agent-row" data-id="' + esc(a.agent_id) + '" aria-current="' +
+        (state.current && state.current.agent_id === a.agent_id) + '">' +
+        '<span class="nm">' + esc(a.name) + live + '</span>' +
+        '<span class="dt">rev ' + a.revision + ' &middot; ' + esc(a.voice_id.slice(0, 10)) +
+        ' &middot; ' + a.tools.length + ' tools</span></button>';
+    }).join("") || '<div class="card-b" style="color:var(--faint)">No agents yet.</div>';
+
+    Array.prototype.forEach.call(document.querySelectorAll(".agent-row"), function (btn) {
+      btn.addEventListener("click", function () { selectAgent(btn.dataset.id); });
+    });
+  }
+
+  function renderPresets() {
+    $("#presetList").innerHTML = Object.keys(state.presets).map(function (key) {
+      return '<button class="chip" data-preset="' + esc(key) + '">' +
+        esc(state.presets[key].title) + '</button>';
+    }).join("");
+    Array.prototype.forEach.call(document.querySelectorAll("[data-preset]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var preset = state.presets[btn.dataset.preset];
+        $("#fFirst").value = preset.first_message;
+        $("#fPrompt").value = preset.system_prompt;
+        updateCounters();
+        lintNow();
+        toast("Loaded preset: " + preset.title);
+      });
+    });
+  }
+
+  function renderVoiceOptions() {
+    $("#fVoice").innerHTML = state.voices.map(function (v) {
+      return '<option value="' + esc(v.voice_id) + '">' + esc(v.provider) + ' &middot; ' +
+        esc(v.name) + ' — ' + esc(v.style) + '</option>';
+    }).join("");
+    $("#fModel").innerHTML = state.models.map(function (m) {
+      return '<option value="' + esc(m.model) + '">' + esc(m.label) + '</option>';
+    }).join("");
+  }
+
+  function renderVoiceFacts() {
+    var voice = state.voices.filter(function (v) { return v.voice_id === $("#fVoice").value; })[0];
+    var model = state.models.filter(function (m) { return m.model === $("#fModel").value; })[0];
+    if (!voice) { return; }
+    $("#voiceMeta").textContent = voice.provider + " " + voice.model;
+    var budget = voice.first_audio_ms + (model ? model.ttft_ms : 0);
+    $("#voiceFacts").innerHTML =
+      '<div class="kv"><span class="k">First-audio latency</span><span class="v">' + voice.first_audio_ms + ' ms</span></div>' +
+      '<div class="kv"><span class="k">LLM time to first token</span><span class="v">' + (model ? model.ttft_ms : 0) + ' ms</span></div>' +
+      '<div class="kv"><span class="k">Response budget</span><span class="v" style="color:' +
+        (budget <= 700 ? 'var(--ok)' : 'var(--warn)') + '">' + budget + ' ms / 700 ms</span></div>' +
+      '<div class="kv"><span class="k">TTS cost</span><span class="v">$' + voice.cost_per_1k_chars.toFixed(3) + ' / 1k chars</span></div>';
+  }
+
+  function renderTools() {
+    var enabled = state.current ? state.current.tools : [];
+    $("#toolList").innerHTML = state.tools.map(function (t) {
+      var on = enabled.indexOf(t.name) !== -1;
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--rule)">' +
+        '<span><span style="color:var(--ink-white);font-size:13px">' + esc(t.name) + '</span><br>' +
+        '<span style="color:var(--faint);font-size:11.5px">' + esc((t.description || "").slice(0, 74)) + '</span></span>' +
+        '<button class="chip" data-tool="' + esc(t.name) + '" aria-pressed="' + on + '">' +
+        (on ? "on" : "off") + '</button></div>';
+    }).join("") || '<span style="color:var(--faint)">No tools registered.</span>';
+
+    Array.prototype.forEach.call(document.querySelectorAll("[data-tool]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var on = btn.getAttribute("aria-pressed") === "true";
+        btn.setAttribute("aria-pressed", String(!on));
+        btn.textContent = !on ? "on" : "off";
+        updateToolMeta();
+      });
+    });
+    updateToolMeta();
+  }
+
+  function selectedTools() {
+    return Array.prototype.filter.call(document.querySelectorAll("[data-tool]"), function (b) {
+      return b.getAttribute("aria-pressed") === "true";
+    }).map(function (b) { return b.dataset.tool; });
+  }
+
+  function updateToolMeta() {
+    $("#toolMeta").textContent = selectedTools().length + " enabled";
+  }
+
+  function renderLint(findings) {
+    if (!findings || !findings.length) {
+      $("#lintPanel").innerHTML = '<span class="lint-clean">&#10004; No issues — this prompt reads well aloud.</span>';
+      return;
+    }
+    $("#lintPanel").innerHTML = findings.map(function (f) {
+      return '<div class="lint-item ' + esc(f.severity) + '">' +
+        '<div class="msg">' + esc(f.message) + '</div>' +
+        '<div class="hint">' + esc(f.hint) + '</div></div>';
+    }).join("");
+  }
+
+  function renderRevisions(revisions) {
+    $("#revMeta").textContent = revisions.length + " saved";
+    $("#revList").innerHTML = revisions.map(function (r) {
+      return '<div class="rev"><span><span style="color:var(--ink-white)">rev ' + r.revision + '</span>' +
+        '<br><span class="fields">' + esc(r.changed_fields.join(", ")) + '</span></span>' +
+        '<button class="btn ghost" data-rev="' + r.revision + '" style="padding:4px 10px;font-size:12px">Restore</button></div>';
+    }).join("") || '<span style="color:var(--faint)">No revisions.</span>';
+
+    Array.prototype.forEach.call(document.querySelectorAll("[data-rev]"), function (btn) {
+      btn.addEventListener("click", function () {
+        post("/api/agents/rollback", {
+          agent_id: state.current.agent_id, revision: Number(btn.dataset.rev)
+        }).then(function (data) {
+          toast("Rolled back to revision " + btn.dataset.rev);
+          return refresh(data.agent.agent_id);
+        }).catch(function (e) { toast(e.message, true); });
+      });
+    });
+  }
+
+  function renderSandbox(result) {
+    $("#sandboxMeta").textContent = "rev " + result.revision + " &middot; " + result.turns.length + " turns";
+    $("#sandboxTurns").innerHTML = result.turns.map(function (t) {
+      return '<div class="turn ' + esc(t.speaker) + '">' +
+        '<span class="who">' + (t.speaker === "agent" ? "Agent" : "Caller") + '</span>' +
+        '<div>' + esc(t.text) +
+        (t.tool ? '<div class="tool">tool: ' + esc(t.tool) + '</div>' : '') + '</div></div>';
+    }).join("");
+
+    var e = result.estimates;
+    $("#sandboxStats").innerHTML =
+      '<div class="kv"><span class="k">Avg first audio</span><span class="v">' + e.avg_first_audio_ms + ' ms</span></div>' +
+      '<div class="kv"><span class="k">Worst first audio</span><span class="v" style="color:' +
+        (e.meets_700ms_target ? 'var(--ok)' : 'var(--warn)') + '">' + e.max_first_audio_ms + ' ms</span></div>' +
+      '<div class="kv"><span class="k">Spoken duration</span><span class="v">' + e.spoken_seconds + ' s</span></div>' +
+      '<div class="kv"><span class="k">TTS cost</span><span class="v">$' + e.tts_cost_usd.toFixed(5) + '</span></div>' +
+      '<div class="kv"><span class="k">Tools triggered</span><span class="v">' +
+        (result.tools_triggered.length ? esc(result.tools_triggered.join(", ")) : "none") + '</span></div>';
+  }
+
+  // ── Editor plumbing ───────────────────────────────────────────────────────
+  function fillEditor(agent) {
+    state.current = agent;
+    $("#editorTitle").textContent = agent.name;
+    $("#editorMeta").textContent = "rev " + agent.revision + (agent.active ? " · live" : "");
+    $("#fName").value = agent.name;
+    $("#fFirst").value = agent.first_message;
+    $("#fPrompt").value = agent.system_prompt;
+    $("#fLang").value = agent.language;
+    $("#fVoice").value = agent.voice_id;
+    $("#fModel").value = agent.llm_model;
+    $("#fTemp").value = agent.temperature;
+    $("#tempVal").textContent = Number(agent.temperature).toFixed(2);
+    $("#fWords").value = agent.max_response_words;
+    $("#wordsVal").textContent = agent.max_response_words;
+    $("#fInterrupt").setAttribute("aria-pressed", String(agent.interruption_enabled));
+    $("#fFiller").setAttribute("aria-pressed", String(agent.filler_speech_enabled));
+    updateCounters();
+    renderTools();
+    renderVoiceFacts();
+    renderAgentList();
+  }
+
+  function editorPayload() {
+    return {
+      name: $("#fName").value.trim(),
+      first_message: $("#fFirst").value.trim(),
+      system_prompt: $("#fPrompt").value,
+      language: $("#fLang").value,
+      voice_id: $("#fVoice").value,
+      llm_model: $("#fModel").value,
+      temperature: Number($("#fTemp").value),
+      max_response_words: Number($("#fWords").value),
+      interruption_enabled: $("#fInterrupt").getAttribute("aria-pressed") === "true",
+      filler_speech_enabled: $("#fFiller").getAttribute("aria-pressed") === "true",
+      tools: selectedTools()
+    };
+  }
+
+  function updateCounters() {
+    $("#firstCount").textContent = $("#fFirst").value.length + " / 400";
+    $("#promptCount").textContent = $("#fPrompt").value.length + " / 6000";
+  }
+
+  var lintTimer = null;
+  function lintNow() {
+    clearTimeout(lintTimer);
+    lintTimer = setTimeout(function () {
+      post("/api/agents/lint", {
+        system_prompt: $("#fPrompt").value,
+        name: $("#fName").value || "draft",
+        first_message: $("#fFirst").value || "draft"
+      }).then(function (data) { renderLint(data.lint); })
+        .catch(function () { /* linting is advisory; ignore transport errors */ });
+    }, 350);
+  }
+
+  function selectAgent(agentId) {
+    get("/api/agents/get?agent_id=" + encodeURIComponent(agentId)).then(function (data) {
+      if (data.status !== "ok") { throw new Error(data.error); }
+      fillEditor(data.agent);
+      renderLint(data.lint);
+      return get("/api/agents/revisions?agent_id=" + encodeURIComponent(agentId));
+    }).then(function (data) { renderRevisions(data.revisions || []); })
+      .catch(function (e) { toast(e.message, true); });
+  }
+
+  function refresh(selectId) {
+    return get("/api/agents").then(function (data) {
+      state.agents = data.agents || [];
+      renderAgentList();
+      var target = selectId || (state.current && state.current.agent_id) ||
+        (state.agents[0] && state.agents[0].agent_id);
+      if (target) { selectAgent(target); }
+      $("#statusBadge").textContent = state.agents.length + " agents loaded";
+      $("#statusBadge").className = "badge ok";
+      $("#statusLine").textContent = "active: " + (data.active_agent || "none");
+    });
+  }
+
+  // ── Events ────────────────────────────────────────────────────────────────
+  $("#fPrompt").addEventListener("input", function () { updateCounters(); lintNow(); });
+  $("#fFirst").addEventListener("input", updateCounters);
+  $("#fTemp").addEventListener("input", function () { $("#tempVal").textContent = Number(this.value).toFixed(2); });
+  $("#fWords").addEventListener("input", function () { $("#wordsVal").textContent = this.value; });
+  $("#fVoice").addEventListener("change", renderVoiceFacts);
+  $("#fModel").addEventListener("change", renderVoiceFacts);
+
+  ["#fInterrupt", "#fFiller"].forEach(function (sel) {
+    $(sel).addEventListener("click", function () {
+      this.setAttribute("aria-pressed", String(this.getAttribute("aria-pressed") !== "true"));
+    });
+  });
+
+  $("#btnSave").addEventListener("click", function () {
+    if (!state.current) { return; }
+    post("/api/agents/update", {
+      agent_id: state.current.agent_id, changes: editorPayload(), note: "Edited in builder"
+    }).then(function (data) {
+      toast("Saved — now revision " + data.agent.revision);
+      renderLint(data.lint);
+      return refresh(data.agent.agent_id);
+    }).catch(function (e) { toast(e.message, true); });
+  });
+
+  $("#btnNew").addEventListener("click", function () {
+    var preset = state.presets.legal_intake || { first_message: "Hello.", system_prompt: "You are a voice agent." };
+    post("/api/agents/create", {
+      name: "New Agent " + (state.agents.length + 1),
+      first_message: preset.first_message,
+      system_prompt: preset.system_prompt,
+      tools: []
+    }).then(function (data) {
+      toast("Created " + data.agent.name);
+      return refresh(data.agent.agent_id);
+    }).catch(function (e) { toast(e.message, true); });
+  });
+
+  $("#btnClone").addEventListener("click", function () {
+    if (!state.current) { return; }
+    post("/api/agents/clone", { agent_id: state.current.agent_id })
+      .then(function (data) {
+        toast("Cloned to " + data.agent.name);
+        return refresh(data.agent.agent_id);
+      }).catch(function (e) { toast(e.message, true); });
+  });
+
+  $("#btnDelete").addEventListener("click", function () {
+    if (!state.current) { return; }
+    var doomed = state.current.agent_id;
+    post("/api/agents/delete", { agent_id: doomed }).then(function () {
+      toast("Deleted " + doomed);
+      state.current = null;
+      return refresh();
+    }).catch(function (e) { toast(e.message, true); });
+  });
+
+  $("#btnActivate").addEventListener("click", function () {
+    if (!state.current) { return; }
+    post("/api/agents/activate", { agent_id: state.current.agent_id })
+      .then(function (data) {
+        toast(data.agent.name + " is now the live agent");
+        return refresh(data.agent.agent_id);
+      }).catch(function (e) { toast(e.message, true); });
+  });
+
+  $("#btnTest").addEventListener("click", function () {
+    if (!state.current) { return; }
+    var utterances = $("#fUtterances").value.split("\n")
+      .map(function (l) { return l.trim(); }).filter(Boolean);
+    post("/api/agents/test", { agent_id: state.current.agent_id, utterances: utterances })
+      .then(function (data) {
+        renderSandbox(data.result);
+        renderLint(data.result.lint);
+      }).catch(function (e) { toast(e.message, true); });
+  });
+
+  $("#btnPreview").addEventListener("click", function () {
+    post("/api/agents/voice-preview", {
+      voice_id: $("#fVoice").value, text: $("#fFirst").value
+    }).then(function (data) {
+      var p = data.preview;
+      toast(p.voice.name + " · " + p.estimated_first_audio_ms + "ms to first audio · $" +
+        p.estimated_cost_usd.toFixed(5) + " for this line");
+    }).catch(function (e) { toast(e.message, true); });
+  });
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  Promise.all([get("/api/agents/voices"), get("/api/agents/tools"), get("/api/agents/presets")])
+    .then(function (results) {
+      state.voices = results[0].voices || [];
+      state.models = results[0].models || [];
+      state.tools = results[1].tools || [];
+      state.presets = results[2].presets || {};
+      renderVoiceOptions();
+      renderPresets();
+      return refresh();
+    })
+    .catch(function (e) {
+      $("#statusBadge").textContent = "API unreachable";
+      $("#statusBadge").className = "badge warn";
+      $("#statusLine").textContent = e.message;
+    });
+})();
+</script>
+
+</body>
+</html>

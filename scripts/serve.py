@@ -9,6 +9,7 @@ path: in production Drupal mints the token (see BACKEND-FRONTEND-STACK).
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -42,6 +43,8 @@ from agent.amd_manager import AMDManager, AMDState, AMDAction, VoicemailDropConf
 from agent.recording_manager import recording_manager, RecordingConfig, ComplianceMode
 from agent.pipeline_worker import pipeline_worker
 from agent.webhook_dispatcher import webhook_dispatcher, WebhookEvent
+from agent.agent_builder import agent_builder
+from agent.call_history import call_history
 amd_manager = AMDManager()
 
 
@@ -56,6 +59,31 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_audio(self, call_id: str):
+        """Streams a call recording, honouring Range requests so the player can seek."""
+        path = call_history.audio_path(call_id)
+        if not path:
+            self._send_json({"status": "error", "error": "No audio for this call"}, 404)
+            return
+
+        header = self.headers.get("Range", "")
+        match = re.match(r"bytes=(\d*)-(\d*)", header) if header else None
+        if match:
+            start = int(match.group(1)) if match.group(1) else 0
+            end = int(match.group(2)) if match.group(2) else None
+            chunk, start, end, total = call_history.read_audio_range(call_id, start, end)
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{total}")
+        else:
+            chunk, start, end, total = call_history.read_audio_range(call_id)
+            self.send_response(200)
+
+        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(len(chunk)))
+        self.end_headers()
+        self.wfile.write(chunk)
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -212,6 +240,130 @@ class Handler(SimpleHTTPRequestHandler):
                 "stats": webhook_dispatcher.get_stats(),
                 "events": [e.value for e in WebhookEvent],
             })
+            return
+
+        elif parsed.path == "/api/agents":
+            active = agent_builder.get_active_agent()
+            self._send_json({
+                "status": "ok",
+                "agents": agent_builder.list_agents(),
+                "active_agent": active.agent_id if active else None,
+            })
+            return
+        elif parsed.path == "/api/agents/get":
+            q = parse_qs(parsed.query)
+            cfg = agent_builder.get_agent((q.get("agent_id") or [""])[0])
+            if not cfg:
+                self._send_json({"status": "error", "error": "Agent not found"}, 404)
+                return
+            self._send_json({
+                "status": "ok",
+                "agent": cfg.to_dict(),
+                "lint": agent_builder.lint_prompt(cfg.system_prompt),
+            })
+            return
+        elif parsed.path == "/api/agents/voices":
+            self._send_json({
+                "status": "ok",
+                "voices": agent_builder.list_voices(),
+                "models": agent_builder.list_models(),
+            })
+            return
+        elif parsed.path == "/api/agents/tools":
+            self._send_json({"status": "ok", "tools": agent_builder.available_tools()})
+            return
+        elif parsed.path == "/api/agents/presets":
+            self._send_json({"status": "ok", "presets": agent_builder.list_presets()})
+            return
+        elif parsed.path == "/api/agents/revisions":
+            q = parse_qs(parsed.query)
+            agent_id = (q.get("agent_id") or [""])[0]
+            if not agent_builder.get_agent(agent_id):
+                self._send_json({"status": "error", "error": "Agent not found"}, 404)
+                return
+            body = {"status": "ok", "revisions": agent_builder.list_revisions(agent_id)}
+            from_rev, to_rev = (q.get("from") or [""])[0], (q.get("to") or [""])[0]
+            if from_rev and to_rev:
+                try:
+                    body["diff"] = agent_builder.diff_revisions(agent_id, int(from_rev), int(to_rev))
+                except (KeyError, ValueError) as e:
+                    body["diff_error"] = str(e)
+            self._send_json(body)
+            return
+        elif parsed.path == "/api/agents/stats":
+            self._send_json({"status": "ok", "stats": agent_builder.get_stats()})
+            return
+
+        elif parsed.path == "/api/calls":
+            q = parse_qs(parsed.query)
+            def _opt(name, cast=str):
+                raw = (q.get(name) or [""])[0]
+                if raw == "":
+                    return None
+                try:
+                    return cast(raw)
+                except ValueError:
+                    return None
+            self._send_json({
+                "status": "ok",
+                **call_history.list_calls(
+                    page=int((q.get("page") or ["1"])[0] or 1),
+                    page_size=int((q.get("page_size") or ["25"])[0] or 25),
+                    sentiment=_opt("sentiment"),
+                    agent=_opt("agent"),
+                    outcome=_opt("outcome"),
+                    direction=_opt("direction"),
+                    min_duration=_opt("min_duration", float),
+                    max_duration=_opt("max_duration", float),
+                    transferred=(None if _opt("transferred") is None
+                                 else _opt("transferred") == "true"),
+                    has_audio=(None if _opt("has_audio") is None
+                               else _opt("has_audio") == "true"),
+                    search=_opt("q"),
+                    sort=(q.get("sort") or ["started_at"])[0],
+                    order=(q.get("order") or ["desc"])[0],
+                ),
+            })
+            return
+        elif parsed.path == "/api/calls/detail":
+            q = parse_qs(parsed.query)
+            detail = call_history.get_call((q.get("call_id") or [""])[0])
+            if not detail:
+                self._send_json({"status": "error", "error": "Call not found"}, 404)
+                return
+            self._send_json({"status": "ok", **detail})
+            return
+        elif parsed.path == "/api/calls/waveform":
+            q = parse_qs(parsed.query)
+            wave_data = call_history.waveform(
+                (q.get("call_id") or [""])[0],
+                buckets=int((q.get("buckets") or ["240"])[0] or 240))
+            if not wave_data:
+                self._send_json({"status": "error", "error": "No audio for this call"}, 404)
+                return
+            self._send_json({"status": "ok", "waveform": wave_data})
+            return
+        elif parsed.path == "/api/calls/audio":
+            q = parse_qs(parsed.query)
+            self._send_audio((q.get("call_id") or [""])[0])
+            return
+        elif parsed.path == "/api/calls/stats":
+            self._send_json({"status": "ok", "stats": call_history.stats()})
+            return
+        elif parsed.path == "/api/calls/export":
+            q = parse_qs(parsed.query)
+            csv_body = call_history.export_csv(
+                sentiment=(q.get("sentiment") or [""])[0] or None,
+                agent=(q.get("agent") or [""])[0] or None,
+                outcome=(q.get("outcome") or [""])[0] or None,
+                search=(q.get("q") or [""])[0] or None,
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv; charset=utf-8")
+            self.send_header("Content-Disposition", 'attachment; filename="call-history.csv"')
+            self.send_header("Content-Length", str(len(csv_body)))
+            self.end_headers()
+            self.wfile.write(csv_body)
             return
 
         return super().do_GET()
@@ -575,6 +727,111 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": "Delivery not found"}, 404)
                 return
             self._send_json({"status": "ok", "delivery": record.to_dict()})
+            return
+
+        elif parsed.path == "/api/agents/create":
+            try:
+                cfg = agent_builder.create_agent(
+                    name=payload.get("name", ""),
+                    first_message=payload.get("first_message", ""),
+                    system_prompt=payload.get("system_prompt", ""),
+                    **{k: v for k, v in payload.items()
+                       if k not in ("name", "first_message", "system_prompt")},
+                )
+            except (ValueError, TypeError) as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            self._send_json({"status": "ok", "agent": cfg.to_dict()})
+            return
+
+        elif parsed.path == "/api/agents/update":
+            agent_id = payload.get("agent_id", "")
+            try:
+                cfg = agent_builder.update_agent(
+                    agent_id, payload.get("changes", {}), payload.get("note", ""))
+            except KeyError:
+                self._send_json({"status": "error", "error": "Agent not found"}, 404)
+                return
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            self._send_json({
+                "status": "ok",
+                "agent": cfg.to_dict(),
+                "lint": agent_builder.lint_prompt(cfg.system_prompt),
+            })
+            return
+
+        elif parsed.path == "/api/agents/clone":
+            try:
+                cfg = agent_builder.clone_agent(payload.get("agent_id", ""), payload.get("name"))
+            except KeyError:
+                self._send_json({"status": "error", "error": "Agent not found"}, 404)
+                return
+            self._send_json({"status": "ok", "agent": cfg.to_dict()})
+            return
+
+        elif parsed.path == "/api/agents/delete":
+            removed = agent_builder.delete_agent(payload.get("agent_id", ""))
+            self._send_json({"status": "ok" if removed else "error", "removed": removed},
+                            200 if removed else 404)
+            return
+
+        elif parsed.path == "/api/agents/activate":
+            try:
+                cfg = agent_builder.set_active(payload.get("agent_id", ""))
+            except KeyError:
+                self._send_json({"status": "error", "error": "Agent not found"}, 404)
+                return
+            self._send_json({"status": "ok", "agent": cfg.to_dict()})
+            return
+
+        elif parsed.path == "/api/agents/rollback":
+            try:
+                cfg = agent_builder.rollback(payload.get("agent_id", ""), int(payload.get("revision", 0)))
+            except KeyError as e:
+                self._send_json({"status": "error", "error": str(e)}, 404)
+                return
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            self._send_json({"status": "ok", "agent": cfg.to_dict()})
+            return
+
+        elif parsed.path == "/api/agents/test":
+            try:
+                result = agent_builder.test_run(
+                    payload.get("agent_id", ""), payload.get("utterances", []))
+            except KeyError:
+                self._send_json({"status": "error", "error": "Agent not found"}, 404)
+                return
+            self._send_json({"status": "ok", "result": result})
+            return
+
+        elif parsed.path == "/api/agents/lint":
+            prompt = payload.get("system_prompt", "")
+            ok, errors = agent_builder.validate({
+                "name": payload.get("name", "lint"),
+                "first_message": payload.get("first_message", "lint"),
+                "system_prompt": prompt,
+                "temperature": payload.get("temperature", 0.7),
+            })
+            self._send_json({
+                "status": "ok",
+                "valid": ok,
+                "errors": errors,
+                "lint": agent_builder.lint_prompt(prompt),
+            })
+            return
+
+        elif parsed.path == "/api/agents/voice-preview":
+            try:
+                preview = agent_builder.preview_voice(
+                    payload.get("voice_id", ""), payload.get("text", ""))
+            except KeyError as e:
+                self._send_json({"status": "error", "error": str(e)}, 404)
+                return
+            self._send_json({"status": "ok", "preview": preview})
             return
 
         self.send_error(404, "Endpoint not found")

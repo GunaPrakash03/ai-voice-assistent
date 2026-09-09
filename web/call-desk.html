@@ -59,14 +59,16 @@
   .brand b{color:var(--rail-on);font-size:15px;font-weight:700;letter-spacing:-.01em;display:block}
   .brand span{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
   .nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
-  .nav button{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);
+  .nav button,.nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);
     font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
-  .nav button:hover{background:rgba(255,255,255,.06);color:var(--rail-on)}
+  .nav button:hover,.nav a:hover{background:rgba(255,255,255,.06);color:var(--rail-on)}
   .nav button[aria-selected="true"]{background:var(--accent);color:#fff;font-weight:600}
-  .nav button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
   .nav .ct{font-family:var(--f-mono);font-size:11px;opacity:.75}
   .rail-foot{margin-top:auto;padding:14px 18px 0;border-top:1px solid rgba(255,255,255,.07)}
   .rail-foot div{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;line-height:1.7}
+  .rail-foot a{color:var(--rail-ink);text-decoration:none}
+  .rail-foot a:hover{color:var(--rail-on)}
 
   /* Topbar */
   .top{background:var(--panel);border-bottom:1px solid var(--line);padding:13px 26px;
@@ -103,14 +105,14 @@
   .card-h .meta{font-family:var(--f-mono);font-size:11px;color:var(--ink-faint)}
   .card-b{padding:14px 16px}
 
-  /* Live calls */
-  .live-row{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line-soft)}
+  /* Recent calls */
+  .live-row{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line-soft);
+    cursor:pointer}
   .live-row:last-child{border-bottom:none}
-  .live-row .num{font-family:var(--f-mono);font-size:13px;flex:1}
+  .live-row:hover{background:var(--sunk)}
+  .live-row .num{font-family:var(--f-mono);font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .live-row .ag{font-size:12.5px;color:var(--ink-soft)}
   .live-row .el{font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--accent);font-weight:500}
-  .bars{display:flex;gap:2px;align-items:flex-end;height:17px;width:34px}
-  .bars i{flex:1;background:var(--accent);border-radius:1px;opacity:.85}
 
   /* Sentiment */
   .sbar{display:flex;height:9px;border-radius:5px;overflow:hidden;margin:4px 0 12px}
@@ -131,6 +133,7 @@
   tbody tr{cursor:pointer}
   tbody tr:hover{background:var(--sunk)}
   tbody tr:last-child td{border-bottom:none}
+  td.empty{color:var(--ink-faint);padding:22px 14px;cursor:default}
   .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 
   .pill{display:inline-block;padding:2px 8px;border-radius:11px;font-size:11.5px;font-weight:500;
@@ -139,52 +142,50 @@
   .pill.neu{background:var(--neu-soft);color:var(--neu)}
   .pill.neg{background:var(--neg-soft);color:var(--neg)}
 
-  .filters{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+  .filters{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
   .filters button{all:unset;cursor:pointer;padding:6px 13px;border-radius:16px;font-size:12.5px;
     font-weight:500;border:1px solid var(--line);background:var(--panel);color:var(--ink-soft)}
   .filters button[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
   .filters button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .filters input,.filters select{font-family:var(--f-ui);font-size:12.5px;color:var(--ink);
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:6px 12px}
+  .filters a{margin-left:auto;color:var(--accent);font-size:12.5px;text-decoration:none}
+  .filters a:hover{text-decoration:underline}
+
+  .pager{display:flex;align-items:center;gap:12px;padding:11px 16px;border-top:1px solid var(--line)}
+  .pager .pg{all:unset;cursor:pointer;padding:5px 12px;border-radius:14px;font-size:12.5px;
+    border:1px solid var(--line);color:var(--ink-soft)}
+  .pager .pg[disabled]{opacity:.4;cursor:not-allowed}
+  .pager .pg-info{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-faint)}
 
   /* Transcript */
-  .turn{display:grid;grid-template-columns:52px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--line-soft)}
+  .turn{display:grid;grid-template-columns:52px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--line-soft);
+    cursor:pointer;border-left:2px solid transparent;padding-left:8px}
   .turn:last-child{border-bottom:none}
+  .turn:hover{background:var(--sunk)}
+  .turn.active{border-left-color:var(--accent);background:var(--accent-soft)}
   .turn .t{font-family:var(--f-mono);font-size:11px;color:var(--ink-faint);padding-top:2px}
   .turn .who{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
     margin-bottom:2px}
   .turn.agent .who{color:var(--accent)}
   .turn.caller .who{color:var(--ink-faint)}
-  .turn p{margin:0;font-size:13.5px}
+  .turn p{margin:0;font-size:13.5px;white-space:normal}
 
   .kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:13px}
   .kv:last-child{border-bottom:none}
   .kv .k{color:var(--ink-faint)}
-  .kv .v{font-weight:500;text-align:right}
+  .kv .v{font-weight:500;text-align:right;word-break:break-word}
 
-  /* Builder */
-  label{display:block;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.09em;
-    text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px}
-  input[type=text],textarea,select{width:100%;font-family:inherit;font-size:13.5px;color:var(--ink);
-    background:var(--ground);border:1px solid var(--line);border-radius:5px;padding:9px 11px}
-  textarea{font-family:var(--f-mono);font-size:12.5px;line-height:1.65;resize:vertical;min-height:150px}
-  input:focus,textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
-  .field{margin-bottom:16px}
   .btn{all:unset;cursor:pointer;background:var(--accent);color:#fff;font-weight:600;font-size:13px;
     padding:9px 18px;border-radius:5px;text-align:center}
   .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
   .btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-  .tool{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;
-    border:1px solid var(--line);border-radius:5px;margin-bottom:7px;font-size:13px}
-  .tool code{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-faint)}
-
-  .note{background:var(--accent-soft);border:1px solid var(--accent);border-radius:6px;
-    padding:11px 14px;font-size:12.5px;margin-bottom:18px}
-  .note b{font-weight:600}
-  @media (max-width:760px){
-    .app{grid-template-columns:1fr}
-    .rail{flex-direction:row;align-items:center;overflow-x:auto;padding:10px}
-    .brand,.rail-foot{display:none}
-    .nav{flex-direction:row;padding:0}
-  }
+  .empty{color:var(--ink-faint);font-size:12.5px;padding:14px 0}
+  #wave{cursor:pointer}
+  .agent-card{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 0;
+    border-bottom:1px solid var(--line-soft)}
+  .agent-card:last-child{border-bottom:none}
+  .agent-card code{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-faint)}
 </style>
 </head>
 <body>
@@ -193,20 +194,16 @@
   <nav class="rail">
     <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
     <div class="nav" role="tablist">
-      <button role="tab" aria-selected="true" data-v="overview">Overview<span class="ct">3 live</span></button>
-      <button role="tab" aria-selected="false" data-v="calls">Calls<span class="ct">247</span></button>
+      <button role="tab" aria-selected="true" data-v="overview">Overview<span class="ct" id="ctOverview"></span></button>
+      <button role="tab" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls"></span></button>
       <button role="tab" aria-selected="false" data-v="detail">Call detail</button>
-      <button role="tab" aria-selected="false" data-v="builder">Agents<span class="ct">4</span></button>
+      <button role="tab" aria-selected="false" data-v="agents">Agents<span class="ct" id="ctAgents"></span></button>
     </div>
     <div class="rail-foot">
       <div>WORKSPACE</div>
-      <div style="color:var(--rail-on)">Northgate Legal</div>
-      <div>us-east · v0.4.1</div>
-      <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);display:flex;flex-direction:column;gap:6px">
-        <a href="/" style="color:var(--accent);text-decoration:none;font-size:11.5px;font-family:var(--f-mono)">&larr; Live Console</a>
-        <a href="/softphone.html" style="color:var(--accent);text-decoration:none;font-size:11.5px;font-family:var(--f-mono)">&#x1F4DE; Web Softphone &rarr;</a>
-        <a href="/task-plan.html" style="color:var(--accent);text-decoration:none;font-size:11.5px;font-family:var(--f-mono)">&#x1F4CB; Task Plan &rarr;</a>
-      </div>
+      <div style="color:var(--rail-on)">Voice Agent Service</div>
+      <div><a href="/">Live console</a> · <a href="/agent-builder.html">Builder</a></div>
+      <div><a href="/task-plan.html">Task plan</a> · <a href="/softphone.html">Softphone</a></div>
     </div>
   </nav>
 
@@ -214,51 +211,36 @@
     <header class="top">
       <div>
         <div class="crumb" id="crumb">Overview</div>
-        <h1 id="title">Today</h1>
+        <h1 id="title">Call history</h1>
       </div>
-      <span class="livechip"><span class="pulse"></span><span id="livect">3 calls in progress</span></span>
+      <span class="livechip"><span class="pulse"></span><span id="livect">loading…</span></span>
     </header>
 
     <main>
-      <div class="note">
-        <b>Prototype with sample data.</b> Every figure, caller and transcript below is invented to show the shape of the interface — this is what tasks 4.1 and 4.2 build, not live data from your platform.
-      </div>
 
       <!-- OVERVIEW -->
       <section class="view on" id="v-overview">
-        <dl class="stats">
-          <div class="stat"><dt>Calls today</dt><dd>247<span class="delta up">+18%</span></dd></div>
-          <div class="stat"><dt>Avg duration</dt><dd>2:47<span class="delta up">−22s</span></dd></div>
-          <div class="stat"><dt>Resolved without transfer</dt><dd>78%<span class="delta up">+4pt</span></dd></div>
-          <div class="stat"><dt>Spend today</dt><dd>$21.40<span class="delta down">+$3.10</span></dd></div>
-        </dl>
+        <dl class="stats" id="statCards"></dl>
 
         <div class="grid2">
           <div class="card">
-            <div class="card-h"><h2>Live now</h2><span class="meta">updates every second</span></div>
-            <div id="live"></div>
+            <div class="card-h"><h2>Recent calls</h2><span class="meta">newest first</span></div>
+            <div id="recent"><div class="empty" style="padding:14px 16px">Loading…</div></div>
           </div>
 
           <div class="card">
-            <div class="card-h"><h2>Caller sentiment</h2><span class="meta">last 24h</span></div>
+            <div class="card-h"><h2>Caller sentiment</h2><span class="meta" id="sentimentMeta">all calls</span></div>
             <div class="card-b">
-              <div class="sbar">
-                <i style="width:64%;background:var(--pos)"></i>
-                <i style="width:27%;background:var(--neu)"></i>
-                <i style="width:9%;background:var(--neg)"></i>
-              </div>
-              <div class="slegend">
-                <div><span class="k"><i class="dot" style="background:var(--pos)"></i>Positive</span><span class="v">158 · 64%</span></div>
-                <div><span class="k"><i class="dot" style="background:var(--neu)"></i>Neutral</span><span class="v">67 · 27%</span></div>
-                <div><span class="k"><i class="dot" style="background:var(--neg)"></i>Negative</span><span class="v">22 · 9%</span></div>
-              </div>
+              <div class="sbar" id="sentimentBar"></div>
+              <div class="slegend" id="sentimentLegend"></div>
             </div>
           </div>
         </div>
 
         <div class="card" style="margin-top:16px">
-          <div class="card-h"><h2>Latency</h2><span class="meta">end to end, p50 / p95 · target &lt;700ms</span></div>
-          <div class="card-b"><svg id="spark" viewBox="0 0 720 130" width="100%" height="130" role="img" aria-label="End to end latency over 24 hours, p50 around 590ms, p95 peaking near 810ms"></svg></div>
+          <div class="card-h"><h2>Call volume</h2><span class="meta">by hour, from call records</span></div>
+          <div class="card-b"><svg id="volume" viewBox="0 0 720 130" width="100%" height="130" role="img"
+            aria-label="Call volume by hour"></svg></div>
         </div>
       </section>
 
@@ -266,15 +248,28 @@
       <section class="view" id="v-calls">
         <div class="filters" id="filters">
           <button aria-pressed="true" data-f="all">All calls</button>
-          <button aria-pressed="false" data-f="pos">Positive</button>
-          <button aria-pressed="false" data-f="neu">Neutral</button>
-          <button aria-pressed="false" data-f="neg">Negative</button>
-          <button aria-pressed="false" data-f="transfer">Transferred</button>
+          <button aria-pressed="false" data-f="positive">Positive</button>
+          <button aria-pressed="false" data-f="neutral">Neutral</button>
+          <button aria-pressed="false" data-f="negative">Negative</button>
+          <button aria-pressed="false" data-f="audio">Has audio</button>
+          <select id="agentFilter"><option value="">All agents</option></select>
+          <select id="durationFilter">
+            <option value="">Any duration</option>
+            <option value="0-10">Under 10s</option>
+            <option value="10-60">10s – 1m</option>
+            <option value="60-">Over 1m</option>
+          </select>
+          <input id="searchBox" type="search" placeholder="Search id, intent, summary…">
+          <a id="exportLink" href="/api/calls/export">Export CSV</a>
         </div>
-        <div class="card"><div class="tw"><table>
-          <thead><tr><th>Time</th><th>From</th><th>Agent</th><th>Duration</th><th>Sentiment</th><th>Outcome</th><th>Cost</th></tr></thead>
-          <tbody id="rows"></tbody>
-        </table></div></div>
+        <div class="card">
+          <div class="tw"><table>
+            <thead><tr><th>Time</th><th>Call</th><th>Agent</th><th>Duration</th><th>Sentiment</th>
+              <th>Outcome</th><th>Turns</th><th>Audio</th></tr></thead>
+            <tbody id="rows"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+          </table></div>
+          <div class="pager" id="pager"></div>
+        </div>
       </section>
 
       <!-- DETAIL -->
@@ -282,235 +277,292 @@
         <div class="grid2">
           <div>
             <div class="card" style="margin-bottom:16px">
-              <div class="card-h"><h2>Recording</h2><span class="meta">call_8f3a2c · 3:12</span></div>
+              <div class="card-h"><h2>Recording</h2><span class="meta" id="recMeta">no call selected</span></div>
               <div class="card-b">
-                <svg id="wave" viewBox="0 0 700 90" width="100%" height="90" role="img" aria-label="Audio waveform, 3 minutes 12 seconds, playhead at 41 seconds"></svg>
+                <svg id="wave" viewBox="0 0 700 96" width="100%" height="96" role="img"
+                  aria-label="Stereo waveform: caller above the axis, agent below"></svg>
+                <audio id="player" preload="metadata"></audio>
                 <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
-                  <button class="btn" style="padding:7px 14px">Play</button>
-                  <span class="mono" style="font-size:12px;color:var(--ink-faint)">0:41 / 3:12</span>
-                  <span class="mono" style="margin-left:auto;font-size:12px">1.0×</span>
+                  <button class="btn" id="btnPlay" style="padding:7px 14px">Play</button>
+                  <span class="mono" id="clock" style="font-size:12px;color:var(--ink-faint)">0:00 / 0:00</span>
+                  <span class="mono" id="audioNote" style="margin-left:auto;font-size:12px;color:var(--ink-faint)"></span>
                 </div>
               </div>
             </div>
             <div class="card">
-              <div class="card-h"><h2>Transcript</h2><span class="meta">speaker-attributed</span></div>
-              <div class="card-b" id="transcript"></div>
+              <div class="card-h"><h2>Transcript</h2><span class="meta">click a turn to seek</span></div>
+              <div class="card-b" id="transcript"><div class="empty">Select a call from the log.</div></div>
             </div>
           </div>
 
           <div>
             <div class="card" style="margin-bottom:16px">
-              <div class="card-h"><h2>Analysis</h2></div>
-              <div class="card-b">
-                <p style="margin:0 0 12px;font-size:13.5px">Caller asked whether the firm handles construction defect matters and requested a consultation. Agent confirmed scope, captured details and booked Thursday 2pm.</p>
-                <div class="kv"><span class="k">Sentiment</span><span class="v"><span class="pill pos">Positive</span></span></div>
-                <div class="kv"><span class="k">Resolved</span><span class="v">Yes</span></div>
-                <div class="kv"><span class="k">Voicemail</span><span class="v">No</span></div>
-                <div class="kv"><span class="k">Transferred</span><span class="v">No</span></div>
-              </div>
+              <div class="card-h"><h2>Analysis</h2><span class="meta" id="analysisMeta"></span></div>
+              <div class="card-b" id="analysis"><div class="empty">Select a call from the log.</div></div>
             </div>
             <div class="card">
-              <div class="card-h"><h2>Extracted fields</h2><span class="meta">custom schema</span></div>
-              <div class="card-b">
-                <div class="kv"><span class="k">caller_name</span><span class="v">Marisol Trevino</span></div>
-                <div class="kv"><span class="k">matter_type</span><span class="v">Construction defect</span></div>
-                <div class="kv"><span class="k">callback_number</span><span class="v mono">+1 512 555 0148</span></div>
-                <div class="kv"><span class="k">appointment_booked</span><span class="v">true</span></div>
-                <div class="kv"><span class="k">urgency</span><span class="v">Standard</span></div>
-              </div>
+              <div class="card-h"><h2>Extracted fields</h2><span class="meta">schema extraction</span></div>
+              <div class="card-b" id="extracted"><div class="empty">Select a call from the log.</div></div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- BUILDER -->
-      <section class="view" id="v-builder">
-        <div class="grid2">
-          <div class="card">
-            <div class="card-h"><h2>Intake Agent</h2><span class="meta">edited 2h ago</span></div>
-            <div class="card-b">
-              <div class="field">
-                <label for="an">Agent name</label>
-                <input id="an" type="text" value="Intake Agent">
-              </div>
-              <div class="field">
-                <label for="fm">First message</label>
-                <input id="fm" type="text" value="Thanks for calling Northgate Legal. How can I help?">
-              </div>
-              <div class="field">
-                <label for="sp">System prompt</label>
-                <textarea id="sp" spellcheck="false">You are the intake agent for a law firm.
-
-Answer in one or two short sentences, then stop.
-Do not recap what the caller just said.
-Do not list options unless asked — offer the single best one.
-Never read case numbers or URLs aloud unless asked.
-
-If the caller describes an emergency, transfer immediately
-using transfer_to_human.</textarea>
-              </div>
-              <div style="display:flex;gap:9px">
-                <button class="btn">Save changes</button>
-                <button class="btn ghost">Test call</button>
-              </div>
-            </div>
+      <!-- AGENTS -->
+      <section class="view" id="v-agents">
+        <div class="card">
+          <div class="card-h">
+            <h2>Configured agents</h2>
+            <span class="meta"><a href="/agent-builder.html" style="color:var(--accent)">Open Agent Builder →</a></span>
           </div>
-
-          <div>
-            <div class="card" style="margin-bottom:16px">
-              <div class="card-h"><h2>Voice</h2></div>
-              <div class="card-b">
-                <div class="field">
-                  <label for="vs">Model &amp; voice</label>
-                  <select id="vs">
-                    <option>Sonic · Aurora — warm, measured</option>
-                    <option>Sonic · Vale — brisk, neutral</option>
-                    <option>Aura · Ridge — deep, formal</option>
-                  </select>
-                </div>
-                <div class="kv"><span class="k">First-audio latency</span><span class="v mono">88 ms</span></div>
-                <div class="kv"><span class="k">Cost</span><span class="v mono">$0.075 / 1k chars</span></div>
-                <button class="btn ghost" style="margin-top:12px;width:100%">Preview voice</button>
-              </div>
-            </div>
-
-            <div class="card">
-              <div class="card-h"><h2>Tools</h2><span class="meta">3 enabled</span></div>
-              <div class="card-b">
-                <div class="tool"><span>Search knowledge base<br><code>POST /api/voice-search</code></span><span class="pill pos">on</span></div>
-                <div class="tool"><span>Book consultation<br><code>POST /api/booking</code></span><span class="pill pos">on</span></div>
-                <div class="tool"><span>Transfer to human<br><code>built-in</code></span><span class="pill pos">on</span></div>
-                <div class="tool" style="opacity:.55"><span>Check matter status<br><code>POST /api/matter</code></span><span class="pill neu">off</span></div>
-              </div>
-            </div>
-          </div>
+          <div class="card-b" id="agentList"><div class="empty">Loading…</div></div>
         </div>
       </section>
+
     </main>
   </div>
 </div>
 
+<script src="/inspector.js"></script>
 <script>
-(function(){
+(function () {
   "use strict";
-  var $=function(s){return document.querySelector(s)};
+  var CI = window.CallInspector;
+  var $ = function (s) { return document.querySelector(s); };
 
-  var TITLES={overview:["Overview","Today"],calls:["Calls","Call history"],
-    detail:["Calls / call_8f3a2c","Marisol Trevino — 3:12"],builder:["Agents","Intake Agent"]};
+  var TITLES = {
+    overview: ["Overview", "Call history"],
+    calls: ["Calls", "Call log"],
+    detail: ["Calls / detail", "Call inspector"],
+    agents: ["Agents", "Configured agents"]
+  };
 
-  document.querySelectorAll('.nav button').forEach(function(b){
-    b.addEventListener('click',function(){
-      document.querySelectorAll('.nav button').forEach(function(x){x.setAttribute('aria-selected','false')});
-      b.setAttribute('aria-selected','true');
-      document.querySelectorAll('.view').forEach(function(v){v.classList.remove('on')});
-      $('#v-'+b.dataset.v).classList.add('on');
-      $('#crumb').textContent=TITLES[b.dataset.v][0];
-      $('#title').textContent=TITLES[b.dataset.v][1];
-      window.scrollTo(0,0);
+  var query = { page: 1, page_size: 25, sentiment: null, agent: null, has_audio: null,
+                min_duration: null, max_duration: null, q: null };
+
+  var player = CI.createPlayer({
+    audio: $("#player"), waveform: $("#wave"), transcript: $("#transcript"), clock: $("#clock")
+  });
+
+  // ── Navigation ────────────────────────────────────────────────────────────
+  function show(view) {
+    Array.prototype.forEach.call(document.querySelectorAll(".nav button"), function (b) {
+      b.setAttribute("aria-selected", String(b.dataset.v === view));
     });
+    Array.prototype.forEach.call(document.querySelectorAll(".view"), function (v) {
+      v.classList.toggle("on", v.id === "v-" + view);
+    });
+    $("#crumb").textContent = TITLES[view][0];
+    $("#title").textContent = TITLES[view][1];
+    window.scrollTo(0, 0);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".nav button"), function (b) {
+    b.addEventListener("click", function () { show(b.dataset.v); });
   });
 
-  // Live calls — elapsed time ticks so the page reads as live.
-  var LIVE=[{n:"+1 512 555 0148",a:"Intake Agent",s:41},
-            {n:"+1 737 555 0192",a:"Intake Agent",s:126},
-            {n:"+1 210 555 0113",a:"After-hours",s:9}];
-  function mmss(s){return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}
-  function drawLive(){
-    $('#live').innerHTML=LIVE.map(function(c){
-      var bars=[0,1,2,3].map(function(i){
-        var h=25+Math.round(Math.abs(Math.sin(c.s/2+i))*70);
-        return '<i style="height:'+h+'%"></i>';
-      }).join('');
-      return '<div class="live-row"><span class="bars">'+bars+'</span>'+
-        '<span class="num">'+c.n+'</span><span class="ag">'+c.a+'</span>'+
-        '<span class="el">'+mmss(c.s)+'</span></div>';
-    }).join('');
-    $('#livect').textContent=LIVE.length+" calls in progress";
-  }
-  drawLive();
-  setInterval(function(){LIVE.forEach(function(c){c.s++});drawLive()},1000);
+  // ── Overview ──────────────────────────────────────────────────────────────
+  function renderStats(stats) {
+    $("#ctOverview").textContent = stats.calls + " calls";
+    $("#livect").textContent = stats.calls + " calls in history";
+    $("#statCards").innerHTML =
+      card("Calls recorded", stats.calls, stats.with_audio + " with audio") +
+      card("Avg duration", CI.formatDuration(stats.avg_duration_seconds), stats.total_turns + " turns total") +
+      card("Resolved", Math.round(stats.resolution_rate * 100) + "%", (stats.outcomes.resolved || 0) + " calls") +
+      card("Frustration flags", stats.frustrated_calls, stats.transferred_calls + " escalated");
 
-  // Call log
-  var CALLS=[
-    ["09:14","+1 512 555 0148","Intake Agent","3:12","pos","Booked","$0.08",false],
-    ["09:02","+1 737 555 0203","Intake Agent","1:48","neu","Info given","$0.04",false],
-    ["08:51","+1 210 555 0177","After-hours","0:39","neg","Transferred","$0.02",true],
-    ["08:44","+1 512 555 0166","Intake Agent","4:27","pos","Booked","$0.11",false],
-    ["08:30","+1 469 555 0138","Intake Agent","0:22","neu","Voicemail","$0.01",false],
-    ["08:17","+1 512 555 0191","Billing","2:05","neg","Transferred","$0.05",true],
-    ["08:03","+1 832 555 0154","Intake Agent","2:51","pos","Booked","$0.07",false],
-    ["07:48","+1 512 555 0129","After-hours","1:16","pos","Info given","$0.03",false]
-  ];
-  var LBL={pos:"Positive",neu:"Neutral",neg:"Negative"};
-  function drawRows(f){
-    $('#rows').innerHTML=CALLS.filter(function(c){
-      return f==="all"||(f==="transfer"?c[7]:c[4]===f);
-    }).map(function(c){
-      return '<tr><td class="mono">'+c[0]+'</td><td class="mono">'+c[1]+'</td><td>'+c[2]+
-        '</td><td class="mono">'+c[3]+'</td><td><span class="pill '+c[4]+'">'+LBL[c[4]]+
-        '</span></td><td>'+c[5]+'</td><td class="mono">'+c[6]+'</td></tr>';
-    }).join('')||'<tr><td colspan="7" style="color:var(--ink-faint);padding:22px 14px">No calls match this filter.</td></tr>';
+    var total = Object.keys(stats.sentiment).reduce(function (n, k) { return n + stats.sentiment[k]; }, 0) || 1;
+    var order = ["positive", "neutral", "negative", "unknown"];
+    $("#sentimentBar").innerHTML = order.filter(function (k) { return stats.sentiment[k]; })
+      .map(function (k) {
+        return '<i style="width:' + (stats.sentiment[k] / total * 100).toFixed(1) +
+          '%;background:var(--' + (k === "positive" ? "pos" : k === "negative" ? "neg" : "neu") + ')"></i>';
+      }).join("");
+    $("#sentimentLegend").innerHTML = order.filter(function (k) { return stats.sentiment[k]; })
+      .map(function (k) {
+        var colour = k === "positive" ? "pos" : k === "negative" ? "neg" : "neu";
+        return '<div><span class="k"><i class="dot" style="background:var(--' + colour + ')"></i>' +
+          k + '</span><span class="v">' + stats.sentiment[k] + " &middot; " +
+          Math.round(stats.sentiment[k] / total * 100) + "%</span></div>";
+      }).join("");
+    $("#sentimentMeta").textContent = total + " calls";
   }
-  drawRows("all");
-  $('#filters').addEventListener('click',function(e){
-    var b=e.target.closest('button'); if(!b)return;
-    document.querySelectorAll('#filters button').forEach(function(x){x.setAttribute('aria-pressed','false')});
-    b.setAttribute('aria-pressed','true'); drawRows(b.dataset.f);
+
+  function card(label, value, sub) {
+    return '<div class="stat"><dt>' + label + "</dt><dd>" + value +
+      '<span class="delta" style="color:var(--ink-faint)">' + (sub || "") + "</span></dd></div>";
+  }
+
+  function renderVolume(items) {
+    var buckets = new Array(24).fill(0);
+    items.forEach(function (call) {
+      if (!call.started_at) { return; }
+      buckets[new Date(call.started_at * 1000).getHours()] += 1;
+    });
+    var max = Math.max.apply(null, buckets) || 1;
+    var W = 720, H = 130, pad = 26, step = (W - pad - 10) / 24;
+    var bars = buckets.map(function (n, i) {
+      var h = (n / max) * (H - 44);
+      return '<rect x="' + (pad + i * step).toFixed(1) + '" y="' + (H - 24 - h).toFixed(1) +
+        '" width="' + (step - 3).toFixed(1) + '" height="' + Math.max(h, 1).toFixed(1) +
+        '" rx="2" fill="var(--accent)" opacity="' + (n ? 0.9 : 0.25) + '"/>';
+    }).join("");
+    $("#volume").innerHTML = bars +
+      '<text x="' + pad + '" y="' + (H - 6) + '" font-family="DM Mono,monospace" font-size="10" fill="var(--ink-faint)">00:00</text>' +
+      '<text x="' + (W - 10) + '" y="' + (H - 6) + '" text-anchor="end" font-family="DM Mono,monospace" font-size="10" fill="var(--ink-faint)">23:00 · peak ' + max + '</text>';
+  }
+
+  function renderRecent(items) {
+    if (!items.length) {
+      $("#recent").innerHTML = '<div class="empty" style="padding:14px 16px">No calls recorded yet.</div>';
+      return;
+    }
+    $("#recent").innerHTML = items.slice(0, 6).map(function (call) {
+      return '<div class="live-row" data-call="' + CI.escapeHtml(call.call_id) + '">' +
+        '<span class="num">' + CI.escapeHtml(call.from_number || call.call_id) + "</span>" +
+        '<span class="ag">' + CI.escapeHtml(call.agent_name) + "</span>" +
+        '<span class="pill ' + CI.sentimentClass(call.sentiment) + '">' + CI.escapeHtml(call.sentiment) + "</span>" +
+        '<span class="el">' + CI.formatDuration(call.duration_seconds) + "</span></div>";
+    }).join("");
+    Array.prototype.forEach.call($("#recent").querySelectorAll("[data-call]"), function (row) {
+      row.addEventListener("click", function () { openCall(row.dataset.call); });
+    });
+  }
+
+  // ── Call log ──────────────────────────────────────────────────────────────
+  function loadCalls() {
+    return CI.fetchCalls(query).then(function (page) {
+      CI.renderTable($("#rows"), page, { onSelect: openCall });
+      CI.renderPager($("#pager"), page, function (n) { query.page = n; loadCalls(); });
+      $("#ctCalls").textContent = page.total;
+      $("#exportLink").href = CI.exportUrl({
+        sentiment: query.sentiment, agent: query.agent, q: query.q
+      });
+      if ($("#agentFilter").options.length === 1) {
+        page.filters.agents.forEach(function (name) {
+          var opt = document.createElement("option");
+          opt.value = name; opt.textContent = name;
+          $("#agentFilter").appendChild(opt);
+        });
+      }
+      return page;
+    }).catch(function (e) {
+      $("#rows").innerHTML = '<tr><td colspan="8" class="empty">Failed to load calls: ' +
+        CI.escapeHtml(e.message) + "</td></tr>";
+    });
+  }
+
+  $("#filters").addEventListener("click", function (event) {
+    var btn = event.target.closest("button[data-f]");
+    if (!btn) { return; }
+    Array.prototype.forEach.call(document.querySelectorAll("#filters button[data-f]"), function (b) {
+      b.setAttribute("aria-pressed", String(b === btn));
+    });
+    var f = btn.dataset.f;
+    query.sentiment = ["positive", "neutral", "negative"].indexOf(f) !== -1 ? f : null;
+    query.has_audio = f === "audio" ? "true" : null;
+    query.page = 1;
+    loadCalls();
   });
 
-  // Transcript
-  var TURNS=[
-    ["0:00","agent","Thanks for calling Northgate Legal. How can I help?"],
-    ["0:04","caller","Hi — I wanted to ask whether you handle construction defect cases."],
-    ["0:09","agent","We do. Is this for a residential or commercial property?"],
-    ["0:13","caller","Residential. It's my house, there's water damage from a bad roof install."],
-    ["0:20","agent","Understood. Let me check our availability for a consultation."],
-    ["0:24","agent","I can offer Thursday at 2pm or Friday morning. Which suits you?"],
-    ["0:31","caller","Thursday at two works."],
-    ["0:34","agent","Booked. Can I take the best number to reach you?"],
-    ["0:38","caller","Five one two, five five five, zero one four eight."]
-  ];
-  $('#transcript').innerHTML=TURNS.map(function(t){
-    return '<div class="turn '+t[1]+'"><span class="t">'+t[0]+'</span><div>'+
-      '<div class="who">'+(t[1]==="agent"?"Agent":"Caller")+'</div><p>'+t[2]+'</p></div></div>';
-  }).join('');
+  $("#agentFilter").addEventListener("change", function () {
+    query.agent = this.value || null; query.page = 1; loadCalls();
+  });
 
-  // Waveform — deterministic, playhead at 41s of 192s
-  (function(){
-    var bars=140,played=Math.round(bars*41/192),out="";
-    for(var i=0;i<bars;i++){
-      var h=8+Math.abs(Math.sin(i*0.7)*Math.cos(i*0.23)+Math.sin(i*0.11))*30;
-      var y=45-h/2;
-      out+='<rect x="'+(i*5)+'" y="'+y.toFixed(1)+'" width="3" height="'+h.toFixed(1)+
-        '" rx="1.5" fill="'+(i<played?"var(--accent)":"var(--line)")+'"/>';
-    }
-    out+='<line x1="'+(played*5)+'" y1="4" x2="'+(played*5)+'" y2="86" stroke="var(--ink)" stroke-width="1.5"/>';
-    $('#wave').innerHTML=out;
-  })();
+  $("#durationFilter").addEventListener("change", function () {
+    var parts = (this.value || "").split("-");
+    query.min_duration = parts[0] || null;
+    query.max_duration = parts[1] || null;
+    query.page = 1;
+    loadCalls();
+  });
 
-  // Latency chart — p50/p95 with a 700ms target line
-  (function(){
-    var W=720,H=130,PAD=32,n=24,max=1000;
-    var p50=[],p95=[];
-    for(var i=0;i<n;i++){
-      p50.push(560+Math.sin(i*0.7)*45+Math.sin(i*1.9)*22);
-      p95.push(760+Math.sin(i*0.55+1)*70+Math.cos(i*1.3)*30);
-    }
-    var x=function(i){return PAD+i*(W-PAD-10)/(n-1)},
-        y=function(v){return H-22-(v/max)*(H-40)};
-    var path=function(a){return a.map(function(v,i){return (i?"L":"M")+x(i).toFixed(1)+" "+y(v).toFixed(1)}).join(" ")};
-    var s='<line x1="'+PAD+'" y1="'+y(700)+'" x2="'+(W-10)+'" y2="'+y(700)+
-      '" stroke="var(--neg)" stroke-width="1" stroke-dasharray="4 4"/>'+
-      '<text x="'+(W-12)+'" y="'+(y(700)-5)+'" text-anchor="end" font-family="DM Mono,monospace" font-size="10" fill="var(--neg)">700ms target</text>'+
-      '<path d="'+path(p95)+'" fill="none" stroke="var(--neu)" stroke-width="1.5"/>'+
-      '<path d="'+path(p50)+'" fill="none" stroke="var(--accent)" stroke-width="2"/>'+
-      '<circle cx="'+x(n-1)+'" cy="'+y(p50[n-1])+'" r="3.5" fill="var(--accent)"/>'+
-      '<text x="4" y="'+(y(1000)+4)+'" font-family="DM Mono,monospace" font-size="10" fill="var(--ink-faint)">1000</text>'+
-      '<text x="4" y="'+(y(500)+4)+'" font-family="DM Mono,monospace" font-size="10" fill="var(--ink-faint)">500</text>'+
-      '<text x="'+PAD+'" y="'+(H-6)+'" font-family="DM Mono,monospace" font-size="10" fill="var(--ink-faint)">24h ago</text>'+
-      '<text x="'+(W-10)+'" y="'+(H-6)+'" text-anchor="end" font-family="DM Mono,monospace" font-size="10" fill="var(--ink-faint)">now · p50 '+Math.round(p50[n-1])+'ms</text>';
-    $('#spark').innerHTML=s;
-  })();
+  var searchTimer = null;
+  $("#searchBox").addEventListener("input", function () {
+    var value = this.value.trim();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () {
+      query.q = value || null; query.page = 1; loadCalls();
+    }, 300);
+  });
+
+  // ── Detail ────────────────────────────────────────────────────────────────
+  function openCall(callId) {
+    show("detail");
+    $("#recMeta").textContent = callId;
+    CI.fetchDetail(callId).then(function (detail) {
+      renderAnalysis(detail);
+      $("#audioNote").textContent = detail.audio.available
+        ? Math.round(detail.audio.bytes / 1024) + " KB · range-streamed"
+        : "no recording stored";
+      return player.load(callId, detail);
+    }).catch(function (e) {
+      $("#transcript").innerHTML = '<div class="empty">Failed to load call: ' +
+        CI.escapeHtml(e.message) + "</div>";
+    });
+  }
+
+  function renderAnalysis(detail) {
+    var call = detail.call, summary = detail.summary || {}, metrics = detail.metrics || {};
+    $("#analysisMeta").textContent = CI.formatDuration(call.duration_seconds);
+    $("#analysis").innerHTML =
+      (summary.executive_summary
+        ? '<p style="margin:0 0 12px;font-size:13.5px">' + CI.escapeHtml(summary.executive_summary) + "</p>" : "") +
+      kv("Sentiment", '<span class="pill ' + CI.sentimentClass(call.sentiment) + '">' +
+        CI.escapeHtml(call.sentiment) + "</span>") +
+      kv("Intent", CI.escapeHtml(call.key_intent || "—")) +
+      kv("Outcome", CI.escapeHtml(call.outcome)) +
+      kv("Frustration", call.frustration_detected ? "Detected" : "No") +
+      kv("Turns", call.turns + " (" + Math.round((metrics.caller_talk_ratio || 0) * 100) + "% caller)") +
+      kv("Words", call.words) +
+      kv("Archive", CI.escapeHtml(call.archive_url || "—"));
+
+    var fields = call.extracted_fields || {};
+    var keys = Object.keys(fields);
+    $("#extracted").innerHTML = keys.length
+      ? keys.map(function (k) { return kv(k, CI.escapeHtml(String(fields[k]))); }).join("")
+      : '<div class="empty">No fields extracted for this call.</div>';
+  }
+
+  function kv(k, v) {
+    return '<div class="kv"><span class="k">' + k + '</span><span class="v">' + v + "</span></div>";
+  }
+
+  $("#btnPlay").addEventListener("click", function () {
+    var btn = this;
+    Promise.resolve(player.toggle()).then(function () {
+      btn.textContent = $("#player").paused ? "Play" : "Pause";
+    }).catch(function () { btn.textContent = "Play"; });
+  });
+  $("#player").addEventListener("ended", function () { $("#btnPlay").textContent = "Play"; });
+
+  // ── Agents ────────────────────────────────────────────────────────────────
+  function loadAgents() {
+    return fetch("/api/agents").then(function (r) { return r.json(); }).then(function (data) {
+      var agents = data.agents || [];
+      $("#ctAgents").textContent = agents.length;
+      $("#agentList").innerHTML = agents.length ? agents.map(function (a) {
+        return '<div class="agent-card"><span><strong>' + CI.escapeHtml(a.name) + "</strong>" +
+          (a.active ? ' <span class="pill pos">live</span>' : "") + "<br>" +
+          "<code>rev " + a.revision + " · " + CI.escapeHtml(a.llm_model) + " · " +
+          a.tools.length + " tools</code></span>" +
+          '<a class="btn ghost" style="padding:6px 12px" href="/agent-builder.html">Edit</a></div>';
+      }).join("") : '<div class="empty">No agents configured.</div>';
+    }).catch(function () {
+      $("#agentList").innerHTML = '<div class="empty">Agent API unavailable.</div>';
+    });
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  CI.fetchStats().then(function (data) { renderStats(data.stats); })
+    .catch(function (e) { $("#livect").textContent = "API unreachable: " + e.message; });
+
+  CI.fetchCalls({ page_size: 200 }).then(function (page) {
+    renderRecent(page.items);
+    renderVolume(page.items);
+  }).catch(function () { /* the stats call already surfaced the error */ });
+
+  loadCalls();
+  loadAgents();
 })();
 </script>
 

@@ -1020,6 +1020,71 @@ async def entrypoint(ctx: agents.JobContext):
                     "timestamp": time.time(),
                 }, topic="extraction_event", reliable=True)
 
+        elif action == "list_agents":
+            from agent.agent_builder import agent_builder
+            active_cfg = agent_builder.get_active_agent()
+            publish({
+                "type": "agent_config_event",
+                "event": "agents_listed",
+                "agents": agent_builder.list_agents(),
+                "active_agent": active_cfg.agent_id if active_cfg else None,
+                "timestamp": time.time(),
+            }, topic="agent_config_event", reliable=True)
+
+        elif action == "apply_agent_config":
+            from agent.agent_builder import agent_builder
+            agent_id = data.get("agent_id", "")
+            cfg = agent_builder.get_agent(agent_id)
+            if not cfg:
+                publish({
+                    "type": "agent_config_event",
+                    "event": "agent_config_error",
+                    "error": f"Unknown agent '{agent_id}'",
+                    "agents": [a["agent_id"] for a in agent_builder.list_agents()],
+                    "timestamp": time.time(),
+                }, topic="agent_config_event", reliable=True)
+            else:
+                # Swap the live persona: prompt and sampling on the dialogue
+                # manager, voice on the TTS stream, for the next turn onwards.
+                llm_manager.system_instruction = cfg.system_prompt
+                llm_manager.context.system_instruction = cfg.system_prompt
+                llm_manager.temperature = cfg.temperature
+                tts_manager.voice = cfg.voice_id
+                if data.get("activate"):
+                    agent_builder.set_active(agent_id)
+                publish({
+                    "type": "agent_config_event",
+                    "event": "agent_config_applied",
+                    "agent_id": cfg.agent_id,
+                    "agent_name": cfg.name,
+                    "revision": cfg.revision,
+                    "voice_id": cfg.voice_id,
+                    "temperature": cfg.temperature,
+                    "tools": cfg.tools,
+                    "first_message": cfg.first_message,
+                    "prompt_chars": len(cfg.system_prompt),
+                    "timestamp": time.time(),
+                }, topic="agent_config_event", reliable=True)
+
+        elif action == "test_agent_config":
+            from agent.agent_builder import agent_builder
+            try:
+                preview = agent_builder.test_run(
+                    data.get("agent_id", ""), data.get("utterances", []))
+                publish({
+                    "type": "agent_config_event",
+                    "event": "agent_test_completed",
+                    "result": preview,
+                    "timestamp": time.time(),
+                }, topic="agent_config_event", reliable=True)
+            except KeyError as ke:
+                publish({
+                    "type": "agent_config_event",
+                    "event": "agent_config_error",
+                    "error": str(ke),
+                    "timestamp": time.time(),
+                }, topic="agent_config_event", reliable=True)
+
         elif action == "test_speech":
             participant_id = packet.participant.identity if packet.participant else "unknown"
             log.info("Test speech requested by %s for barge-in verification", participant_id)
