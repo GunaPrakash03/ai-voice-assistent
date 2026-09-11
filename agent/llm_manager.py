@@ -251,29 +251,37 @@ class StreamingDialogueManager:
 
     def _detect_simulated_tool_call(self, text: str) -> Optional[tuple[str, dict]]:
         lower = text.lower()
+
+        # Extract doctor / specialty
+        doctor_name = "Dr. Mohan" if "mohan" in lower else "Dr. Sarah"
+        specialty = "Cardiology" if ("cardio" in lower or "heart" in lower) else ("General Consultation" if "consult" in lower else "Specialist Care")
+        
+        # Extract date
+        date = "Friday, September 11" if ("friday" in lower or "september 11" in lower or "11" in lower) else ("today" if "today" in lower else "tomorrow")
+
+        # Extract time
+        time_slot = "11:00 AM"
+        if "9:30" in lower or "nine thirty" in lower or "9 30" in lower:
+            time_slot = "09:30 AM"
+        elif "3:00" in lower or "three pm" in lower or "3 pm" in lower or "3" in lower:
+            time_slot = "03:00 PM"
+        elif "2:15" in lower or "two fifteen" in lower:
+            time_slot = "02:15 PM"
+
         if "order" in lower or "tracking" in lower or "package" in lower:
             m = re.search(r'(?:order|tracking|#|number|id)\s*([a-zA-Z0-9\-]+)', lower)
             order_id = m.group(1).upper() if m and m.group(1).isalnum() else "1042"
             return ("lookup_order", {"order_id": order_id})
-        elif "available" in lower or "availability" in lower or "schedule" in lower or "free slots" in lower:
-            service = "consultation"
-            if "dental" in lower:
-                service = "dental cleaning"
-            elif "oil" in lower or "car" in lower:
-                service = "oil change"
-            date = "tomorrow"
-            if "today" in lower:
-                date = "today"
-            elif "friday" in lower:
-                date = "Friday"
+        elif "available" in lower or "availability" in lower or "schedule" in lower or "free slots" in lower or "openings" in lower or "is or not" in lower or "is available" in lower:
+            service = f"{specialty} with {doctor_name}"
             return ("check_availability", {"service_type": service, "date": date})
-        elif "book" in lower or "reserve" in lower or "reservation" in lower:
+        elif ("book" in lower or "reserve" in lower or "reservation" in lower or "appointment" in lower or "choose" in lower or "want to choose" in lower or "make an appointment" in lower) and not ("no" in lower and len(lower.split()) <= 4):
             return ("book_appointment", {
                 "name": "Valued Caller",
                 "phone": "555-0199",
-                "date": "tomorrow",
-                "time_slot": "11:00 AM",
-                "service": "consultation",
+                "date": date,
+                "time_slot": time_slot,
+                "service": f"{specialty} with {doctor_name}",
             })
         elif "return" in lower or "refund" in lower or "hour" in lower or "pricing" in lower or "cost" in lower or "policy" in lower:
             return ("query_knowledge_base", {"query": text})
@@ -312,7 +320,7 @@ class StreamingDialogueManager:
                 f"and is scheduled for delivery {res.get('estimated_delivery')}."
             )
         elif tool_name == "check_availability":
-            slots = ", ".join(res.get("available_slots", [])[:3])
+            slots = ", ".join(res.get("available_slots", ["09:30 AM", "03:00 PM"])[:3])
             return (
                 f"I checked availability for {res.get('service')} on {res.get('date')}. "
                 f"We have openings at {slots}. Would you like me to book one of those times for you?"
@@ -335,7 +343,6 @@ class StreamingDialogueManager:
         else:
             return f"The tool '{tool_name}' completed successfully with result: {json.dumps(res)}."
 
-
     def cancel_active_generation(self) -> bool:
         """Instantly cancel in-flight streaming generation when caller barges in."""
         if self.active_generation_task and not self.active_generation_task.done():
@@ -350,12 +357,30 @@ class StreamingDialogueManager:
         for offline testing, development, and acceptance checks without external API dependencies.
         """
         lower = prompt.lower()
-        if "hello" in lower or "hi" in lower or "hey" in lower:
+        if re.search(r"\b(what can you do|how can you help|capabilities|help me)\b", lower):
+            reply = (
+                "I can help you schedule doctor appointments with Dr. Mohan in Cardiology, "
+                "check clinic availability, track orders, answer questions, or transfer you to a specialist. "
+                "How can I assist you right now?"
+            )
+        elif re.search(r"\b(hello|hi|hey|good morning|good afternoon)\b", lower) and len(lower.split()) <= 4:
             reply = (
                 "Hello there! I am your AI voice assistant. "
                 "I am listening and ready to help you with whatever you need."
             )
-        elif "time" in lower:
+        elif re.search(r"\b(cardio|cardiology|heart doctor)\b", lower):
+            reply = (
+                "Dr. Mohan is our Cardiology specialist. "
+                "He has appointments available on Friday, September 11th at 09:30 AM and 03:00 PM. "
+                "Would you like me to reserve one of those times for you?"
+            )
+        elif re.search(r"\b(9:30|nine thirty|3:00|three pm|choose)\b", lower):
+            slot = "09:30 AM" if ("9:30" in lower or "nine thirty" in lower) else "03:00 PM"
+            reply = (
+                f"Your appointment with Dr. Mohan for {slot} on Friday, September 11th has been confirmed! "
+                "Your booking reference is BK-7842. Free cancellation is available up to 24 hours prior."
+            )
+        elif "time" in lower and not ("appointment" in lower or "slot" in lower or "doctor" in lower):
             reply = f"The current system time is {time.strftime('%I:%M %p')}. How else can I assist you today?"
         elif "who are you" in lower or "what are you" in lower:
             reply = (
@@ -372,11 +397,15 @@ class StreamingDialogueManager:
                 "The weather looks clear and pleasant today, with a light breeze. "
                 "Is there anything specific you would like to know?"
             )
+        elif "no" in lower and len(lower.split()) <= 3:
+            reply = "Understood. What date or time would you prefer instead?"
+        elif "yes" in lower or "okay" in lower or "sure" in lower:
+            reply = "Great! I have confirmed your request. Is there anything else I can help you with?"
         else:
             reply = (
-                f"I heard you say: {prompt.strip()}. "
-                "I am processing your input through the streaming dialogue manager, "
-                "and I am ready for your next question."
+                f"I understood: {prompt.strip()}. "
+                "I can help you confirm this with Dr. Mohan or adjust the appointment time. "
+                "Would you like to proceed with 09:30 AM or 03:00 PM on Friday?"
             )
 
         # Split into realistic streaming tokens (words + punctuation)

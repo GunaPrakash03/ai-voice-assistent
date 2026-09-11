@@ -674,8 +674,15 @@
         } catch (e) {}
       });
 
-      await room.connect(tokenData.url, tokenData.token);
-      await room.localParticipant.setMicrophoneEnabled(true);
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          await room.localParticipant.setMicrophoneEnabled(true);
+        } else {
+          log("⚠️ Microphone unavailable: Insecure context. Please use HTTPS (ngrok) for speaking. Connected in listen-only mode.");
+        }
+      } catch (micErr) {
+        log("⚠️ Microphone permission failed: " + micErr.message + ". Connected in listen-only mode.");
+      }
 
       isCallActive = true;
       $("lcd-state").textContent = "CONNECTED (TALKING)";

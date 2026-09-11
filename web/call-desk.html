@@ -243,12 +243,13 @@
       <button role="tab" aria-selected="false" data-v="detail">Call detail</button>
       <button role="tab" aria-selected="false" data-v="telephony">SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></button>
       <button role="tab" aria-selected="false" data-v="agents">Agents<span class="ct" id="ctAgents">…</span></button>
+      <a href="/api-keys.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers<span class="ct">🔑</span></a>
     </div>
     <div class="rail-foot">
       <div>WORKSPACE</div>
       <div style="color:var(--rail-on)">Voice Agent Service</div>
       <div><a href="/live-console.html">Live console</a> · <a href="/agent-builder.html">Builder</a></div>
-      <div><a href="/task-plan.html">Task plan</a> · <a href="/softphone.html">Softphone</a></div>
+      <div><a href="/api-keys.html">API Keys</a> · <a href="/softphone.html">Softphone</a></div>
     </div>
   </nav>
 
@@ -559,6 +560,98 @@
   </div>
 </div>
 
+<!-- Create Inbound Trunk Modal -->
+<div class="modal-overlay" id="modalInboundTrunk">
+  <div class="modal-card">
+    <div class="modal-h">
+      <h3>➕ Create Inbound SIP Trunk</h3>
+      <button class="btn ghost sm" id="btnCloseInboundTrunkModal">✕</button>
+    </div>
+    <div class="modal-b">
+      <div class="form-group">
+        <label>Trunk Identifier (ID)</label>
+        <input type="text" id="modalInTrunkId" placeholder="e.g. trunk-inbound-telnyx-01" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Trunk Display Name</label>
+        <input type="text" id="modalInTrunkName" placeholder="e.g. Telnyx US-East Gateway">
+      </div>
+      <div class="form-group">
+        <label>Assigned Phone Numbers (comma-separated E.164)</label>
+        <input type="text" id="modalInTrunkNumbers" placeholder="+18005550199, +14155550100" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Carrier IP Whitelist / Allowed Addresses</label>
+        <input type="text" id="modalInTrunkAllowed" value="0.0.0.0/0" placeholder="0.0.0.0/0, 192.0.2.0/24" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>SIP Auth Username (Optional)</label>
+        <input type="text" id="modalInTrunkUser" placeholder="Optional SIP username">
+      </div>
+      <div class="form-group">
+        <label>SIP Auth Password (Optional)</label>
+        <input type="password" id="modalInTrunkPass" placeholder="Optional SIP password">
+      </div>
+      <div class="form-group">
+        <label>Assign Default Voice Agent</label>
+        <select id="modalInTrunkAgent"></select>
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" id="btnCancelInboundTrunk">Cancel</button>
+      <button class="btn" id="btnConfirmInboundTrunk">Create Inbound Trunk</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Outbound Trunk Modal -->
+<div class="modal-overlay" id="modalOutboundTrunk">
+  <div class="modal-card">
+    <div class="modal-h">
+      <h3>➕ Create Outbound SIP Trunk</h3>
+      <button class="btn ghost sm" id="btnCloseOutboundTrunkModal">✕</button>
+    </div>
+    <div class="modal-b">
+      <div class="form-group">
+        <label>Trunk Identifier (ID)</label>
+        <input type="text" id="modalOutTrunkId" placeholder="e.g. trunk-outbound-telnyx-01" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Trunk Display Name</label>
+        <input type="text" id="modalOutTrunkName" placeholder="e.g. Telnyx Outbound Termination">
+      </div>
+      <div class="form-group">
+        <label>Carrier Gateway Host / SIP URI</label>
+        <input type="text" id="modalOutTrunkAddress" placeholder="sip.telnyx.com:5060" value="sip.telnyx.com:5060" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Outbound Caller IDs (comma-separated E.164)</label>
+        <input type="text" id="modalOutTrunkNumbers" placeholder="+18005550199" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Signalling Transport</label>
+        <select id="modalOutTrunkTransport">
+          <option value="udp" selected>UDP (Port 5060)</option>
+          <option value="tcp">TCP (Port 5060)</option>
+          <option value="tls">TLS Encrypted (Port 5061)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>SIP Auth Username (Optional)</label>
+        <input type="text" id="modalOutTrunkUser" placeholder="Optional SIP username">
+      </div>
+      <div class="form-group">
+        <label>SIP Auth Password (Optional)</label>
+        <input type="password" id="modalOutTrunkPass" placeholder="Optional SIP password">
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" id="btnCancelOutboundTrunk">Cancel</button>
+      <button class="btn" id="btnConfirmOutboundTrunk">Create Outbound Trunk</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script src="/inspector.js"></script>
@@ -827,6 +920,7 @@
 
   // ── SIP Trunks & Phone Numbers ────────────────────────────────────────────
   function loadTelephony() {
+    loadAgents();
     loadOwnedNumbers();
     loadAvailableNumbers();
     loadTrunksAndRules();
@@ -846,17 +940,26 @@
         return;
       }
 
+      var availAgents = cachedAgents.length ? cachedAgents : [{ name: "Intake Agent" }, { name: "Support Agent" }, { name: "Billing Agent" }];
+
       $("#ownedNumbersRows").innerHTML = nums.map(function (n) {
         var capsHtml = (n.capabilities || ["voice", "sip"]).map(function (c) {
           return '<span class="cap-chip">' + CI.escapeHtml(c) + "</span>";
         }).join(" ");
+
+        var curAgent = n.assigned_agent || "Intake Agent";
+        var agentOptions = availAgents.map(function(a) {
+          var isSel = (a.name === curAgent) ? "selected" : "";
+          return '<option value="' + CI.escapeHtml(a.name) + '" ' + isSel + '>' + CI.escapeHtml(a.name) + '</option>';
+        }).join("");
+        var agentSelector = '<select class="agent-inline-select" data-num="' + CI.escapeHtml(n.phone_number) + '" data-trunk="' + CI.escapeHtml(n.assigned_trunk_id || "trunk-inbound-primary") + '" title="Click to choose agent for this phone number" style="padding:4px 8px;border-radius:4px;border:1px solid var(--accent-border);background:var(--accent-soft);color:var(--accent);font-weight:600;font-size:12px;cursor:pointer">' + agentOptions + '</select>';
 
         return '<tr>' +
           '<td class="mono" style="font-weight:700;color:var(--ink)">' + CI.escapeHtml(n.phone_number) + '</td>' +
           '<td>' + CI.escapeHtml(n.friendly_name || n.region) + '<br><small style="color:var(--ink-faint)">' + CI.escapeHtml(n.region) + '</small></td>' +
           '<td>' + capsHtml + '</td>' +
           '<td class="mono">$' + (n.monthly_cost || 1.50).toFixed(2) + '/mo</td>' +
-          '<td><span class="pill pos">' + CI.escapeHtml(n.assigned_agent || "Intake Agent") + '</span></td>' +
+          '<td>' + agentSelector + '</td>' +
           '<td><code style="font-size:11px">' + CI.escapeHtml(n.assigned_trunk_id || "trunk-inbound-primary") + '</code></td>' +
           '<td><span class="pill pos">active</span></td>' +
           '<td>' +
@@ -865,6 +968,31 @@
           '</td>' +
           '</tr>';
       }).join("");
+
+      // Bind inline agent selector change
+      Array.prototype.forEach.call(document.querySelectorAll(".agent-inline-select"), function (sel) {
+        sel.addEventListener("change", function () {
+          var num = sel.dataset.num;
+          var agentName = sel.value;
+          var trunkId = sel.dataset.trunk || "trunk-inbound-primary";
+          sel.disabled = true;
+          fetch("/api/telephony/numbers/route", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phone_number: num,
+              agent_name: agentName,
+              trunk_id: trunkId
+            })
+          }).then(function (r) { return r.json(); }).then(function (res) {
+            sel.disabled = false;
+            showToast("✅ " + num + " assigned to " + agentName);
+          }).catch(function (e) {
+            sel.disabled = false;
+            showToast("❌ Routing error: " + e.message);
+          });
+        });
+      });
 
       // Bind re-route and release buttons
       Array.prototype.forEach.call(document.querySelectorAll(".btn-reroute"), function (b) {
@@ -1073,6 +1201,134 @@
       showToast("❌ Routing error: " + e.message);
     });
   });
+
+  // ── Inbound Trunk Modal Logic ─────────────────────────────────────────────
+  function openInboundTrunkModal() {
+    $("#modalInTrunkId").value = "trunk-in-" + Date.now().toString().slice(-6);
+    $("#modalInTrunkName").value = "";
+    $("#modalInTrunkNumbers").value = "";
+    $("#modalInTrunkAllowed").value = "0.0.0.0/0";
+    $("#modalInTrunkUser").value = "";
+    $("#modalInTrunkPass").value = "";
+    var sel = $("#modalInTrunkAgent");
+    if (sel) {
+      sel.innerHTML = cachedAgents.length ? cachedAgents.map(function (a) {
+        return '<option value="' + CI.escapeHtml(a.name) + '">' + CI.escapeHtml(a.name) + '</option>';
+      }).join("") : '<option value="Intake Agent">Intake Agent</option><option value="Support Agent">Support Agent</option>';
+    }
+    $("#modalInboundTrunk").classList.add("open");
+  }
+
+  function closeInboundTrunkModal() {
+    $("#modalInboundTrunk").classList.remove("open");
+  }
+
+  var btnAddIn = $("#btnAddInboundTrunk");
+  if (btnAddIn) { btnAddIn.addEventListener("click", openInboundTrunkModal); }
+  var btnCloseIn = $("#btnCloseInboundTrunkModal");
+  if (btnCloseIn) { btnCloseIn.addEventListener("click", closeInboundTrunkModal); }
+  var btnCancelIn = $("#btnCancelInboundTrunk");
+  if (btnCancelIn) { btnCancelIn.addEventListener("click", closeInboundTrunkModal); }
+
+  var btnConfirmIn = $("#btnConfirmInboundTrunk");
+  if (btnConfirmIn) {
+    btnConfirmIn.addEventListener("click", function () {
+      var btn = this;
+      var name = $("#modalInTrunkName").value.trim() || "Custom Inbound Trunk";
+      var tId = $("#modalInTrunkId").value.trim() || ("trunk-in-" + Date.now());
+      var rawNums = $("#modalInTrunkNumbers").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+      var rawAllowed = $("#modalInTrunkAllowed").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+      if (!rawAllowed.length) { rawAllowed = ["0.0.0.0/0"]; }
+
+      btn.disabled = true;
+      btn.textContent = "Creating Trunk…";
+
+      fetch("/api/telephony/trunks/inbound", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trunk_id: tId,
+          name: name,
+          numbers: rawNums,
+          allowed_addresses: rawAllowed,
+          auth_username: $("#modalInTrunkUser").value.trim() || null,
+          auth_password: $("#modalInTrunkPass").value.trim() || null
+        })
+      }).then(function (r) { return r.json(); }).then(function (res) {
+        btn.disabled = false;
+        btn.textContent = "Create Inbound Trunk";
+        closeInboundTrunkModal();
+        showToast("✅ Inbound Trunk " + name + " created successfully");
+        loadTrunksAndRules();
+      }).catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = "Create Inbound Trunk";
+        showToast("❌ Trunk creation error: " + e.message);
+      });
+    });
+  }
+
+  // ── Outbound Trunk Modal Logic ────────────────────────────────────────────
+  function openOutboundTrunkModal() {
+    $("#modalOutTrunkId").value = "trunk-out-" + Date.now().toString().slice(-6);
+    $("#modalOutTrunkName").value = "";
+    $("#modalOutTrunkAddress").value = "sip.telnyx.com:5060";
+    $("#modalOutTrunkNumbers").value = "+18005550199";
+    $("#modalOutTrunkTransport").value = "udp";
+    $("#modalOutTrunkUser").value = "";
+    $("#modalOutTrunkPass").value = "";
+    $("#modalOutboundTrunk").classList.add("open");
+  }
+
+  function closeOutboundTrunkModal() {
+    $("#modalOutboundTrunk").classList.remove("open");
+  }
+
+  var btnAddOut = $("#btnAddOutboundTrunk");
+  if (btnAddOut) { btnAddOut.addEventListener("click", openOutboundTrunkModal); }
+  var btnCloseOut = $("#btnCloseOutboundTrunkModal");
+  if (btnCloseOut) { btnCloseOut.addEventListener("click", closeOutboundTrunkModal); }
+  var btnCancelOut = $("#btnCancelOutboundTrunk");
+  if (btnCancelOut) { btnCancelOut.addEventListener("click", closeOutboundTrunkModal); }
+
+  var btnConfirmOut = $("#btnConfirmOutboundTrunk");
+  if (btnConfirmOut) {
+    btnConfirmOut.addEventListener("click", function () {
+      var btn = this;
+      var name = $("#modalOutTrunkName").value.trim() || "Custom Outbound Trunk";
+      var tId = $("#modalOutTrunkId").value.trim() || ("trunk-out-" + Date.now());
+      var address = $("#modalOutTrunkAddress").value.trim() || "sip.telnyx.com:5060";
+      var rawNums = $("#modalOutTrunkNumbers").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+      var transport = $("#modalOutTrunkTransport").value || "udp";
+
+      btn.disabled = true;
+      btn.textContent = "Creating Trunk…";
+
+      fetch("/api/telephony/trunks/outbound", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trunk_id: tId,
+          name: name,
+          address: address,
+          numbers: rawNums,
+          transport: transport,
+          auth_username: $("#modalOutTrunkUser").value.trim() || null,
+          auth_password: $("#modalOutTrunkPass").value.trim() || null
+        })
+      }).then(function (r) { return r.json(); }).then(function (res) {
+        btn.disabled = false;
+        btn.textContent = "Create Outbound Trunk";
+        closeOutboundTrunkModal();
+        showToast("✅ Outbound Trunk " + name + " created successfully");
+        loadTrunksAndRules();
+      }).catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = "Create Outbound Trunk";
+        showToast("❌ Trunk creation error: " + e.message);
+      });
+    });
+  }
 
   function releaseNumber(num) {
     if (!confirm("Are you sure you want to release phone number " + num + "? Incoming calls to this DID will stop.")) {

@@ -6,3 +6,4 @@ __pycache__/
 .serve.log
 recordings/**
 !recordings/.gitkeep
+scratch/

@@ -23,8 +23,8 @@ services:
     volumes:
       - ./config/livekit.yaml:/etc/livekit.yaml:ro
     ports:
-      - "127.0.0.1:7880:7880"      # HTTP + WebSocket signalling
-      - "127.0.0.1:7881:7881"      # TCP fallback for restrictive networks
+      - "7880:7880"      # HTTP + WebSocket signalling
+      - "7881:7881"      # TCP fallback for restrictive networks
       - "50000-50100:50000-50100/udp"  # RTP media
 
   agent:

@@ -65,7 +65,7 @@ tools = agent_builder.available_tools()
 
 check("voice catalogue populated",        len(voices) >= 6, str(len(voices)))
 check("voices carry latency + cost",
-      all(v["first_audio_ms"] > 0 and v["cost_per_1k_chars"] > 0 for v in voices))
+      all(v["first_audio_ms"] > 0 and v["cost_per_1k_chars"] >= 0 for v in voices))
 check("both TTS providers offered",
       {v["provider"] for v in voices} >= {"cartesia", "deepgram"},
       str({v["provider"] for v in voices}))

@@ -103,8 +103,32 @@ elif provider == "cartesia":
     env_var = "CARTESIA_API_KEY"
     print(f"  valid — Cartesia key accepted ({len(voices_data)} voices available)")
 
+elif provider in ("elevenlabs", "eleven"):
+    print("Checking the key with ElevenLabs...")
+    req = urllib.request.Request(
+        "https://api.elevenlabs.io/v1/voices",
+        headers={"xi-api-key": key, "User-Agent": "Mozilla/5.0"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            voices_data = json.loads(r.read()).get("voices", [])
+        env_var = "ELEVEN_API_KEY"
+        print(f"  valid — ElevenLabs key accepted ({len(voices_data)} voices accessible)")
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            err_body = e.read().decode()
+            if "missing_permissions" in err_body or "permission" in err_body:
+                print(f"  note: Key is valid but has restricted permissions ({err_body}). Saving to .env.")
+                env_var = "ELEVEN_API_KEY"
+            else:
+                raise SystemExit("ElevenLabs rejected this key (HTTP 401 Unauthorized).")
+        else:
+            raise SystemExit(f"ElevenLabs returned HTTP {e.code}")
+    except Exception as e:
+        raise SystemExit(f"Could not reach ElevenLabs: {e}")
+
 else:
-    raise SystemExit(f"Unknown provider: {provider}. Supported: deepgram, openai, cartesia")
+    raise SystemExit(f"Unknown provider: {provider}. Supported: deepgram, openai, cartesia, elevenlabs")
 
 # Write to .env
 lines = open(ENV).read().splitlines() if os.path.exists(ENV) else []

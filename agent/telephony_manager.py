@@ -275,7 +275,28 @@ class TelephonyManager:
         return [asdict(r) for r in self._dispatch_rules.values()]
 
     def list_calls(self) -> List[dict]:
+        now = time.time()
+        for record in self._calls.values():
+            if record.status in (CallStatus.ACTIVE, CallStatus.RINGING, CallStatus.INITIATED):
+                # Stale test / simulated calls older than 120s without live session auto-complete
+                if now - record.created_at > 120:
+                    record.status = CallStatus.COMPLETED
+                    record.ended_at = now
+                    if record.answered_at:
+                        record.duration_seconds = round(record.ended_at - record.answered_at, 2)
         return [asdict(c) for c in self._calls.values()]
+
+    def end_all_calls(self) -> List[TelephonyCallRecord]:
+        ended = []
+        now = time.time()
+        for record in self._calls.values():
+            if record.status in (CallStatus.ACTIVE, CallStatus.RINGING, CallStatus.INITIATED):
+                record.status = CallStatus.COMPLETED
+                record.ended_at = now
+                if record.answered_at:
+                    record.duration_seconds = round(record.ended_at - record.answered_at, 2)
+                ended.append(record)
+        return ended
 
     # ── Phone Number Management ──────────────────────────────────────────────
     def list_available_numbers(self, country: Optional[str] = None, search: Optional[str] = None) -> List[dict]:

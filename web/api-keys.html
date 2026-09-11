@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>API Keys & Providers — Voice Agent Service</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
+    --rail-ink:#A8AEC4; --rail-on:#FFFFFF;
+    --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
+    --line:#DDE0E9; --line-soft:#EBEDF3;
+    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
+    --pos:#2F7A4F; --pos-soft:#E6F2EA;
+    --neu:#5A6480; --neu-soft:#EDEFF4;
+    --neg:#A32F26; --neg-soft:#FAEAE8;
+    --live:#C2560F;
+    --f-ui:"Archivo",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    --f-mono:"DM Mono","SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
+      --rail-ink:#767D96; --rail-on:#FFFFFF;
+      --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
+      --line:#262B3A; --line-soft:#1C2130;
+      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
+      --pos:#5FBF88; --pos-soft:#12251A;
+      --neu:#8891AB; --neu-soft:#1A1F2C;
+      --neg:#E0776C; --neg-soft:#2A1513;
+      --live:#F0803C;
+    }
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);
+    font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  
+  /* App Bar */
+  .top-app-bar{background:var(--panel);border-bottom:1px solid var(--line);height:44px;
+    padding:0 18px;display:flex;align-items:center;justify-content:space-between}
+  .app-dropdown{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:var(--ink)}
+  
+  /* Layout */
+  .app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:calc(100vh - 44px)}
+  
+  /* Rail */
+  .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
+  .brand{padding:0 18px 18px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
+  .brand b{color:var(--rail-on);font-size:15px;font-weight:700;display:block}
+  .brand span{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+  .nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
+  .nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);
+    font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
+  .nav a:hover{background:rgba(255,255,255,.06);color:var(--rail-on)}
+  .nav .active{background:var(--accent);color:#fff;font-weight:600}
+  .nav .ct{font-family:var(--f-mono);font-size:11px;opacity:.85}
+  .rail-foot{margin-top:auto;padding:14px 18px 0;border-top:1px solid rgba(255,255,255,.07)}
+  .rail-foot div{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;line-height:1.7}
+  .rail-foot a{color:var(--rail-ink);text-decoration:none}
+  .rail-foot a:hover{color:var(--rail-on)}
+
+  /* Main */
+  main{padding:22px 28px 60px;max-width:1160px}
+  .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+  .crumb{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.09em;text-transform:uppercase;margin-bottom:2px}
+  h1{font-size:22px;font-weight:700;margin:0}
+
+  .banner{background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:14px 18px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .banner-text b{color:var(--ink);display:block;margin-bottom:3px;font-size:14px}
+  .banner-text p{margin:0;font-size:12.5px;color:var(--ink-soft);line-height:1.45}
+
+  .section-title{font-size:15px;font-weight:700;margin:28px 0 14px;display:flex;align-items:center;gap:8px;color:var(--ink)}
+  .section-desc{font-size:12.5px;color:var(--ink-soft);margin:-8px 0 16px}
+
+  .card-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(480px, 1fr));gap:16px}
+  @media(max-width:768px){.card-grid{grid-template-columns:1fr}}
+
+  .pcard{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;position:relative;transition:all .15s ease}
+  .pcard:hover{border-color:var(--accent-border);box-shadow:0 4px 16px rgba(0,0,0,.04)}
+  .pcard-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .pcard-title{display:flex;align-items:center;gap:10px}
+  .pcard-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700}
+  .pcard-name{font-size:15px;font-weight:700;color:var(--ink)}
+  .pcard-meta{font-size:12px;color:var(--ink-soft);margin-top:2px}
+
+  .status-pill{font-family:var(--f-mono);font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;display:inline-flex;align-items:center;gap:5px}
+  .sp-ok{background:var(--pos-soft);color:var(--pos);border:1px solid rgba(46,160,67,.3)}
+  .sp-off{background:var(--sunk);color:var(--ink-faint);border:1px solid var(--line)}
+  .sp-err{background:var(--neg-soft);color:var(--neg);border:1px solid rgba(224,119,108,.3)}
+
+  .pcard-desc{font-size:12.5px;color:var(--ink-soft);line-height:1.45;margin-bottom:14px;min-height:36px}
+
+  .key-input-row{display:flex;gap:8px;margin-bottom:10px}
+  .key-input-wrapper{position:relative;flex:1}
+  .key-input{width:100%;font-family:var(--f-mono);font-size:12px;padding:8px 34px 8px 10px;background:var(--ground);color:var(--ink);border:1px solid var(--line);border-radius:6px;outline:none}
+  .key-input:focus{border-color:var(--accent);background:var(--panel)}
+  .btn-toggle-mask{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--ink-faint);cursor:pointer;padding:0;font-size:13px}
+  .btn-toggle-mask:hover{color:var(--ink)}
+
+  .pcard-actions{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft)}
+  .diag-box{background:var(--sunk);border:1px solid var(--line-soft);border-radius:6px;padding:8px 12px;font-family:var(--f-mono);font-size:11.5px;color:var(--ink-soft);margin-top:8px;display:none;line-height:1.4}
+  .diag-box.show{display:block}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;padding:7px 14px;border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s ease;gap:6px}
+  .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn-primary:hover{opacity:.92}
+  .btn-outline{background:var(--panel);color:var(--accent);border-color:var(--accent)}
+  .btn-outline:hover{background:var(--accent-soft)}
+  .btn-ghost{background:transparent;color:var(--ink-soft);border-color:var(--line)}
+  .btn-ghost:hover{background:var(--sunk);color:var(--ink)}
+  .btn-sm{padding:5px 10px;font-size:11.5px}
+
+  #toast{position:fixed;bottom:24px;right:24px;background:var(--rail);color:#fff;padding:12px 18px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.3);display:none;z-index:9999}
+  #toast.show{display:block}
+</style>
+</head>
+<body>
+
+<header class="top-app-bar">
+  <div class="app-dropdown">
+    <span>Call Desk</span>
+    <span style="color:var(--ink-faint)">/</span>
+    <span>API Keys &amp; Providers</span>
+  </div>
+  <div>
+    <button class="btn btn-primary" id="btnSaveAllTop">💾 Save All API Keys</button>
+  </div>
+</header>
+
+<div class="app">
+  <!-- Navigation Rail -->
+  <nav class="rail">
+    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div class="nav">
+      <a href="/">Overview<span class="ct" id="navCtOverview">0 live</span></a>
+      <a href="/#calls">Calls<span class="ct" id="navCtCalls">0</span></a>
+      <a href="/#detail">Call detail</a>
+      <a href="/agent-builder.html">Agents<span class="ct" id="navCtAgents">1</span></a>
+      <a href="/api-keys.html" class="active">API Keys &amp; Providers<span class="ct">🔑</span></a>
+    </div>
+    <div class="rail-foot">
+      <div>WORKSPACE</div>
+      <div style="color:var(--rail-on)">Voice Agent Service</div>
+      <div><a href="/live-console.html">Live console</a> · <a href="/agent-builder.html">Builder</a></div>
+      <div><a href="/task-plan.html">Task plan</a> · <a href="/softphone.html">Softphone</a></div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div>
+    <main>
+      <div class="page-header">
+        <div>
+          <div class="crumb">WORKSPACE SETTINGS</div>
+          <h1>Integrations &amp; Provider API Keys</h1>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-ghost" id="btnRefreshStatus">↻ Refresh Status</button>
+          <button class="btn btn-primary" id="btnSaveAll">💾 Save All Changes</button>
+        </div>
+      </div>
+
+      <div class="banner">
+        <div class="banner-text">
+          <b>🔐 Unified Voice &amp; LLM Key Management</b>
+          <p>Configure API keys for ElevenLabs, Cartesia, Deepgram, Google Gemini, OpenAI, Claude, and Telephony. Keys are encrypted, securely stored in <code>.env</code>, and dynamically loaded into real-time voice sessions.</p>
+        </div>
+        <a href="/agent-builder.html" class="btn btn-outline" style="white-space:nowrap">🎙️ Open Agent Builder →</a>
+      </div>
+
+      <!-- SECTION 1: Voice / TTS Providers -->
+      <div class="section-title"><span>🎙️</span> Voice Synthesis &amp; TTS Providers</div>
+      <div class="section-desc">Generate crystal-clear authentic human voices, voice clones, and emotional speech.</div>
+
+      <div class="card-grid">
+        <!-- ElevenLabs Card -->
+        <div class="pcard" id="card-elevenlabs">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#6366F1;color:#fff">XI</div>
+              <div>
+                <div class="pcard-name">ElevenLabs Turbo</div>
+                <div class="pcard-meta"><code>ELEVEN_API_KEY</code> · Authentic Cloned &amp; Studio Voices</div>
+              </div>
+            </div>
+            <span class="status-pill sp-ok" id="pill-elevenlabs">● ACTIVE (24 Voices)</span>
+          </div>
+          <div class="pcard-desc">Provides 24 premium studio voices (including custom cloned voices Anika and Fiona) and instant zero-quota portal CDN previews.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-ELEVEN_API_KEY" placeholder="sk_..." data-provider="elevenlabs">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+            </div>
+            <button class="btn btn-primary btn-sm btn-test" data-provider="elevenlabs">⚡ Test &amp; Sync</button>
+          </div>
+          <div class="diag-box" id="diag-elevenlabs"></div>
+          <div class="pcard-actions">
+            <a href="https://elevenlabs.io/app/speech-synthesis" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">ElevenLabs Console ↗</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">Voice Studio: 46 total voices</span>
+          </div>
+        </div>
+
+        <!-- Cartesia Sonic Card -->
+        <div class="pcard" id="card-cartesia">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#C2560F;color:#fff">C</div>
+              <div>
+                <div class="pcard-name">Cartesia Sonic</div>
+                <div class="pcard-meta"><code>CARTESIA_API_KEY</code> · Sub-100ms Ultra-Low Latency</div>
+              </div>
+            </div>
+            <span class="status-pill sp-off" id="pill-cartesia">UNCONFIGURED</span>
+          </div>
+          <div class="pcard-desc">Sonic-3 ultra-fast voice generation engine designed specifically for sub-100ms conversational turn-taking voice bots.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-CARTESIA_API_KEY" placeholder="Paste Cartesia API key..." data-provider="cartesia">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+            </div>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="cartesia">⚡ Test Key</button>
+          </div>
+          <div class="diag-box" id="diag-cartesia"></div>
+          <div class="pcard-actions">
+            <a href="https://play.cartesia.ai" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Cartesia Portal ↗</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">9 Sonic voices configured</span>
+          </div>
+        </div>
+
+        <!-- Deepgram Aura Card -->
+        <div class="pcard" id="card-deepgram">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#13B58C;color:#fff">DG</div>
+              <div>
+                <div class="pcard-name">Deepgram (Aura TTS &amp; Nova STT)</div>
+                <div class="pcard-meta"><code>DEEPGRAM_API_KEY</code> · Dual Speech &amp; Transcription</div>
+              </div>
+            </div>
+            <span class="status-pill sp-ok" id="pill-deepgram">● CONFIGURED</span>
+          </div>
+          <div class="pcard-desc">Powers real-time Nova-2/Nova-3 speech-to-text transcription and Aura-2 natural conversational voice generation.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-DEEPGRAM_API_KEY" placeholder="Paste Deepgram key..." data-provider="deepgram">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+            </div>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="deepgram">⚡ Test Key</button>
+          </div>
+          <div class="diag-box" id="diag-deepgram"></div>
+          <div class="pcard-actions">
+            <a href="https://console.deepgram.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Deepgram Console ↗</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">7 Aura voices + Nova STT</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 2: LLM & Intelligence Models -->
+      <div class="section-title"><span>🧠</span> LLM Reasoning &amp; Dialogue Models</div>
+      <div class="section-desc">Connect state-of-the-art language models for real-time speech dialogue, function calling, and workflow logic.</div>
+
+      <div class="card-grid">
+        <!-- Google Gemini Card -->
+        <div class="pcard" id="card-google">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#4285F4;color:#fff">G</div>
+              <div>
+                <div class="pcard-name">Google Gemini (Recommended)</div>
+                <div class="pcard-meta"><code>GEMINI_API_KEY</code> · Gemini 2.0 Flash &amp; Nano</div>
+              </div>
+            </div>
+            <span class="status-pill sp-off" id="pill-google">UNCONFIGURED</span>
+          </div>
+          <div class="pcard-desc">Enables Gemini 2.0 Flash (180ms TTFT), Gemini 2.0 Flash Lite (150ms TTFT), Gemini Nano (120ms), and 1.5 Pro multimodal reasoning.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-GEMINI_API_KEY" placeholder="AIzaSy..." data-provider="google">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+            </div>
+            <button class="btn btn-primary btn-sm btn-test" data-provider="google">⚡ Test Gemini</button>
+          </div>
+          <div class="diag-box" id="diag-google"></div>
+          <div class="pcard-actions">
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Get Free Gemini Key ↗</a>
+            <span style="font-size:11.5px;color:var(--pos);font-weight:600">5 Gemini models supported</span>
+          </div>
+        </div>
+
+        <!-- OpenAI Card -->
+        <div class="pcard" id="card-openai">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#10A37F;color:#fff">O</div>
+              <div>
+                <div class="pcard-name">OpenAI (GPT-4o &amp; Whisper)</div>
+                <div class="pcard-meta"><code>OPENAI_API_KEY</code> · GPT-4o mini, GPT-4o, TTS</div>
+              </div>
+            </div>
+            <span class="status-pill sp-off" id="pill-openai">UNCONFIGURED</span>
+          </div>
+          <div class="pcard-desc">Powers GPT-4o conversational streaming, OpenAI TTS audio preview, and Whisper Speech-to-Text transcription.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-OPENAI_API_KEY" placeholder="sk-proj-..." data-provider="openai">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+            </div>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="openai">⚡ Test OpenAI</button>
+          </div>
+          <div class="diag-box" id="diag-openai"></div>
+          <div class="pcard-actions">
+            <a href="https://platform.openai.com/api-keys" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">OpenAI API Keys ↗</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">GPT-4o mini &amp; GPT-4o</span>
+          </div>
+        </div>
+
+        <!-- Anthropic Claude Card -->
+        <div class="pcard" id="card-anthropic">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#D97706;color:#fff">A</div>
+              <div>
+                <div class="pcard-name">Anthropic Claude</div>
+                <div class="pcard-meta"><code>ANTHROPIC_API_KEY</code> · Claude 3.5 Sonnet &amp; Haiku</div>
+              </div>
+            </div>
+            <span class="status-pill sp-off" id="pill-anthropic">UNCONFIGURED</span>
+          </div>
+          <div class="pcard-desc">High-precision instruction following with Claude 3.5 Haiku (260ms TTFT) and Claude Sonnet 5 for intricate dialogues.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-ANTHROPIC_API_KEY" placeholder="sk-ant-..." data-provider="anthropic">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+            </div>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="anthropic">⚡ Test Claude</button>
+          </div>
+          <div class="diag-box" id="diag-anthropic"></div>
+          <div class="pcard-actions">
+            <a href="https://console.anthropic.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Anthropic Console ↗</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">Claude 3.5 Models</span>
+          </div>
+        </div>
+
+        <!-- Microsoft Azure / Copilot Card -->
+        <div class="pcard" id="card-azure">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#0078D4;color:#fff">MS</div>
+              <div>
+                <div class="pcard-name">Microsoft Azure &amp; Copilot</div>
+                <div class="pcard-meta"><code>AZURE_OPENAI_API_KEY</code> · Enterprise Endpoints</div>
+              </div>
+            </div>
+            <span class="status-pill sp-off" id="pill-azure">UNCONFIGURED</span>
+          </div>
+          <div class="pcard-desc">Enterprise Microsoft Azure OpenAI service and Microsoft Copilot conversational integration.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-AZURE_OPENAI_API_KEY" placeholder="Paste Azure / Copilot key..." data-provider="azure">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+            </div>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="azure">⚡ Test Azure</button>
+          </div>
+          <div class="diag-box" id="diag-azure"></div>
+          <div class="pcard-actions">
+            <a href="https://portal.azure.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Azure Portal ↗</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">Enterprise endpoints</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 3: Telephony & Carrier Gateways -->
+      <div class="section-title"><span>📞</span> Telephony &amp; Carrier Gateways</div>
+      <div class="section-desc">Connect SIP Trunks, DIDs, and real-time WebRTC media servers.</div>
+
+      <div class="card-grid">
+        <!-- Telnyx Card -->
+        <div class="pcard" id="card-telnyx">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#00D38D;color:#000">T</div>
+              <div>
+                <div class="pcard-name">Telnyx Telephony</div>
+                <div class="pcard-meta"><code>TELNYX_API_KEY</code> · SIP Trunking &amp; DIDs</div>
+              </div>
+            </div>
+            <span class="status-pill sp-off" id="pill-telnyx">UNCONFIGURED</span>
+          </div>
+          <div class="pcard-desc">Global carrier PSTN voice routing, E.164 phone numbers, and low-latency SIP trunks.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-TELNYX_API_KEY" placeholder="KEY..." data-provider="telnyx">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+            </div>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="telnyx">⚡ Test Key</button>
+          </div>
+          <div class="diag-box" id="diag-telnyx"></div>
+          <div class="pcard-actions">
+            <a href="https://portal.telnyx.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Telnyx Portal ↗</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">E.164 Number Ordering</span>
+          </div>
+        </div>
+
+        <!-- Twilio Card -->
+        <div class="pcard" id="card-twilio">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#F22F46;color:#fff">TW</div>
+              <div>
+                <div class="pcard-name">Twilio Voice</div>
+                <div class="pcard-meta"><code>TWILIO_AUTH_TOKEN</code> · Programmable Voice</div>
+              </div>
+            </div>
+            <span class="status-pill sp-off" id="pill-twilio">UNCONFIGURED</span>
+          </div>
+          <div class="pcard-desc">Inbound and outbound programmable voice calls, webhooks, and phone number rental.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-TWILIO_AUTH_TOKEN" placeholder="Twilio Auth Token..." data-provider="twilio">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+            </div>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="twilio">⚡ Test Key</button>
+          </div>
+          <div class="diag-box" id="diag-twilio"></div>
+          <div class="pcard-actions">
+            <a href="https://console.twilio.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Twilio Console ↗</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">Voice webhooks</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function() {
+  "use strict";
+  var $ = function(s) { return document.querySelector(s); };
+  var $$ = function(s) { return document.querySelectorAll(s); };
+
+  function showToast(msg) {
+    var toast = $("#toast");
+    toast.textContent = msg;
+    toast.classList.add("show");
+    setTimeout(function() { toast.classList.remove("show"); }, 3500);
+  }
+
+  // Toggle Mask / Visibility
+  $$(".btn-toggle-mask").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      var input = this.parentElement.querySelector("input");
+      if (input.type === "password") {
+        input.type = "text";
+        this.textContent = "🔒";
+      } else {
+        input.type = "password";
+        this.textContent = "👁";
+      }
+    });
+  });
+
+  // Load Provider Status
+  function loadProviders() {
+    fetch("/api/providers/keys")
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var providers = data.providers || [];
+        providers.forEach(function(p) {
+          var input = $("#key-" + p.primary_env_key);
+          var pill = $("#pill-" + p.provider_id);
+          
+          if (p.is_configured) {
+            if (input && !input.value) {
+              input.placeholder = p.masked_key;
+            }
+            if (pill) {
+              pill.className = "status-pill sp-ok";
+              if (p.provider_id === "elevenlabs") {
+                pill.textContent = "● ACTIVE (24 Voices)";
+              } else {
+                pill.textContent = "● CONFIGURED";
+              }
+            }
+          } else {
+            if (pill) {
+              pill.className = "status-pill sp-off";
+              pill.textContent = "UNCONFIGURED";
+            }
+          }
+        });
+      })
+      .catch(function(err) {
+        console.error("Error loading providers:", err);
+      });
+  }
+
+  // Save All Keys
+  function saveAllKeys() {
+    var updates = {};
+    $$(".key-input").forEach(function(input) {
+      var k = input.id.replace("key-", "");
+      var v = input.value.trim();
+      if (v) {
+        updates[k] = v;
+      }
+    });
+
+    if (Object.keys(updates).length === 0) {
+      showToast("ℹ️ No new keys entered to save.");
+      return;
+    }
+
+    fetch("/api/providers/keys", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({keys: updates})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (res.status === "ok") {
+        showToast("✅ Successfully saved " + (res.updated || []).length + " API keys to .env!");
+        // Clear input values and refresh placeholders
+        $$(".key-input").forEach(function(input) { input.value = ""; });
+        loadProviders();
+      } else {
+        showToast("❌ Error: " + (res.error || "Failed to save keys"));
+      }
+    })
+    .catch(function() {
+      showToast("❌ Network error saving API keys.");
+    });
+  }
+
+  $("#btnSaveAll").addEventListener("click", saveAllKeys);
+  $("#btnSaveAllTop").addEventListener("click", saveAllKeys);
+  $("#btnRefreshStatus").addEventListener("click", function() {
+    loadProviders();
+    showToast("↻ Refreshed provider status.");
+  });
+
+  // Test Provider Key
+  $$(".btn-test").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      var providerId = this.dataset.provider;
+      var card = $("#card-" + providerId);
+      var input = card ? card.querySelector(".key-input") : null;
+      var diag = $("#diag-" + providerId);
+      var pill = $("#pill-" + providerId);
+      var rawKey = input ? input.value.trim() : "";
+
+      btn.disabled = true;
+      btn.textContent = "Testing…";
+
+      fetch("/api/providers/test", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          provider_id: providerId,
+          api_key: rawKey
+        })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(res) {
+        btn.disabled = false;
+        btn.textContent = "⚡ Test Connection";
+
+        if (diag) {
+          diag.classList.add("show");
+          if (res.status === "ok") {
+            diag.style.color = "var(--pos)";
+            diag.innerHTML = "<b>✔ " + (res.details || "Connected successfully") + "</b><br>Latency: " + (res.latency_ms || 0) + "ms";
+            if (pill) {
+              pill.className = "status-pill sp-ok";
+              pill.textContent = "● CONNECTED (" + (res.latency_ms || 0) + "ms)";
+            }
+            showToast("✅ " + providerId.toUpperCase() + " connection verified!");
+          } else {
+            diag.style.color = "var(--neg)";
+            diag.innerHTML = "<b>✖ " + (res.error || "Connection failed") + "</b>";
+            if (pill) {
+              pill.className = "status-pill sp-err";
+              pill.textContent = "✖ FAILED";
+            }
+            showToast("❌ " + providerId.toUpperCase() + ": " + (res.error || "Failed"));
+          }
+        }
+      })
+      .catch(function(err) {
+        btn.disabled = false;
+        btn.textContent = "⚡ Test Connection";
+        if (diag) {
+          diag.classList.add("show");
+          diag.style.color = "var(--neg)";
+          diag.innerHTML = "<b>✖ Network request failed</b>";
+        }
+        showToast("❌ Failed to reach test endpoint");
+      });
+    });
+  });
+
+  // Init
+  loadProviders();
+})();
+</script>
+</body>
+</html>

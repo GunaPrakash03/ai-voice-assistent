@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js"></script>
 <style>
   :root{
     --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
@@ -239,16 +240,18 @@
     <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
     <div class="nav" role="tablist">
       <button role="tab" aria-selected="true" data-v="overview">Overview<span class="ct" id="ctOverview">…</span></button>
+      <button role="tab" aria-selected="false" data-v="voicetest" style="color:var(--pos);font-weight:600">🎙️ Test AI Voice<span class="ct" style="background:var(--pos-soft);color:var(--pos);padding:2px 6px;border-radius:4px;font-weight:700">LIVE</span></button>
       <button role="tab" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls">…</span></button>
       <button role="tab" aria-selected="false" data-v="detail">Call detail</button>
       <button role="tab" aria-selected="false" data-v="telephony">SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></button>
       <button role="tab" aria-selected="false" data-v="agents">Agents<span class="ct" id="ctAgents">…</span></button>
+      <a href="/api-keys.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers<span class="ct">🔑</span></a>
     </div>
     <div class="rail-foot">
       <div>WORKSPACE</div>
       <div style="color:var(--rail-on)">Voice Agent Service</div>
       <div><a href="/live-console.html">Live console</a> · <a href="/agent-builder.html">Builder</a></div>
-      <div><a href="/task-plan.html">Task plan</a> · <a href="/softphone.html">Softphone</a></div>
+      <div><a href="/api-keys.html">API Keys</a> · <a href="/softphone.html">Softphone</a></div>
     </div>
   </nav>
 
@@ -280,13 +283,59 @@
 
       <!-- OVERVIEW -->
       <section class="view on" id="v-overview">
+        <!-- Prominent Live Voice Tester Card Directly in Overview -->
+        <div class="card" style="border:1.5px solid var(--accent);box-shadow:0 6px 24px rgba(194,86,15,.12);margin-bottom:20px;background:var(--panel)">
+          <div class="card-h" style="background:var(--accent-soft);border-bottom:1px solid var(--accent-border);padding:14px 18px">
+            <h2 style="color:var(--accent);display:flex;align-items:center;gap:10px;font-size:15px">
+              <span style="font-size:18px">🎙️</span> <b>Live AI Voice Assistant Testing &amp; Speech Playback</b>
+              <span id="dtStateBadge" class="pill neu" style="font-size:11.5px;padding:3px 10px;letter-spacing:.03em">READY</span>
+            </h2>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span id="dtVadBadge" class="pill neu" style="font-size:11px">VAD: Idle</span>
+              <span id="dtAudioBadge" class="pill pos" style="display:none;font-size:11px">🔊 Audio Connected</span>
+            </div>
+          </div>
+          <div class="card-b" style="padding:16px 18px">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+              <button id="dtBtnCall" class="btn" style="background:var(--pos);padding:10px 20px;font-size:14px;box-shadow:0 3px 10px rgba(47,122,79,.3)">
+                🟢 Start Voice Call &amp; Speak
+              </button>
+              <button id="dtBtnHangup" class="btn" style="background:var(--neg);display:none;padding:10px 18px;font-size:14px">
+                🔴 End Voice Call
+              </button>
+              <button id="dtBtnSampleTTS" class="btn ghost" style="padding:10px 16px;font-weight:600" title="Make AI speak aloud right now without needing a microphone">
+                🔊 Test AI Voice Speech (Listen Sample)
+              </button>
+              <button id="dtBtnBargein" class="btn ghost sm" style="padding:8px 12px;display:none" title="Test interrupting the agent while speaking">
+                ⚡ Test Barge-In
+              </button>
+            </div>
+
+            <!-- Real-time Quick Prompt Bar -->
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <input type="text" id="dtPromptInput" placeholder="Type anything to hear the AI speak (e.g. 'Hello, introduce yourself and explain what you do')..." style="flex:1;padding:9px 14px;border-radius:6px;border:1px solid var(--line);background:var(--ground);color:var(--ink);font-size:13.5px">
+              <button id="dtBtnSendPrompt" class="btn" style="white-space:nowrap;padding:9px 18px;font-weight:600">
+                💬 Make AI Speak Aloud
+              </button>
+            </div>
+
+            <!-- Live Speech & AI Response Transcript Box -->
+            <div id="dtTranscriptBox" style="min-height:110px;max-height:180px;overflow-y:auto;background:var(--ground);border:1px solid var(--line);border-radius:6px;padding:12px 16px;font-size:13px;line-height:1.6;display:flex;flex-direction:column;gap:8px">
+              <div style="color:var(--ink-faint);font-style:italic">👉 Click <b>"🟢 Start Voice Call &amp; Speak"</b> to talk using your microphone, or click <b>"🔊 Test AI Voice Speech"</b> to immediately hear the AI speak out of your speakers right here on this page.</div>
+            </div>
+          </div>
+        </div>
+
         <!-- Live Active Calls Stream Banner -->
         <div id="activeCallsCard" class="card" style="border-left:4px solid var(--pos);display:none">
-          <div class="card-h" style="background:var(--pos-soft)">
-            <h2 style="color:var(--pos);display:flex;align-items:center;gap:8px">
+          <div class="card-h" style="background:var(--pos-soft);display:flex;justify-content:space-between;align-items:center">
+            <h2 style="color:var(--pos);display:flex;align-items:center;gap:8px;margin:0">
               <span class="pulse" style="background:var(--pos)"></span> Live Active Inbound Calls (<span id="activeCallsCount">0</span>)
             </h2>
-            <span class="meta" style="color:var(--pos);font-weight:600">SIP / WebRTC In-Progress</span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="meta" style="color:var(--pos);font-weight:600">SIP / WebRTC In-Progress</span>
+              <button id="btnEndAllActiveCalls" class="btn sm ghost" style="color:var(--neg);border-color:rgba(163,47,38,.3);background:var(--neg-soft)">🔴 End All Calls</button>
+            </div>
           </div>
           <div class="card-b" id="activeCallsList" style="padding:10px 16px"></div>
         </div>
@@ -490,6 +539,58 @@
         </div>
       </section>
 
+      <!-- DEDICATED LIVE VOICE TESTER TAB -->
+      <section class="view" id="v-voicetest">
+        <div class="card" style="border:1.5px solid var(--accent);box-shadow:0 6px 24px rgba(194,86,15,.12)">
+          <div class="card-h" style="background:var(--accent-soft);border-bottom:1px solid var(--accent-border);padding:14px 18px">
+            <h2 style="color:var(--accent);display:flex;align-items:center;gap:10px;font-size:16px">
+              <span>🎙️</span> <b>Interactive AI Voice Testing Studio</b>
+            </h2>
+            <span class="meta" style="color:var(--accent);font-weight:600">Sub-100ms Streaming Audio Media Engine</span>
+          </div>
+          <div class="card-b" style="padding:20px">
+            <p style="margin-top:0;color:var(--ink-soft)">
+              Test your AI voice assistant in real-time. You can talk through your microphone, hear the streaming voice synthesised by Cartesia Sonic TTS, and send dynamic test prompts.
+            </p>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px;margin-bottom:20px">
+              <div style="background:var(--ground);padding:14px;border-radius:8px;border:1px solid var(--line)">
+                <div style="font-size:12px;text-transform:uppercase;font-family:var(--f-mono);color:var(--ink-faint);margin-bottom:8px">1. Call Controls</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <button id="vtBtnCall" class="btn" style="background:var(--pos);padding:9px 18px">🟢 Connect Voice Call</button>
+                  <button id="vtBtnHangup" class="btn" style="background:var(--neg);display:none;padding:9px 18px">🔴 Disconnect</button>
+                  <button id="vtBtnSampleTTS" class="btn ghost">🔊 Play Test Speech</button>
+                </div>
+              </div>
+
+              <div style="background:var(--ground);padding:14px;border-radius:8px;border:1px solid var(--line)">
+                <div style="font-size:12px;text-transform:uppercase;font-family:var(--f-mono);color:var(--ink-faint);margin-bottom:8px">2. Live Status</div>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                  <span id="vtStateBadge" class="pill neu">STATE: IDLE</span>
+                  <span id="vtVadBadge" class="pill neu">VAD: SILENT</span>
+                  <span id="vtAudioBadge" class="pill pos" style="display:none">🔊 AUDIO PLAYING</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Make AI Speak a Custom Prompt or Question</label>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="vtPromptInput" placeholder="Type what you want to hear (e.g. 'Hello, tell me a quick joke about AI assistants')..." style="flex:1;padding:10px 14px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink)">
+                <button id="vtBtnSendPrompt" class="btn" style="padding:10px 20px">💬 Speak to AI</button>
+              </div>
+            </div>
+
+            <div style="margin-top:16px">
+              <label style="display:block;font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:6px">Live Conversation &amp; Transcription Transcript</label>
+              <div id="vtTranscriptBox" style="min-height:180px;max-height:280px;overflow-y:auto;background:var(--ground);border:1px solid var(--line);border-radius:6px;padding:14px 16px;font-size:13.5px;line-height:1.6;display:flex;flex-direction:column;gap:8px">
+                <div style="color:var(--ink-faint);font-style:italic">👉 Click "🟢 Connect Voice Call" or "🔊 Play Test Speech" to hear the assistant.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 </div>
@@ -559,6 +660,98 @@
   </div>
 </div>
 
+<!-- Create Inbound Trunk Modal -->
+<div class="modal-overlay" id="modalInboundTrunk">
+  <div class="modal-card">
+    <div class="modal-h">
+      <h3>➕ Create Inbound SIP Trunk</h3>
+      <button class="btn ghost sm" id="btnCloseInboundTrunkModal">✕</button>
+    </div>
+    <div class="modal-b">
+      <div class="form-group">
+        <label>Trunk Identifier (ID)</label>
+        <input type="text" id="modalInTrunkId" placeholder="e.g. trunk-inbound-telnyx-01" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Trunk Display Name</label>
+        <input type="text" id="modalInTrunkName" placeholder="e.g. Telnyx US-East Gateway">
+      </div>
+      <div class="form-group">
+        <label>Assigned Phone Numbers (comma-separated E.164)</label>
+        <input type="text" id="modalInTrunkNumbers" placeholder="+18005550199, +14155550100" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Carrier IP Whitelist / Allowed Addresses</label>
+        <input type="text" id="modalInTrunkAllowed" value="0.0.0.0/0" placeholder="0.0.0.0/0, 192.0.2.0/24" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>SIP Auth Username (Optional)</label>
+        <input type="text" id="modalInTrunkUser" placeholder="Optional SIP username">
+      </div>
+      <div class="form-group">
+        <label>SIP Auth Password (Optional)</label>
+        <input type="password" id="modalInTrunkPass" placeholder="Optional SIP password">
+      </div>
+      <div class="form-group">
+        <label>Assign Default Voice Agent</label>
+        <select id="modalInTrunkAgent"></select>
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" id="btnCancelInboundTrunk">Cancel</button>
+      <button class="btn" id="btnConfirmInboundTrunk">Create Inbound Trunk</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Outbound Trunk Modal -->
+<div class="modal-overlay" id="modalOutboundTrunk">
+  <div class="modal-card">
+    <div class="modal-h">
+      <h3>➕ Create Outbound SIP Trunk</h3>
+      <button class="btn ghost sm" id="btnCloseOutboundTrunkModal">✕</button>
+    </div>
+    <div class="modal-b">
+      <div class="form-group">
+        <label>Trunk Identifier (ID)</label>
+        <input type="text" id="modalOutTrunkId" placeholder="e.g. trunk-outbound-telnyx-01" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Trunk Display Name</label>
+        <input type="text" id="modalOutTrunkName" placeholder="e.g. Telnyx Outbound Termination">
+      </div>
+      <div class="form-group">
+        <label>Carrier Gateway Host / SIP URI</label>
+        <input type="text" id="modalOutTrunkAddress" placeholder="sip.telnyx.com:5060" value="sip.telnyx.com:5060" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Outbound Caller IDs (comma-separated E.164)</label>
+        <input type="text" id="modalOutTrunkNumbers" placeholder="+18005550199" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Signalling Transport</label>
+        <select id="modalOutTrunkTransport">
+          <option value="udp" selected>UDP (Port 5060)</option>
+          <option value="tcp">TCP (Port 5060)</option>
+          <option value="tls">TLS Encrypted (Port 5061)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>SIP Auth Username (Optional)</label>
+        <input type="text" id="modalOutTrunkUser" placeholder="Optional SIP username">
+      </div>
+      <div class="form-group">
+        <label>SIP Auth Password (Optional)</label>
+        <input type="password" id="modalOutTrunkPass" placeholder="Optional SIP password">
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" id="btnCancelOutboundTrunk">Cancel</button>
+      <button class="btn" id="btnConfirmOutboundTrunk">Create Outbound Trunk</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script src="/inspector.js"></script>
@@ -570,6 +763,7 @@
 
   var TITLES = {
     overview: ["Overview", "Call history"],
+    voicetest: ["Live Voice Assistant", "Voice Testing & Speech Playback Studio"],
     calls: ["Calls", "Call log"],
     detail: ["Calls / detail", "Call inspector"],
     telephony: ["Telephony", "SIP Trunks & Phone Numbers"],
@@ -703,19 +897,57 @@
         card.style.display = "block";
         list.innerHTML = calls.map(function (c) {
           var dur = Math.max(0, Math.floor(Date.now() / 1000 - (c.started_at || c.created_at || Date.now() / 1000)));
-          return '<div class="active-call-row">' +
-            '<div class="vu-bars"><span></span><span></span><span></span></div>' +
-            '<span class="num">' + CI.escapeHtml(c.from_number || c.call_id) + '</span>' +
-            '<span class="agent">→ ' + CI.escapeHtml(c.metadata && c.metadata.agent_name ? c.metadata.agent_name : (c.agent_name || "AI Agent")) + '</span>' +
-            '<span class="pill pos">' + CI.escapeHtml(c.status) + '</span>' +
-            '<span class="timer">' + CI.formatDuration(dur) + '</span>' +
-            '<a class="btn ghost sm" href="/softphone.html">Softphone</a>' +
+          return '<div class="active-call-row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line-soft)">' +
+            '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+              '<div class="vu-bars"><span></span><span></span><span></span></div>' +
+              '<span class="num mono" style="font-weight:700">' + CI.escapeHtml(c.from_number || c.call_id) + '</span>' +
+              '<span class="agent" style="color:var(--accent);font-weight:600">→ ' + CI.escapeHtml(c.metadata && c.metadata.agent_name ? c.metadata.agent_name : (c.agent_name || "AI Agent")) + '</span>' +
+              '<span class="pill pos">' + CI.escapeHtml(c.status) + '</span>' +
+              '<span class="timer mono" style="color:var(--ink-faint)">' + CI.formatDuration(dur) + '</span>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:8px">' +
+              '<a class="btn ghost sm" href="/softphone.html">Softphone</a>' +
+              '<button class="btn sm ghost btn-hangup-call" data-id="' + CI.escapeHtml(c.call_id) + '" style="color:var(--neg);border-color:rgba(163,47,38,.3)">🔴 End Call</button>' +
+            '</div>' +
             '</div>';
         }).join("");
+
+        Array.prototype.forEach.call(document.querySelectorAll(".btn-hangup-call"), function (btn) {
+          btn.addEventListener("click", function () {
+            var cid = btn.dataset.id;
+            btn.disabled = true;
+            fetch("/api/telephony/calls/end", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ call_id: cid })
+            }).then(function () {
+              showToast("🔴 Call ended: " + cid);
+              checkActiveCalls();
+            });
+          });
+        });
       } else {
         card.style.display = "none";
       }
     }).catch(function () {});
+  }
+
+  var btnEndAll = $("#btnEndAllActiveCalls");
+  if (btnEndAll) {
+    btnEndAll.addEventListener("click", function () {
+      btnEndAll.disabled = true;
+      fetch("/api/telephony/calls/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      }).then(function () {
+        btnEndAll.disabled = false;
+        showToast("🔴 All active calls ended");
+        checkActiveCalls();
+      }).catch(function () {
+        btnEndAll.disabled = false;
+      });
+    });
   }
 
   // ── Call Log Table ────────────────────────────────────────────────────────
@@ -827,6 +1059,7 @@
 
   // ── SIP Trunks & Phone Numbers ────────────────────────────────────────────
   function loadTelephony() {
+    loadAgents();
     loadOwnedNumbers();
     loadAvailableNumbers();
     loadTrunksAndRules();
@@ -846,17 +1079,26 @@
         return;
       }
 
+      var availAgents = cachedAgents.length ? cachedAgents : [{ name: "Intake Agent" }, { name: "Support Agent" }, { name: "Billing Agent" }];
+
       $("#ownedNumbersRows").innerHTML = nums.map(function (n) {
         var capsHtml = (n.capabilities || ["voice", "sip"]).map(function (c) {
           return '<span class="cap-chip">' + CI.escapeHtml(c) + "</span>";
         }).join(" ");
+
+        var curAgent = n.assigned_agent || "Intake Agent";
+        var agentOptions = availAgents.map(function(a) {
+          var isSel = (a.name === curAgent) ? "selected" : "";
+          return '<option value="' + CI.escapeHtml(a.name) + '" ' + isSel + '>' + CI.escapeHtml(a.name) + '</option>';
+        }).join("");
+        var agentSelector = '<select class="agent-inline-select" data-num="' + CI.escapeHtml(n.phone_number) + '" data-trunk="' + CI.escapeHtml(n.assigned_trunk_id || "trunk-inbound-primary") + '" title="Click to choose agent for this phone number" style="padding:4px 8px;border-radius:4px;border:1px solid var(--accent-border);background:var(--accent-soft);color:var(--accent);font-weight:600;font-size:12px;cursor:pointer">' + agentOptions + '</select>';
 
         return '<tr>' +
           '<td class="mono" style="font-weight:700;color:var(--ink)">' + CI.escapeHtml(n.phone_number) + '</td>' +
           '<td>' + CI.escapeHtml(n.friendly_name || n.region) + '<br><small style="color:var(--ink-faint)">' + CI.escapeHtml(n.region) + '</small></td>' +
           '<td>' + capsHtml + '</td>' +
           '<td class="mono">$' + (n.monthly_cost || 1.50).toFixed(2) + '/mo</td>' +
-          '<td><span class="pill pos">' + CI.escapeHtml(n.assigned_agent || "Intake Agent") + '</span></td>' +
+          '<td>' + agentSelector + '</td>' +
           '<td><code style="font-size:11px">' + CI.escapeHtml(n.assigned_trunk_id || "trunk-inbound-primary") + '</code></td>' +
           '<td><span class="pill pos">active</span></td>' +
           '<td>' +
@@ -865,6 +1107,31 @@
           '</td>' +
           '</tr>';
       }).join("");
+
+      // Bind inline agent selector change
+      Array.prototype.forEach.call(document.querySelectorAll(".agent-inline-select"), function (sel) {
+        sel.addEventListener("change", function () {
+          var num = sel.dataset.num;
+          var agentName = sel.value;
+          var trunkId = sel.dataset.trunk || "trunk-inbound-primary";
+          sel.disabled = true;
+          fetch("/api/telephony/numbers/route", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phone_number: num,
+              agent_name: agentName,
+              trunk_id: trunkId
+            })
+          }).then(function (r) { return r.json(); }).then(function (res) {
+            sel.disabled = false;
+            showToast("✅ " + num + " assigned to " + agentName);
+          }).catch(function (e) {
+            sel.disabled = false;
+            showToast("❌ Routing error: " + e.message);
+          });
+        });
+      });
 
       // Bind re-route and release buttons
       Array.prototype.forEach.call(document.querySelectorAll(".btn-reroute"), function (b) {
@@ -1074,6 +1341,134 @@
     });
   });
 
+  // ── Inbound Trunk Modal Logic ─────────────────────────────────────────────
+  function openInboundTrunkModal() {
+    $("#modalInTrunkId").value = "trunk-in-" + Date.now().toString().slice(-6);
+    $("#modalInTrunkName").value = "";
+    $("#modalInTrunkNumbers").value = "";
+    $("#modalInTrunkAllowed").value = "0.0.0.0/0";
+    $("#modalInTrunkUser").value = "";
+    $("#modalInTrunkPass").value = "";
+    var sel = $("#modalInTrunkAgent");
+    if (sel) {
+      sel.innerHTML = cachedAgents.length ? cachedAgents.map(function (a) {
+        return '<option value="' + CI.escapeHtml(a.name) + '">' + CI.escapeHtml(a.name) + '</option>';
+      }).join("") : '<option value="Intake Agent">Intake Agent</option><option value="Support Agent">Support Agent</option>';
+    }
+    $("#modalInboundTrunk").classList.add("open");
+  }
+
+  function closeInboundTrunkModal() {
+    $("#modalInboundTrunk").classList.remove("open");
+  }
+
+  var btnAddIn = $("#btnAddInboundTrunk");
+  if (btnAddIn) { btnAddIn.addEventListener("click", openInboundTrunkModal); }
+  var btnCloseIn = $("#btnCloseInboundTrunkModal");
+  if (btnCloseIn) { btnCloseIn.addEventListener("click", closeInboundTrunkModal); }
+  var btnCancelIn = $("#btnCancelInboundTrunk");
+  if (btnCancelIn) { btnCancelIn.addEventListener("click", closeInboundTrunkModal); }
+
+  var btnConfirmIn = $("#btnConfirmInboundTrunk");
+  if (btnConfirmIn) {
+    btnConfirmIn.addEventListener("click", function () {
+      var btn = this;
+      var name = $("#modalInTrunkName").value.trim() || "Custom Inbound Trunk";
+      var tId = $("#modalInTrunkId").value.trim() || ("trunk-in-" + Date.now());
+      var rawNums = $("#modalInTrunkNumbers").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+      var rawAllowed = $("#modalInTrunkAllowed").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+      if (!rawAllowed.length) { rawAllowed = ["0.0.0.0/0"]; }
+
+      btn.disabled = true;
+      btn.textContent = "Creating Trunk…";
+
+      fetch("/api/telephony/trunks/inbound", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trunk_id: tId,
+          name: name,
+          numbers: rawNums,
+          allowed_addresses: rawAllowed,
+          auth_username: $("#modalInTrunkUser").value.trim() || null,
+          auth_password: $("#modalInTrunkPass").value.trim() || null
+        })
+      }).then(function (r) { return r.json(); }).then(function (res) {
+        btn.disabled = false;
+        btn.textContent = "Create Inbound Trunk";
+        closeInboundTrunkModal();
+        showToast("✅ Inbound Trunk " + name + " created successfully");
+        loadTrunksAndRules();
+      }).catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = "Create Inbound Trunk";
+        showToast("❌ Trunk creation error: " + e.message);
+      });
+    });
+  }
+
+  // ── Outbound Trunk Modal Logic ────────────────────────────────────────────
+  function openOutboundTrunkModal() {
+    $("#modalOutTrunkId").value = "trunk-out-" + Date.now().toString().slice(-6);
+    $("#modalOutTrunkName").value = "";
+    $("#modalOutTrunkAddress").value = "sip.telnyx.com:5060";
+    $("#modalOutTrunkNumbers").value = "+18005550199";
+    $("#modalOutTrunkTransport").value = "udp";
+    $("#modalOutTrunkUser").value = "";
+    $("#modalOutTrunkPass").value = "";
+    $("#modalOutboundTrunk").classList.add("open");
+  }
+
+  function closeOutboundTrunkModal() {
+    $("#modalOutboundTrunk").classList.remove("open");
+  }
+
+  var btnAddOut = $("#btnAddOutboundTrunk");
+  if (btnAddOut) { btnAddOut.addEventListener("click", openOutboundTrunkModal); }
+  var btnCloseOut = $("#btnCloseOutboundTrunkModal");
+  if (btnCloseOut) { btnCloseOut.addEventListener("click", closeOutboundTrunkModal); }
+  var btnCancelOut = $("#btnCancelOutboundTrunk");
+  if (btnCancelOut) { btnCancelOut.addEventListener("click", closeOutboundTrunkModal); }
+
+  var btnConfirmOut = $("#btnConfirmOutboundTrunk");
+  if (btnConfirmOut) {
+    btnConfirmOut.addEventListener("click", function () {
+      var btn = this;
+      var name = $("#modalOutTrunkName").value.trim() || "Custom Outbound Trunk";
+      var tId = $("#modalOutTrunkId").value.trim() || ("trunk-out-" + Date.now());
+      var address = $("#modalOutTrunkAddress").value.trim() || "sip.telnyx.com:5060";
+      var rawNums = $("#modalOutTrunkNumbers").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+      var transport = $("#modalOutTrunkTransport").value || "udp";
+
+      btn.disabled = true;
+      btn.textContent = "Creating Trunk…";
+
+      fetch("/api/telephony/trunks/outbound", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trunk_id: tId,
+          name: name,
+          address: address,
+          numbers: rawNums,
+          transport: transport,
+          auth_username: $("#modalOutTrunkUser").value.trim() || null,
+          auth_password: $("#modalOutTrunkPass").value.trim() || null
+        })
+      }).then(function (r) { return r.json(); }).then(function (res) {
+        btn.disabled = false;
+        btn.textContent = "Create Outbound Trunk";
+        closeOutboundTrunkModal();
+        showToast("✅ Outbound Trunk " + name + " created successfully");
+        loadTrunksAndRules();
+      }).catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = "Create Outbound Trunk";
+        showToast("❌ Trunk creation error: " + e.message);
+      });
+    });
+  }
+
   function releaseNumber(num) {
     if (!confirm("Are you sure you want to release phone number " + num + "? Incoming calls to this DID will stop.")) {
       return;
@@ -1237,6 +1632,253 @@
     loadTelephony();
     showToast("Dashboard data refreshed.");
   });
+
+  // ── Live AI Voice Tester Implementation (Dashboard Embedded) ───────────────
+  var dtRoom = null;
+  var dtIsConnected = false;
+  var dtAudioEl = null;
+
+  function setAllDtStatus(statusText, badgeClass) {
+    ["#dtStateBadge", "#vtStateBadge"].forEach(function (sel) {
+      var b = $(sel);
+      if (b) {
+        b.textContent = statusText;
+        b.className = "pill " + (badgeClass || "neu");
+      }
+    });
+  }
+
+  function setAllDtVad(vadText, badgeClass) {
+    ["#dtVadBadge", "#vtVadBadge"].forEach(function (sel) {
+      var vb = $(sel);
+      if (vb) {
+        vb.textContent = vadText;
+        vb.className = "pill " + (badgeClass || "neu");
+      }
+    });
+  }
+
+  function addVoiceLog(speaker, text, isInterim) {
+    ["#dtTranscriptBox", "#vtTranscriptBox"].forEach(function (sel) {
+      var box = $(sel);
+      if (!box) return;
+
+      if (box.dataset.empty !== "no") {
+        box.innerHTML = "";
+        box.dataset.empty = "no";
+      }
+
+      if (isInterim) {
+        var live = box.querySelector(".voice-interim");
+        if (!live) {
+          live = document.createElement("div");
+          live.className = "voice-interim";
+          live.style.color = "var(--ink-soft)";
+          live.style.fontStyle = "italic";
+          box.appendChild(live);
+        }
+        live.textContent = "🗣️ You (speaking): " + text;
+      } else {
+        var live = box.querySelector(".voice-interim");
+        if (live) { live.remove(); }
+
+        var row = document.createElement("div");
+        var isAI = speaker.toLowerCase().indexOf("ai") !== -1 || speaker.toLowerCase().indexOf("agent") !== -1;
+        row.style.padding = "6px 10px";
+        row.style.borderRadius = "6px";
+        row.style.background = isAI ? "var(--accent-soft)" : "var(--panel)";
+        row.style.border = isAI ? "1px solid var(--accent-border)" : "1px solid var(--line)";
+        row.innerHTML = '<b style="color:' + (isAI ? 'var(--accent)' : 'var(--pos)') + '">' + (isAI ? '🤖 AI Assistant' : '👤 You') + ':</b> ' + text;
+        box.appendChild(row);
+      }
+      box.scrollTop = box.scrollHeight;
+    });
+  }
+
+  async function connectVoiceTester() {
+    if (dtIsConnected) return;
+
+    setAllDtStatus("CONNECTING...", "neu");
+    addVoiceLog("System", "Connecting to LiveKit Voice Engine...", false);
+
+    var btnCalls = [$("#dtBtnCall"), $("#vtBtnCall")];
+    btnCalls.forEach(function (b) { if (b) b.disabled = true; });
+
+    try {
+      var roomName = "dashboard-test-" + Date.now().toString(36);
+      var res = await fetch("/token?room=" + encodeURIComponent(roomName) + "&user=dashboard-operator");
+      if (!res.ok) throw new Error("Failed to mint join token (HTTP " + res.status + ")");
+      var tokenData = await res.json();
+
+      var LK = window.LivekitClient || window.LiveKit;
+      if (!LK) throw new Error("LiveKit WebRTC client library not loaded.");
+
+      dtRoom = new LK.Room({
+        adaptiveStream: true,
+        dynacast: true,
+        audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+
+      // Remote Audio Track Playback
+      dtRoom.on(LK.RoomEvent.TrackSubscribed, function (track) {
+        if (track.kind === "audio") {
+          if (!dtAudioEl) {
+            dtAudioEl = track.attach();
+            dtAudioEl.id = "dashboard-live-audio";
+            dtAudioEl.autoplay = true;
+            document.body.appendChild(dtAudioEl);
+          } else {
+            track.attach(dtAudioEl);
+          }
+          dtAudioEl.play().catch(function (e) {
+            console.warn("Autoplay deferred until interaction", e);
+          });
+
+          ["#dtAudioBadge", "#vtAudioBadge"].forEach(function (s) {
+            var b = $(s);
+            if (b) b.style.display = "inline-block";
+          });
+          addVoiceLog("System", "🔊 Audio stream active! Assistant speech will play through your speakers.", false);
+        }
+      });
+
+      // Data Channel Events (Transcripts, VAD, Agent State)
+      dtRoom.on(LK.RoomEvent.DataReceived, function (payload, participant, kind, topic) {
+        try {
+          var msg = JSON.parse(new TextDecoder().decode(payload));
+          if (topic === "transcript") {
+            addVoiceLog(msg.participant_identity || "You", msg.text, !msg.is_final);
+          } else if (topic === "agent_reply") {
+            addVoiceLog("AI Assistant", msg.text, false);
+          } else if (topic === "agent_state") {
+            if (msg.state === "speaking") {
+              setAllDtStatus("SPEAKING 🔊", "pos");
+            } else if (msg.state === "thinking") {
+              setAllDtStatus("THINKING 🧠", "neu");
+            } else {
+              setAllDtStatus("CONNECTED 🟢", "pos");
+            }
+          } else if (topic === "vad") {
+            setAllDtVad(msg.state === "speaking" ? "🗣️ Speaking" : "👂 Listening", msg.state === "speaking" ? "pos" : "neu");
+          }
+        } catch (e) {}
+      });
+
+      await dtRoom.connect(tokenData.url, tokenData.token);
+
+      // Graceful Microphone Enable
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          await dtRoom.localParticipant.setMicrophoneEnabled(true);
+          addVoiceLog("System", "🎤 Microphone connected. Speak aloud to converse with AI!", false);
+        } else {
+          addVoiceLog("System", "⚠️ Insecure browser context (Mic disabled). You can still listen to AI speech and send typed prompts!", false);
+        }
+      } catch (micErr) {
+        addVoiceLog("System", "⚠️ Microphone permission not granted. Listening mode active.", false);
+      }
+
+      dtIsConnected = true;
+      setAllDtStatus("CONNECTED 🟢", "pos");
+
+      // Update UI Buttons
+      ["#dtBtnCall", "#vtBtnCall"].forEach(function (s) { var b = $(s); if (b) { b.style.display = "none"; b.disabled = false; } });
+      ["#dtBtnHangup", "#vtBtnHangup"].forEach(function (s) { var b = $(s); if (b) b.style.display = "inline-flex"; });
+      var bgb = $("#dtBtnBargein"); if (bgb) bgb.style.display = "inline-flex";
+
+      showToast("Voice Assistant Connected.");
+
+    } catch (err) {
+      setAllDtStatus("ERROR ❌", "neg");
+      addVoiceLog("System", "❌ Connection failed: " + err.message, false);
+      ["#dtBtnCall", "#vtBtnCall"].forEach(function (s) { var b = $(s); if (b) { b.style.display = "inline-flex"; b.disabled = false; } });
+      ["#dtBtnHangup", "#vtBtnHangup"].forEach(function (s) { var b = $(s); if (b) b.style.display = "none"; });
+    }
+  }
+
+  function disconnectVoiceTester() {
+    if (dtRoom) {
+      try { dtRoom.disconnect(); } catch (e) {}
+      dtRoom = null;
+    }
+    dtIsConnected = false;
+    setAllDtStatus("IDLE", "neu");
+    setAllDtVad("VAD: Idle", "neu");
+
+    ["#dtAudioBadge", "#vtAudioBadge"].forEach(function (s) { var b = $(s); if (b) b.style.display = "none"; });
+    ["#dtBtnCall", "#vtBtnCall"].forEach(function (s) { var b = $(s); if (b) { b.style.display = "inline-flex"; b.disabled = false; } });
+    ["#dtBtnHangup", "#vtBtnHangup"].forEach(function (s) { var b = $(s); if (b) b.style.display = "none"; });
+    var bgb = $("#dtBtnBargein"); if (bgb) bgb.style.display = "none";
+
+    addVoiceLog("System", "📴 Voice call disconnected.", false);
+    showToast("Voice Call Disconnected.");
+  }
+
+  async function playSampleSpeech(text) {
+    var phrase = text || "Hello! I am your AI Voice Assistant. I am speaking directly on this dashboard. Can you hear my voice clearly?";
+    if (!dtIsConnected || !dtRoom) {
+      addVoiceLog("System", "Connecting call session to play audio...", false);
+      await connectVoiceTester();
+      await new Promise(function (r) { setTimeout(r, 1200); });
+    }
+    if (dtRoom && dtRoom.localParticipant) {
+      addVoiceLog("AI Assistant", "🔊 Speaking: \"" + phrase + "\"...", false);
+      try {
+        await dtRoom.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({ action: "test_tts", text: phrase })),
+          { reliable: true }
+        );
+      } catch (err) {
+        addVoiceLog("System", "Speech playback error: " + err.message, false);
+      }
+    }
+  }
+
+  async function sendVoicePrompt(inputSel) {
+    var inp = $(inputSel || "#dtPromptInput");
+    if (!inp) return;
+    var txt = inp.value.trim();
+    if (!txt) return;
+    inp.value = "";
+
+    if (!dtIsConnected || !dtRoom) {
+      addVoiceLog("System", "Connecting session to send prompt...", false);
+      await connectVoiceTester();
+      await new Promise(function (r) { setTimeout(r, 1200); });
+    }
+
+    addVoiceLog("You", txt, false);
+    if (dtRoom && dtRoom.localParticipant) {
+      try {
+        await dtRoom.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({ action: "test_prompt", text: txt })),
+          { reliable: true }
+        );
+      } catch (err) {
+        addVoiceLog("System", "Failed to send prompt: " + err.message, false);
+      }
+    }
+  }
+
+  // Attach button event listeners for overview widget
+  var bCall = $("#dtBtnCall"); if (bCall) bCall.addEventListener("click", connectVoiceTester);
+  var bHang = $("#dtBtnHangup"); if (bHang) bHang.addEventListener("click", disconnectVoiceTester);
+  var bSample = $("#dtBtnSampleTTS"); if (bSample) bSample.addEventListener("click", function () { playSampleSpeech(); });
+  var bPrompt = $("#dtBtnSendPrompt"); if (bPrompt) bPrompt.addEventListener("click", function () { sendVoicePrompt("#dtPromptInput"); });
+  var inPrompt = $("#dtPromptInput"); if (inPrompt) inPrompt.addEventListener("keydown", function (e) { if (e.key === "Enter") sendVoicePrompt("#dtPromptInput"); });
+  var bBarge = $("#dtBtnBargein"); if (bBarge) bBarge.addEventListener("click", function () {
+    if (dtRoom && dtRoom.localParticipant) {
+      dtRoom.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ action: "test_speech" })), { reliable: true });
+      addVoiceLog("System", "Testing speech for barge-in...", false);
+    }
+  });
+
+  // Attach button event listeners for dedicated voicetest tab
+  var vtCall = $("#vtBtnCall"); if (vtCall) vtCall.addEventListener("click", connectVoiceTester);
+  var vtHang = $("#vtBtnHangup"); if (vtHang) vtHang.addEventListener("click", disconnectVoiceTester);
+  var vtSample = $("#vtBtnSampleTTS"); if (vtSample) vtSample.addEventListener("click", function () { playSampleSpeech(); });
+  var vtPrompt = $("#vtBtnSendPrompt"); if (vtPrompt) vtPrompt.addEventListener("click", function () { sendVoicePrompt("#vtPromptInput"); });
+  var vtInPrompt = $("#vtPromptInput"); if (vtInPrompt) vtInPrompt.addEventListener("keydown", function (e) { if (e.key === "Enter") sendVoicePrompt("#vtPromptInput"); });
 
   // ── Boot ──────────────────────────────────────────────────────────────────
   refreshAll();

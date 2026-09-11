@@ -12,7 +12,7 @@
         "toll_free"
       ],
       "monthly_cost": 2.0,
-      "status": "active",
+      "status": "released",
       "assigned_trunk_id": "trunk-inbound-primary",
       "assigned_agent": "Intake Agent",
       "purchased_at": 1788951734.4027433,
@@ -55,5 +55,5 @@
       "metadata": {}
     }
   ],
-  "updated_at": 1788951742.9054506
+  "updated_at": 1789099595.2811792
 }

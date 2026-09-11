@@ -111,8 +111,16 @@ class Handler(SimpleHTTPRequestHandler):
             room = (q.get("room") or ["test-room"])[0]
             identity = (q.get("identity") or q.get("user") or ["caller"])[0]
 
+            host_header = self.headers.get("Host", "localhost").split(":")[0]
+            if "ngrok" in host_header:
+                ws_endpoint = "ws://10.149.107.174:7880"
+            elif host_header not in ("localhost", "127.0.0.1") and WS_URL.startswith("ws://127.0.0.1"):
+                ws_endpoint = f"ws://{host_header}:7880"
+            else:
+                ws_endpoint = WS_URL
+
             self._send_json({
-                "url": WS_URL,
+                "url": ws_endpoint,
                 "room": room,
                 "identity": identity,
                 "token": join_token(KEY, SECRET, room, identity),
@@ -304,6 +312,44 @@ class Handler(SimpleHTTPRequestHandler):
                 "models": agent_builder.list_models(),
             })
             return
+        elif parsed.path == "/api/agents/voice-audio":
+            q = parse_qs(parsed.query)
+            voice_id = (q.get("voice_id") or [""])[0]
+            custom_text = (q.get("text") or [""])[0].strip()
+            if custom_text.lower() in ("undefined", "null", "none"):
+                custom_text = ""
+            custom_style = (q.get("style") or [""])[0]
+            voice = agent_builder.get_voice(voice_id)
+            try:
+                from agent.voice_synthesizer import get_voice_audio
+                if voice:
+                    audio_bytes = get_voice_audio(
+                        voice_id=voice.voice_id,
+                        name=voice.name,
+                        gender=voice.gender,
+                        style=custom_style or voice.style,
+                        provider=voice.provider,
+                        text=custom_text,
+                    )
+                else:
+                    audio_bytes = get_voice_audio(
+                        voice_id=voice_id or "default",
+                        style=custom_style,
+                        text=custom_text,
+                    )
+            except Exception as e:
+                self._send_json({"status": "error", "error": str(e)}, 500)
+                return
+
+            c_type = "audio/mpeg" if (audio_bytes.startswith(b"\xff\xfb") or audio_bytes.startswith(b"\xff\xf3") or audio_bytes.startswith(b"ID3")) else "audio/wav"
+            self.send_response(200)
+            self.send_header("Content-Type", c_type)
+            self.send_header("Content-Length", str(len(audio_bytes)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(audio_bytes)
+            return
         elif parsed.path == "/api/agents/tools":
             self._send_json({"status": "ok", "tools": agent_builder.available_tools()})
             return
@@ -327,6 +373,10 @@ class Handler(SimpleHTTPRequestHandler):
             return
         elif parsed.path == "/api/agents/stats":
             self._send_json({"status": "ok", "stats": agent_builder.get_stats()})
+            return
+        elif parsed.path == "/api/providers/keys":
+            from agent.provider_manager import provider_manager
+            self._send_json({"status": "ok", "providers": provider_manager.list_providers_status()})
             return
 
         elif parsed.path == "/api/calls":
@@ -483,9 +533,9 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": str(err)}, 500)
             return
 
-        elif parsed.path == "/api/telephony/inbound/simulate":
-            from_num = payload.get("from", "+15551234567")
-            to_num = payload.get("to", "+18005550199")
+        elif parsed.path in ("/api/telephony/inbound/simulate", "/api/telephony/simulate-inbound"):
+            from_num = payload.get("from") or payload.get("caller_number") or "+15551234567"
+            to_num = payload.get("to") or payload.get("dialed_number") or "+18005550199"
             routed = telephony_manager.route_inbound_call(dialed_number=to_num, caller_number=from_num)
             if not routed:
                 self._send_json({"status": "error", "error": "No matching route found"}, 404)
@@ -571,6 +621,20 @@ class Handler(SimpleHTTPRequestHandler):
             )
             telephony_manager.register_outbound_trunk(trunk)
             self._send_json({"status": "ok", "trunk": asdict(trunk)})
+            return
+
+        elif parsed.path in ("/api/telephony/calls/end", "/api/telephony/calls/hangup"):
+            call_id = payload.get("call_id", "").strip()
+            if not call_id:
+                self._send_json({"error": "Missing 'call_id' parameter"}, 400)
+                return
+            rec = telephony_manager.end_call(call_id)
+            self._send_json({"status": "ok", "call": asdict(rec) if rec else None})
+            return
+
+        elif parsed.path in ("/api/telephony/calls/clear", "/api/telephony/calls/end-all"):
+            ended = telephony_manager.end_all_calls()
+            self._send_json({"status": "ok", "ended_count": len(ended)})
             return
 
         elif parsed.path == "/api/telephony/transfer":
@@ -891,6 +955,99 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"status": "ok", "delivery": record.to_dict()})
             return
 
+        elif parsed.path == "/api/agents":
+            active = agent_builder.get_active_agent()
+            agent_id = payload.get("agent_id") or (active.agent_id if active else None)
+            if agent_id:
+                try:
+                    changes = {k: v for k, v in payload.items() if k != "agent_id"}
+                    cfg = agent_builder.update_agent(agent_id, changes, payload.get("note", "Updated via agent builder"))
+                    agent_builder.set_active(agent_id)
+                    self._send_json({"status": "ok", "agent": cfg.to_dict(), "lint": agent_builder.lint_prompt(cfg.system_prompt)})
+                    return
+                except Exception as e:
+                    self._send_json({"status": "error", "error": str(e)}, 400)
+                    return
+            else:
+                try:
+                    cfg = agent_builder.create_agent(
+                        name=payload.get("name", "Voice Agent"),
+                        first_message=payload.get("first_message", "Hello, how can I help?"),
+                        system_prompt=payload.get("system_prompt", "You are a helpful assistant."),
+                        **{k: v for k, v in payload.items() if k not in ("name", "first_message", "system_prompt")},
+                    )
+                    agent_builder.set_active(cfg.agent_id)
+                    self._send_json({"status": "ok", "agent": cfg.to_dict()})
+                    return
+                except Exception as e:
+                    self._send_json({"status": "error", "error": str(e)}, 400)
+                    return
+
+        elif parsed.path == "/api/agents/tools/test":
+            tool_name = payload.get("tool_name") or payload.get("name") or ""
+            args = payload.get("arguments") or payload.get("args") or {}
+            from agent.tool_manager import ToolRegistry, AsyncToolDispatcher
+            reg = ToolRegistry()
+            dispatcher = AsyncToolDispatcher(reg)
+            if not reg.get_tool(tool_name):
+                self._send_json({"status": "error", "error": f"Tool '{tool_name}' not found"}, 404)
+                return
+            try:
+                loop = asyncio.new_event_loop()
+                result = loop.run_until_complete(dispatcher.execute_tool(tool_name, args))
+                loop.close()
+                self._send_json({"status": "ok", "execution": result})
+            except Exception as ex:
+                self._send_json({"status": "error", "error": str(ex)}, 500)
+            return
+
+        elif parsed.path == "/api/agents/tools/register":
+            name = payload.get("name", "").strip().lower().replace(" ", "_")
+            desc = payload.get("description", "").strip()
+            endpoint = payload.get("endpoint_url", "").strip()
+            method = payload.get("method", "POST").upper()
+            timeout = float(payload.get("timeout", 3.0))
+            params = payload.get("parameters", {"type": "object", "properties": {}})
+            fillers = payload.get("filler_phrases", [f"Contacting {name} service..."])
+
+            if not name or not desc:
+                self._send_json({"status": "error", "error": "Tool name and description are required"}, 400)
+                return
+
+            from agent.tool_manager import ToolRegistry, ToolDefinition
+            reg = ToolRegistry()
+
+            async def custom_handler(**kwargs):
+                if endpoint:
+                    import aiohttp
+                    async with aiohttp.ClientSession() as session:
+                        if method == "POST":
+                            async with session.post(endpoint, json=kwargs, timeout=timeout) as resp:
+                                return {"status_code": resp.status, "body": await resp.text()}
+                        else:
+                            async with session.get(endpoint, params=kwargs, timeout=timeout) as resp:
+                                return {"status_code": resp.status, "body": await resp.text()}
+                else:
+                    return {"status": "executed", "tool": name, "echo": kwargs}
+
+            tool_def = ToolDefinition(
+                name=name,
+                description=desc,
+                parameters=params if isinstance(params, dict) else {"type": "object", "properties": {}},
+                handler=custom_handler,
+                filler_phrases=fillers if isinstance(fillers, list) else [str(fillers)],
+                timeout=timeout,
+            )
+            reg.register(tool_def, persist=True)
+            self._send_json({"status": "ok", "tool": {
+                "name": tool_def.name,
+                "description": tool_def.description,
+                "parameters": tool_def.parameters,
+                "timeout": tool_def.timeout,
+                "filler_phrases": tool_def.filler_phrases,
+            }})
+            return
+
         elif parsed.path == "/api/agents/create":
             try:
                 cfg = agent_builder.create_agent(
@@ -908,9 +1065,10 @@ class Handler(SimpleHTTPRequestHandler):
 
         elif parsed.path == "/api/agents/update":
             agent_id = payload.get("agent_id", "")
+            changes = payload.get("changes") or payload.get("patch") or {k: v for k, v in payload.items() if k not in ("agent_id", "note")}
             try:
                 cfg = agent_builder.update_agent(
-                    agent_id, payload.get("changes", {}), payload.get("note", ""))
+                    agent_id, changes, payload.get("note", ""))
             except KeyError:
                 self._send_json({"status": "error", "error": "Agent not found"}, 404)
                 return
@@ -961,9 +1119,23 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         elif parsed.path == "/api/agents/test":
+            agent_id = payload.get("agent_id", "")
+            if not agent_id or agent_id not in agent_builder._agents:
+                active = agent_builder.get_active_agent()
+                agent_id = active.agent_id if active else (list(agent_builder._agents.keys())[0] if agent_builder._agents else "test-agent")
+            
+            # Apply inline edits if sent from builder
+            editable_keys = ("system_prompt", "first_message", "voice_id", "llm_model", "tools", "speak_first")
+            changes = {k: v for k, v in payload.items() if k in editable_keys and v is not None}
+            if changes and agent_id in agent_builder._agents:
+                try:
+                    agent_builder.update_agent(agent_id, changes, note="Test run inline update")
+                except Exception:
+                    pass
+
             try:
                 result = agent_builder.test_run(
-                    payload.get("agent_id", ""), payload.get("utterances", []))
+                    agent_id, payload.get("utterances", []))
             except KeyError:
                 self._send_json({"status": "error", "error": "Agent not found"}, 404)
                 return
@@ -994,6 +1166,28 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": str(e)}, 404)
                 return
             self._send_json({"status": "ok", "preview": preview})
+            return
+
+        elif parsed.path == "/api/providers/keys":
+            from agent.provider_manager import provider_manager
+            keys_to_update = payload.get("keys") or {k: v for k, v in payload.items() if k not in ("action", "note")}
+            try:
+                res = provider_manager.save_keys(keys_to_update)
+                self._send_json({
+                    "status": "ok",
+                    "updated": res.get("updated", []),
+                    "providers": provider_manager.list_providers_status(),
+                })
+            except Exception as ex:
+                self._send_json({"status": "error", "error": str(ex)}, 500)
+            return
+
+        elif parsed.path == "/api/providers/test":
+            from agent.provider_manager import provider_manager
+            provider_id = payload.get("provider_id") or payload.get("provider") or ""
+            api_key = payload.get("api_key") or payload.get("key") or None
+            res = provider_manager.test_provider_connection(provider_id, api_key)
+            self._send_json(res, 200 if res.get("status") == "ok" else 400)
             return
 
         # --- Task 4.3: REST API & Multi-Tenant v1 POST Endpoints ---

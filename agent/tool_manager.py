@@ -159,15 +159,20 @@ class ToolRegistry:
     Central registry for callable tools with JSON Schema validation
     and default business tools for voice assistant workflows.
     """
+    _custom_tools: Dict[str, ToolDefinition] = {}
 
     def __init__(self):
         self._tools: Dict[str, ToolDefinition] = {}
         self.filler_engine = FillerSpeechEngine()
         self._register_default_tools()
+        for custom_tool in self._custom_tools.values():
+            self.register(custom_tool, persist=False)
 
-    def register(self, tool: ToolDefinition) -> None:
+    def register(self, tool: ToolDefinition, persist: bool = True) -> None:
         """Registers a tool definition and its filler phrases."""
         self._tools[tool.name] = tool
+        if persist:
+            ToolRegistry._custom_tools[tool.name] = tool
         if tool.filler_phrases:
             self.filler_engine.register_tool_fillers(tool.name, tool.filler_phrases)
         log.info("Registered function tool: '%s'", tool.name)

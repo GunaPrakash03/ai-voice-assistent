@@ -137,21 +137,150 @@
   .kv-row .k{color:var(--ink-soft);font-size:12.5px}
   .kv-row .v{font-family:var(--f-mono);font-weight:700;color:var(--ink)}
 
-  /* Tools list */
-  .tool-item{border:1px solid var(--line-soft);border-radius:6px;padding:11px 14px;
+  /* Tools list & Interactive Switches */
+  .tool-item{border:1px solid var(--line-soft);border-radius:8px;padding:12px 14px;
     margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;
-    background:var(--panel)}
+    background:var(--panel);transition:all .15s ease}
+  .tool-item:hover{border-color:var(--line);background:var(--sunk)}
+  .tool-item.active{border-color:rgba(46,160,67,.35);background:rgba(46,160,67,.03)}
   .tool-item:last-child{margin-bottom:0}
-  .tool-info b{font-size:13px;font-weight:600;display:block;color:var(--ink)}
-  .tool-info code{font-family:var(--f-mono);font-size:11px;color:var(--ink-faint)}
-  .pill-on{background:var(--pos-soft);color:var(--pos);font-family:var(--f-mono);
-    font-size:11px;font-weight:600;padding:2px 10px;border-radius:12px}
+  .tool-info{flex:1;min-width:0;padding-right:12px}
+  .tool-info-h{display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap}
+  .tool-info b{font-size:13.5px;font-weight:600;color:var(--ink)}
+  .tool-info code{font-family:var(--f-mono);font-size:11px;color:var(--accent);
+    background:var(--accent-soft);padding:1px 6px;border-radius:4px}
+  .tool-info .tool-desc{font-size:12px;color:var(--ink-soft);line-height:1.35;margin-top:2px}
+  .tool-actions{display:flex;align-items:center;gap:8px}
+  .pill-toggle{font-family:var(--f-mono);font-size:11px;font-weight:700;
+    padding:3px 10px;border-radius:12px;cursor:pointer;user-select:none;
+    text-transform:uppercase;transition:all .15s ease;display:inline-block}
+  .pill-on{background:var(--pos-soft);color:var(--pos);border:1px solid rgba(46,160,67,.2)}
+  .pill-off{background:var(--line-soft);color:var(--ink-faint);border:1px solid transparent}
+  .pill-toggle:hover{filter:brightness(1.15);transform:scale(1.04)}
+
+  /* Modern Toggle Switch */
+  .switch{position:relative;display:inline-block;width:36px;height:20px;cursor:pointer}
+  .switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;top:0;left:0;right:0;bottom:0;background-color:var(--line-soft);
+    transition:.2s;border-radius:20px;border:1px solid var(--line)}
+  .slider:before{position:absolute;content:"";height:14px;width:14px;left:2px;bottom:2px;
+    background-color:#fff;transition:.2s;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  input:checked + .slider{background-color:var(--pos);border-color:var(--pos)}
+  input:checked + .slider:before{transform:translateX(16px)}
+
+  /* Voice Modal Popup */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;
+    align-items:center;justify-content:center;z-index:1000;padding:16px;backdrop-filter:blur(3px)}
+  .modal-overlay.open{display:flex}
+  .modal-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    width:100%;max-width:880px;max-height:88vh;display:flex;flex-direction:column;
+    box-shadow:0 12px 40px rgba(0,0,0,.25);overflow:hidden}
+  .modal-h{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;
+    justify-content:space-between;align-items:center;background:var(--panel)}
+  .modal-h h3{margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .modal-b{padding:18px 20px;overflow-y:auto;flex:1;background:var(--ground)}
+  .modal-f{padding:12px 20px;border-top:1px solid var(--line);display:flex;
+    justify-content:space-between;align-items:center;background:var(--panel)}
+
+  /* Provider Tabs */
+  .provider-tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:16px;padding-bottom:2px;overflow-x:auto}
+  .ptab{all:unset;cursor:pointer;padding:8px 14px;border-radius:6px 6px 0 0;font-size:13px;font-weight:600;
+    color:var(--ink-soft);border:1px solid transparent;border-bottom:none;transition:all .15s;white-space:nowrap}
+  .ptab:hover{color:var(--ink);background:var(--sunk)}
+  .ptab.active{color:var(--accent);background:var(--panel);border-color:var(--line);border-bottom:2px solid var(--accent);font-weight:700}
+
+  /* Voice Card Grid */
+  .voice-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));gap:12px}
+  .voice-card{background:var(--panel);border:1.5px solid var(--line);border-radius:8px;padding:14px;
+    cursor:pointer;transition:all .15s ease;display:flex;flex-direction:column;justify-content:space-between}
+  .voice-card:hover{border-color:var(--accent-border);transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.06)}
+  .voice-card.selected{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 4px 14px rgba(194,86,15,.15)}
+  .vc-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .vc-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;
+    justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0}
+  .vc-name{font-size:14px;font-weight:700;color:var(--ink)}
+  .vc-gender{font-size:11px;color:var(--ink-faint);margin-left:4px}
+  .vc-style{font-size:12px;color:var(--ink-soft);margin-bottom:10px;line-height:1.4}
+  .vc-meta{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:10px}
+  .vc-chip{font-family:var(--f-mono);font-size:10.5px;padding:2px 7px;border-radius:4px;
+    background:var(--ground);color:var(--ink-soft);border:1px solid var(--line)}
+  .vc-chip.latency{color:var(--pos);font-weight:600}
+  .vc-actions{display:flex;gap:6px;margin-top:auto}
+  .vc-btn-preview{flex:1;padding:6px 8px;font-size:11.5px;border-radius:5px;
+    border:1px solid var(--line);background:var(--panel);color:var(--ink-soft);cursor:pointer;font-weight:600;
+    display:flex;align-items:center;justify-content:center;gap:4px;transition:all .15s}
+  .vc-btn-preview:hover{background:var(--sunk);color:var(--ink);border-color:var(--accent)}
+  .vc-btn-preview.playing{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:700}
+  .vc-btn-select{flex:1;padding:6px 8px;font-size:11.5px;font-weight:600;border-radius:5px;
+    border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  .voice-card.selected .vc-btn-select{background:var(--pos);border-color:var(--pos)}
+
+  /* Equalizer Animation */
+  .eq-wave{display:inline-flex;align-items:flex-end;gap:2px;height:12px}
+  .eq-bar{width:2.5px;background:currentColor;border-radius:1px;animation:eqBounce 0.7s ease-in-out infinite alternate}
+  .eq-bar:nth-child(1){height:30%;animation-delay:0.1s}
+  .eq-bar:nth-child(2){height:100%;animation-delay:0.3s}
+  .eq-bar:nth-child(3){height:60%;animation-delay:0.2s}
+  @keyframes eqBounce{
+    0%{height:25%}
+    100%{height:100%}
+  }
 
   /* Toast */
   #toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:var(--ground);
     padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);
     display:none;z-index:999;align-items:center;gap:10px}
   #toast.show{display:flex}
+
+  /* Retell-Style In-Page Right-Side Slide-Over Test Call Drawer & Orb */
+  #modalTestCall.modal-overlay{position:fixed;inset:0;z-index:9999;display:none;justify-content:flex-end;align-items:stretch;padding:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);pointer-events:none}
+  #modalTestCall.modal-overlay.open{display:flex !important;pointer-events:auto}
+  #modalTestCall .test-call-card{max-width:480px;width:100%;height:100vh;max-height:100vh;display:flex;flex-direction:column;border-radius:0;background:var(--panel);border-left:1px solid var(--line);border-top:none;border-right:none;border-bottom:none;box-shadow:-8px 0 40px rgba(0,0,0,.45);transform:translateX(100%);transition:transform .28s cubic-bezier(0.16,1,0.3,1);pointer-events:auto}
+  #modalTestCall.open .test-call-card{transform:translateX(0) !important}
+  .test-call-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--ground);border-bottom:1px solid var(--line)}
+  .test-call-status-badge{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;font-family:var(--f-mono);color:var(--pos);background:rgba(18,165,108,0.12);padding:4px 10px;border-radius:20px;border:1px solid rgba(18,165,108,0.3)}
+  .test-call-status-badge .dot{width:8px;height:8px;border-radius:50%;background:var(--pos);animation:pulseDot 1.5s infinite}
+  @keyframes pulseDot{0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.4);opacity:0.6}}
+  
+  .orb-stage{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px 18px;background:radial-gradient(circle at center, rgba(37,99,235,0.08) 0%, transparent 70%);border-bottom:1px solid var(--line);position:relative}
+  .retell-orb{width:82px;height:82px;border-radius:50%;background:linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 30px rgba(59,130,246,0.4);transition:all .3s ease;position:relative}
+  .retell-orb::before{content:'';position:absolute;inset:-6px;border-radius:50%;border:2px solid rgba(59,130,246,0.4);animation:orbSpin 6s linear infinite}
+  .retell-orb::after{content:'';position:absolute;inset:-14px;border-radius:50%;border:1px dashed rgba(139,92,246,0.3);animation:orbSpinReverse 10s linear infinite}
+  @keyframes orbSpin{0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)}}
+  @keyframes orbSpinReverse{0%{transform:rotate(360deg)} 100%{transform:rotate(0deg)}}
+  
+  .retell-orb.speaking{transform:scale(1.08);background:linear-gradient(135deg, #10b981 0%, #3b82f6 50%, #6366f1 100%);box-shadow:0 0 45px rgba(16,185,129,0.6);animation:orbPulse 1.2s ease-in-out infinite alternate}
+  .retell-orb.listening{transform:scale(1.02);background:linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);box-shadow:0 0 35px rgba(6,182,212,0.5);animation:orbBreathe 2s ease-in-out infinite alternate}
+  .retell-orb.thinking{transform:scale(0.96);background:linear-gradient(135deg, #f59e0b 0%, #ec4899 100%);box-shadow:0 0 35px rgba(245,158,11,0.5);animation:orbSpin 2s linear infinite}
+  @keyframes orbPulse{0%{transform:scale(1.02)} 100%{transform:scale(1.14)}}
+  @keyframes orbBreathe{0%{transform:scale(0.98)} 100%{transform:scale(1.04)}}
+
+  .orb-state-text{margin-top:12px;font-size:13px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px}
+  .orb-voice-pill{font-size:11px;font-family:var(--f-mono);color:var(--ink-faint);margin-top:2px}
+
+  .test-call-transcript{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:10px;background:var(--ground)}
+  .test-msg{display:flex;flex-direction:column;max-width:85%;font-size:13px;line-height:1.45}
+  .test-msg.caller{align-self:flex-end;align-items:flex-end}
+  .test-msg.agent{align-self:flex-start;align-items:flex-start}
+  .test-msg-bubble{padding:9px 13px;border-radius:12px;word-break:break-word}
+  .test-msg.caller .test-msg-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:2px}
+  .test-msg.agent .test-msg-bubble{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-bottom-left-radius:2px}
+  .test-msg-meta{display:flex;align-items:center;gap:8px;font-size:10.5px;color:var(--ink-faint);font-family:var(--f-mono);margin-top:3px}
+  .test-msg-tool{display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.12);color:#818cf8;border:1px solid rgba(99,102,241,0.3);padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;margin-top:4px}
+  
+  .quick-prompts-bar{display:flex;gap:6px;overflow-x:auto;padding:8px 14px;background:var(--panel);border-top:1px solid var(--line);scrollbar-width:none}
+  .quick-chip{font-size:11px;padding:4px 9px;border-radius:16px;background:var(--sunk);border:1px solid var(--line);color:var(--ink-soft);cursor:pointer;white-space:nowrap;transition:all .12s}
+  .quick-chip:hover{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+
+  .test-call-controls{display:flex;gap:8px;padding:12px 16px;background:var(--ground);border-top:1px solid var(--line);align-items:center}
+  .test-mic-btn{width:40px;height:40px;border-radius:50%;background:var(--panel);border:1px solid var(--line);color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s}
+  .test-mic-btn:hover{background:var(--sunk);border-color:var(--accent);color:var(--accent)}
+  .test-mic-btn.active{background:var(--danger);border-color:var(--danger);color:#fff;box-shadow:0 0 14px rgba(239,68,68,0.6)}
+  .test-chat-input{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:9px 14px;font-size:12.5px;color:var(--ink);outline:none}
+  .test-chat-input:focus{border-color:var(--accent)}
+  .test-send-btn{background:var(--accent);color:#fff;border:none;border-radius:18px;padding:8px 14px;font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px}
+  .test-hangup-btn{background:rgba(239,68,68,0.15);color:var(--danger);border:1px solid rgba(239,68,68,0.3);border-radius:6px;padding:5px 10px;font-weight:700;font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .15s}
+  .test-hangup-btn:hover{background:var(--danger);color:#fff}
 </style>
 </head>
 <body>
@@ -179,10 +308,11 @@
   <nav class="rail">
     <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
     <div class="nav">
-      <a href="/">Overview<span class="ct">3 live</span></a>
-      <a href="/#calls">Calls<span class="ct">247</span></a>
+      <a href="/">Overview<span class="ct" id="navCtOverview">0 live</span></a>
+      <a href="/#calls">Calls<span class="ct" id="navCtCalls">0</span></a>
       <a href="/#detail">Call detail</a>
-      <a href="/agent-builder.html" class="active">Agents<span class="ct">4</span></a>
+      <a href="/agent-builder.html" class="active">Agents<span class="ct" id="navCtAgents">1</span></a>
+      <a href="/api-keys.html">API Keys &amp; Providers<span class="ct">🔑</span></a>
     </div>
     <div class="rail-foot">
       <div>WORKSPACE</div>
@@ -201,12 +331,7 @@
           <div class="crumb">AGENTS</div>
           <h1 id="pageTitle">Intake Agent</h1>
         </div>
-        <span class="livechip"><span class="pulse"></span><span id="callStatus">3 calls in progress</span></span>
-      </div>
-
-      <!-- Prototype Alert Box -->
-      <div class="notice-banner">
-        <strong>Prototype with sample data.</strong> Every figure, caller and transcript below is invented to show the shape of the interface &mdash; this is what tasks 4.1 and 4.2 build, not live data from your platform.
+        <span class="livechip"><span class="pulse"></span><span id="callStatus">0 calls in progress</span></span>
       </div>
 
       <!-- 2-Column Grid -->
@@ -224,18 +349,53 @@
             </div>
 
             <div class="field">
-              <label for="firstMessage">FIRST MESSAGE</label>
-              <input type="text" id="firstMessage" value="Thanks for calling Northgate Legal. How can I help?">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <label for="llmModelSelect" style="margin-bottom:0">LLM MODEL &amp; REASONING ENGINE</label>
+                <span id="statModelProvider" class="pill-on" style="font-size:10.5px;padding:2px 8px;font-weight:700">Google Gemini</span>
+              </div>
+              <select id="llmModelSelect" style="width:100%;font-weight:600;font-size:13px;padding:9px 12px;border-radius:6px;background:var(--ground);color:var(--ink)">
+                <optgroup label="Google Gemini (Recommended — Ultra-low Latency)">
+                  <option value="gemini-2.0-flash">Gemini 2.0 Flash — Ultra-fast real-time speech (Google)</option>
+                  <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite — Lowest latency &amp; high throughput (Google)</option>
+                  <option value="gemini-1.5-flash">Gemini 1.5 Flash — Fast &amp; versatile 1M context (Google)</option>
+                  <option value="gemini-nano">Gemini Nano — On-device ultra-low latency (Google)</option>
+                  <option value="gemini-1.5-pro">Gemini 1.5 Pro — Complex reasoning &amp; multi-turn logic (Google)</option>
+                </optgroup>
+                <optgroup label="OpenAI">
+                  <option value="gpt-4o-mini">GPT-4o mini — Fastest, cheapest (OpenAI)</option>
+                  <option value="gpt-4o">GPT-4o — Best reasoning (OpenAI)</option>
+                </optgroup>
+                <optgroup label="Anthropic">
+                  <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 — Fast, strong instruction following (Anthropic)</option>
+                  <option value="claude-sonnet-5">Claude Sonnet 5 — Highest quality dialogue (Anthropic)</option>
+                </optgroup>
+              </select>
+              <div id="llmModelStats" style="display:flex;align-items:center;gap:14px;margin-top:8px;font-size:11.5px;color:var(--ink-soft);flex-wrap:wrap;background:var(--panel);padding:6px 10px;border-radius:6px;border:1px solid var(--line)">
+                <span id="statModelTTFT">⚡ TTFT: <b style="color:var(--ink);font-family:var(--f-mono)">180 ms</b></span>
+                <span id="statModelCost">💰 LLM: <b style="color:var(--ink);font-family:var(--f-mono)">$0.00010 / 1k tokens</b></span>
+                <span id="statVoiceLatency">🎙️ Voice TTFA: <b style="color:var(--ink);font-family:var(--f-mono)">110 ms</b></span>
+                <span id="statVoiceCost">🏷️ Voice Cost: <b style="color:var(--ink);font-family:var(--f-mono)">$0.000 / 1k chars</b></span>
+                <span id="statTotalCost">💵 Est. Turn: <b style="color:var(--accent);font-family:var(--f-mono)">$0.0008</b></span>
+                <span style="color:var(--ink-faint)">Speech pacing: ~150 wpm</span>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="firstMessage">FIRST MESSAGE (Auto-derived from Prompt if empty)</label>
+              <input type="text" id="firstMessage" placeholder="Leave empty to auto-derive greeting from system prompt...">
             </div>
 
             <div class="field">
               <label for="systemPrompt">SYSTEM PROMPT</label>
-              <textarea id="systemPrompt" rows="8">You are the intake agent for a law firm.
+              <textarea id="systemPrompt" rows="8" placeholder="Enter system prompt instructions for your AI agent..."></textarea>
+            </div>
 
-Answer in one or two short sentences, then stop.
-Do not recap what the caller just said.
-Do not list options unless asked — offer the single best one.
-Never read case numbers or URLs aloud unless asked.</textarea>
+            <div class="field">
+              <label for="speakFirstSelect">SPEAKER INITIALIZATION / WHO SPEAKS FIRST?</label>
+              <select id="speakFirstSelect" style="width:100%;font-weight:600;font-size:13px;padding:9px 12px;border-radius:6px;background:var(--ground);color:var(--ink);border:1px solid var(--line)">
+                <option value="ai">🤖 AI Speaks First (Agent initiates with First Message)</option>
+                <option value="user">👤 User Speaks First (AI waits silently for caller)</option>
+              </select>
             </div>
 
             <div class="actions">
@@ -250,18 +410,27 @@ Never read case numbers or URLs aloud unless asked.</textarea>
           <!-- Voice Card -->
           <div class="card" style="margin-bottom:18px">
             <div class="card-h">
-              <h2>Voice</h2>
+              <h2>Voice &amp; Persona</h2>
+              <button class="btn btn-outline" id="btnOpenVoiceModal" style="padding:4px 10px;font-size:12px">
+                🎙️ Change Voice…
+              </button>
             </div>
             <div class="card-b">
-              <div class="field">
-                <label for="voiceSelect">MODEL &amp; VOICE</label>
-                <select id="voiceSelect">
-                  <option value="sonic-vale" selected>Sonic · Vale &mdash; brisk, neutral</option>
-                  <option value="sonic-aura">Sonic · Aura &mdash; warm, empathetic</option>
-                  <option value="deepgram-aura-angus">Deepgram · Angus &mdash; deep, authoritative</option>
-                  <option value="deepgram-aura-luna">Deepgram · Luna &mdash; friendly, bright</option>
-                </select>
+              <!-- Selected Voice Preview Hero Card -->
+              <div id="selectedVoiceCard" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--accent-soft);border:1.5px solid var(--accent-border);border-radius:8px;margin-bottom:14px;cursor:pointer" title="Click to browse and change voice">
+                <div id="selVoiceAvatar" class="vc-avatar" style="background:var(--accent);width:42px;height:42px;font-size:16px">A</div>
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    <strong id="selVoiceName" style="font-size:14.5px;color:var(--ink)">Aurora</strong>
+                    <span id="selVoiceProvider" class="pill-on" style="font-size:10.5px;padding:2px 7px">Cartesia Sonic</span>
+                  </div>
+                  <div id="selVoiceStyle" style="font-size:12px;color:var(--ink-soft);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Warm, measured · Female</div>
+                </div>
+                <span style="font-size:11.5px;color:var(--accent);font-weight:600;white-space:nowrap">Browse 25 Voices →</span>
               </div>
+
+              <!-- Hidden select for form backwards compatibility -->
+              <select id="voiceSelect" style="display:none"></select>
 
               <div class="kv-row">
                 <span class="k">First-audio latency</span>
@@ -274,46 +443,321 @@ Never read case numbers or URLs aloud unless asked.</textarea>
               </div>
 
               <button class="btn btn-outline" id="btnPreviewVoice" style="width:100%;margin-top:10px">
-                Preview voice
+                🔊 Play Voice Sample
               </button>
             </div>
           </div>
 
           <!-- Tools Card -->
           <div class="card">
-            <div class="card-h">
-              <h2>Tools</h2>
-              <span class="meta" id="toolCount">3 enabled</span>
+            <div class="card-h" style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <h2>Function Tools</h2>
+                <span class="meta" id="toolCount">Loading tools…</span>
+              </div>
+              <button class="btn ghost sm" id="btnOpenAddCustomToolModal" style="font-size:12px;padding:4px 10px">
+                ➕ Custom Tool
+              </button>
             </div>
             <div class="card-b" id="toolList">
-              <div class="tool-item">
-                <div class="tool-info">
-                  <b>Search knowledge base</b>
-                  <code>POST /api/voice-search</code>
-                </div>
-                <span class="pill-on">on</span>
-              </div>
-
-              <div class="tool-item">
-                <div class="tool-info">
-                  <b>Book consultation</b>
-                  <code>POST /api/booking</code>
-                </div>
-                <span class="pill-on">on</span>
-              </div>
-
-              <div class="tool-item">
-                <div class="tool-info">
-                  <b>Transfer to human</b>
-                  <code>built-in</code>
-                </div>
-                <span class="pill-on">on</span>
+              <div style="text-align:center;padding:16px;color:var(--ink-faint);font-size:13px">
+                Loading available tools…
               </div>
             </div>
           </div>
         </div>
       </div>
     </main>
+  </div>
+</div>
+
+<!-- Voice Selection Modal -->
+<div class="modal-overlay" id="modalVoicePicker">
+  <div class="modal-card">
+    <div class="modal-h">
+      <h3><span>🎙️</span> Choose AI Voice &amp; Provider</h3>
+      <button class="btn ghost sm" id="btnCloseVoiceModal">✕</button>
+    </div>
+    <div class="modal-b">
+      <!-- Search & Filters -->
+      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <input type="text" id="voiceSearchInput" placeholder="🔍 Search voice name, accent (e.g. British, Spanish, warm, calm)..." style="flex:1;min-width:200px">
+        <select id="voiceGenderFilter" style="width:140px">
+          <option value="all">All Genders</option>
+          <option value="female">♀ Female Only</option>
+          <option value="male">♂ Male Only</option>
+        </select>
+      </div>
+
+      <!-- Expressive Human Emotion & Tone Studio Lab -->
+      <div style="background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(139,92,246,0.04) 100%);border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:16px">🎭</span>
+            <b style="font-size:13.5px;color:var(--ink)">Human Emotion &amp; Dynamic Tone Studio</b>
+            <span style="font-size:10.5px;padding:2px 7px;border-radius:10px;background:rgba(99,102,241,0.12);color:#4F46E5;font-weight:600">Neural Studio Synthesis</span>
+          </div>
+          <span style="font-size:11.5px;color:var(--ink-faint)">Generate realistic human intonation in 8 distinct emotion styles</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11.5px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">1. Select Human Emotion / Tone Style:</label>
+            <select id="toneStyleSelect" style="width:100%;font-size:12.5px;padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg)">
+              <option value="customerservice">🤝 Customer Service (Warm, Helpful &amp; Attentive)</option>
+              <option value="empathetic">💖 Empathetic &amp; Caring (Healthcare &amp; Urgent Support)</option>
+              <option value="cheerful">😊 Cheerful &amp; Upbeat (Welcoming &amp; Friendly)</option>
+              <option value="excited">🚀 High-Energy Sales (Enthusiastic &amp; Dynamic)</option>
+              <option value="friendly">🌟 Everyday Conversational (Natural &amp; Relaxed)</option>
+              <option value="hopeful">🌈 Hopeful &amp; Reassuring (Calming &amp; Uplifting)</option>
+              <option value="newscast">📰 Professional Broadcaster (Crisp Executive News)</option>
+              <option value="whisper">🤫 Soft Whisper (Gentle &amp; Confidential)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11.5px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">2. Select Voice Persona / Accent:</label>
+            <select id="toneVoiceSelect" style="width:100%;font-size:12.5px;padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg)">
+              <option value="studio-calvin">✨ Camille (Studio Pro · Calm Concierge Female)</option>
+              <option value="studio-kaitlyn">✨ Kaitlyn (Studio Pro · Upbeat Support Female)</option>
+              <option value="studio-maya">✨ Maya (Studio Pro · Executive Assistant Female)</option>
+              <option value="studio-nathan">✨ Nathan (Studio Pro · Deep Strategic Advisor Male)</option>
+              <option value="studio-luna">✨ Luna (Studio Pro · Empathetic Receptionist Female)</option>
+              <option value="studio-winona">✨ Winona (Studio Pro · Polished British RP Female)</option>
+              <option value="studio-amber">✨ Amber (Studio Pro · British Concierge Female)</option>
+              <option value="studio-cassidy">✨ Cassidy (Studio Pro · Vibrant Sales Female)</option>
+              <option value="studio-alana">✨ Alana (Studio Pro · Bilingual Customer Care Female)</option>
+              <option value="neural-aria">🇺🇸 Aria (Expressive Female · US)</option>
+              <option value="neural-jenny">🇺🇸 Jenny (Warm &amp; Friendly Female · US)</option>
+              <option value="neural-guy">🇺🇸 Guy (Calm Executive Male · US)</option>
+              <option value="neural-christopher">🇺🇸 Christopher (Deep Storyteller Male · US)</option>
+              <option value="neural-sonia">🇬🇧 Sonia (Polished British RP Female · UK)</option>
+              <option value="neural-ryan">🇬🇧 Ryan (Broadcaster Male · UK)</option>
+              <option value="neural-natasha">🇦🇺 Natasha (Upbeat Female · Australia)</option>
+              <option value="neural-neerja">🇮🇳 Neerja (Expressive Female · Indian English)</option>
+              <option value="neural-prabhat">🇮🇳 Prabhat (Advisor Male · Indian English)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="toneCustomTextInput" placeholder="Type custom human script to synthesize..." value="Hello! Thank you for calling our clinic. How can I assist you with your appointment today?" style="flex:1;font-size:12.5px;padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg)">
+          <button class="btn btn-primary sm" id="btnPlayCustomTone" style="white-space:nowrap;padding:7px 14px">
+            ▶ Synthesize &amp; Listen
+          </button>
+        </div>
+      </div>
+
+      <!-- Provider Tabs -->
+      <div class="provider-tabs" id="providerTabs">
+        <button class="ptab active" data-prov="all">All Voices</button>
+        <button class="ptab" data-prov="studio">✨ Retell AI & Studio Pro (18 Voices)</button>
+        <button class="ptab" data-prov="neural">⚡ Free Neural HD</button>
+        <button class="ptab" data-prov="elevenlabs">✨ ElevenLabs Turbo</button>
+        <button class="ptab" data-prov="cartesia">⚡ Cartesia Sonic (Sub-100ms)</button>
+        <button class="ptab" data-prov="deepgram">🔊 Deepgram Aura</button>
+        <button class="ptab" data-prov="openai">🤖 OpenAI TTS</button>
+      </div>
+
+      <!-- Voice Cards Grid -->
+      <div class="voice-grid" id="voiceCardsGrid"></div>
+    </div>
+    <div class="modal-f">
+      <div style="font-size:12.5px;color:var(--ink-soft)" id="modalSelectedSummary">
+        Selected: <b id="modalSelVoiceText" style="color:var(--ink)">Aurora (Cartesia)</b>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn ghost" id="btnCancelVoiceModal">Cancel</button>
+        <button class="btn btn-primary" id="btnConfirmVoiceModal">Apply Selected Voice</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tool Details & Test Runner Modal -->
+<div class="modal-overlay" id="modalToolConfig">
+  <div class="modal-card" style="max-width:680px">
+    <div class="modal-h">
+      <h3><span id="modalToolIcon">⚙️</span> <span id="modalToolTitle">Tool Details &amp; Sandbox</span></h3>
+      <button class="btn ghost sm" id="btnCloseToolConfigModal">✕</button>
+    </div>
+    <div class="modal-b">
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <b id="modalToolName" style="font-size:15px;color:var(--ink)">check_availability</b>
+            <code id="modalToolCode" style="font-family:var(--f-mono);font-size:11.5px;color:var(--accent);background:var(--accent-soft);padding:2px 6px;border-radius:4px">function</code>
+          </div>
+          <span id="modalToolStatusPill" class="pill-toggle pill-on">ACTIVE</span>
+        </div>
+        <p id="modalToolDesc" style="margin:0;font-size:13px;color:var(--ink-soft);line-height:1.45"></p>
+        <div style="display:flex;gap:18px;margin-top:12px;font-size:12px;color:var(--ink-faint);flex-wrap:wrap">
+          <span>⏱ Timeout: <b id="modalToolTimeout" style="color:var(--ink)">2.5s</b></span>
+          <span id="modalToolFillerCount">💬 3 Filler phrases</span>
+        </div>
+      </div>
+
+      <!-- JSON Schema Parameters -->
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <label style="font-size:12px;font-weight:700;color:var(--ink-soft)">JSON Schema Parameters</label>
+          <span style="font-size:11px;color:var(--ink-faint);font-family:var(--f-mono)">OpenAI / LiveKit schema</span>
+        </div>
+        <pre id="modalToolParamsSchema" style="background:var(--sunk);border:1px solid var(--line);padding:10px 12px;border-radius:6px;font-family:var(--f-mono);font-size:11.5px;color:var(--ink);max-height:150px;overflow-y:auto;margin:0"></pre>
+      </div>
+
+      <!-- Test Execution Sandbox -->
+      <div style="background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <label style="font-size:12.5px;font-weight:700;color:var(--ink)">🧪 Sandbox Dry-Run (Live Execution Test)</label>
+          <button class="btn btn-outline sm" id="btnRunToolTest" style="font-size:12px;padding:4px 10px">▶ Run Tool</button>
+        </div>
+        <div style="margin-bottom:8px">
+          <div style="font-size:11px;color:var(--ink-faint);margin-bottom:4px">Test Input Arguments (JSON):</div>
+          <textarea id="modalToolTestArgs" style="width:100%;height:58px;font-family:var(--f-mono);font-size:12px;padding:6px 8px" placeholder="{}"></textarea>
+        </div>
+        <div id="toolTestResultBox" style="display:none;background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;margin-bottom:4px">
+            <span id="toolTestStatus" style="font-weight:700;color:var(--pos)">✅ SUCCESS</span>
+            <span id="toolTestDuration" style="color:var(--ink-faint);font-family:var(--f-mono)"></span>
+          </div>
+          <pre id="toolTestOutput" style="margin:0;font-family:var(--f-mono);font-size:11.5px;max-height:130px;overflow-y:auto;color:var(--ink)"></pre>
+        </div>
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" id="btnToggleModalTool">Toggle Tool Enabled</button>
+      <button class="btn btn-primary" id="btnCloseToolConfig">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Custom Webhook Tool Modal -->
+<div class="modal-overlay" id="modalAddCustomTool">
+  <div class="modal-card" style="max-width:620px">
+    <div class="modal-h">
+      <h3><span>➕</span> Register Custom Function Tool</h3>
+      <button class="btn ghost sm" id="btnCloseAddCustomToolModal">✕</button>
+    </div>
+    <div class="modal-b">
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:700;color:var(--ink);display:block;margin-bottom:4px">
+          Tool Name (identifier) *
+        </label>
+        <input type="text" id="newToolName" placeholder="e.g. check_order_status or send_sms" style="width:100%">
+      </div>
+
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:700;color:var(--ink);display:block;margin-bottom:4px">
+          Description (LLM Function Calling Instruction) *
+        </label>
+        <textarea id="newToolDesc" placeholder="Explain clearly what this tool does and when the LLM should invoke it..." style="width:100%;height:65px"></textarea>
+      </div>
+
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:12px">
+        <div>
+          <label style="font-size:12px;font-weight:700;color:var(--ink);display:block;margin-bottom:4px">
+            Webhook Endpoint URL
+          </label>
+          <input type="text" id="newToolEndpoint" placeholder="https://api.yourdomain.com/v1/webhook" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:700;color:var(--ink);display:block;margin-bottom:4px">
+            Method
+          </label>
+          <select id="newToolMethod" style="width:100%">
+            <option value="POST">POST (JSON)</option>
+            <option value="GET">GET (Query)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div>
+          <label style="font-size:12px;font-weight:700;color:var(--ink);display:block;margin-bottom:4px">
+            Timeout (seconds)
+          </label>
+          <input type="number" id="newToolTimeout" value="3.0" step="0.5" min="0.5" max="10" style="width:100%">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:700;color:var(--ink);display:block;margin-bottom:4px">
+            Filler Speech Phrase
+          </label>
+          <input type="text" id="newToolFiller" placeholder="Connecting to service, one moment..." style="width:100%">
+        </div>
+      </div>
+
+      <div style="margin-bottom:8px">
+        <label style="font-size:12px;font-weight:700;color:var(--ink-soft);display:block;margin-bottom:4px">
+          Parameters JSON Schema (Optional)
+        </label>
+        <textarea id="newToolParams" style="width:100%;height:70px;font-family:var(--f-mono);font-size:11.5px" placeholder='{"type": "object", "properties": {"query": {"type": "string"}}}'></textarea>
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" id="btnCancelAddCustomTool">Cancel</button>
+      <button class="btn btn-primary" id="btnSaveCustomTool">Register &amp; Enable Tool</button>
+    </div>
+  </div>
+</div>
+
+<!-- Retell-Style In-Page Live Test Call Modal -->
+<div class="modal-overlay" id="modalTestCall">
+  <div class="modal-card test-call-card">
+    <!-- Call Header -->
+    <div class="test-call-header">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="test-call-status-badge">
+          <span class="dot"></span>
+          <span id="testCallStatusText">CONNECTED</span>
+          <span style="opacity:0.6;margin:0 2px">·</span>
+          <span id="testCallTimer">00:00</span>
+        </div>
+        <div style="font-size:12.5px;font-weight:600;color:var(--ink)" id="testCallAgentName">Intake Agent</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="orb-voice-pill" id="testCallVoiceBadge" style="background:var(--sunk);border:1px solid var(--line);padding:3px 8px;border-radius:12px">🎙️ Camille (Studio Pro)</span>
+        <button class="test-hangup-btn" id="btnEndTestCall">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/></svg>
+          Hang Up
+        </button>
+      </div>
+    </div>
+
+    <!-- Orb Visualizer Stage -->
+    <div class="orb-stage">
+      <div class="retell-orb speaking" id="testCallOrb">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+      </div>
+      <div class="orb-state-text" id="testCallOrbState">
+        <span class="eq-wave" id="testCallOrbEq" style="display:inline-flex"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span>
+        <span id="testCallStateLabel">Speaking introduction…</span>
+      </div>
+    </div>
+
+    <!-- Live Transcript Chat Log -->
+    <div class="test-call-transcript" id="testCallTranscript">
+      <!-- Bubbles populated dynamically -->
+    </div>
+
+    <!-- Quick Prompts Pill Bar -->
+    <div class="quick-prompts-bar" id="testCallQuickPrompts">
+      <span class="quick-chip" data-text="Hello, what services do you provide?">💡 "What services do you provide?"</span>
+      <span class="quick-chip" data-text="Can you check doctor availability for tomorrow morning?">📅 "Check availability tomorrow"</span>
+      <span class="quick-chip" data-text="I'd like to book an appointment with Dr. Smith.">🩺 "Book an appointment"</span>
+      <span class="quick-chip" data-text="What are your office hours and address?">🕒 "Office hours & address"</span>
+    </div>
+
+    <!-- Interactive Bottom Controls -->
+    <div class="test-call-controls">
+      <button class="test-mic-btn" id="btnTestCallMic" title="Toggle Live Microphone Speech Input">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+      </button>
+      <input type="text" class="test-chat-input" id="testCallInput" placeholder="Speak into mic or type a message to your agent…">
+      <button class="test-send-btn" id="btnTestCallSend">
+        <span>Send</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -331,92 +775,1529 @@ Never read case numbers or URLs aloud unless asked.</textarea>
     setTimeout(function () { toast.classList.remove("show"); }, 3000);
   }
 
-  // Voice catalogue metrics lookup
-  var VOICE_METRICS = {
-    "sonic-vale": { latency: "88 ms", cost: "$0.075 / 1k chars" },
-    "sonic-aura": { latency: "92 ms", cost: "$0.075 / 1k chars" },
-    "deepgram-aura-angus": { latency: "140 ms", cost: "$0.015 / 1k chars" },
-    "deepgram-aura-luna": { latency: "135 ms", cost: "$0.015 / 1k chars" }
+  // ── Voice Picker Modal & Catalogue Logic ──────────────────────────────────
+  var allVoicesList = [];
+  var voiceMap = {};
+  var activeFilterProvider = "all";
+  var pendingSelectedVoiceId = null;
+
+  var PROVIDER_COLORS = {
+    studio: "#4F46E5",
+    neural: "#2F7A4F",
+    cartesia: "#C2560F",
+    deepgram: "#13B58C",
+    openai: "#10A37F",
+    elevenlabs: "#6366F1"
   };
 
-  $("#voiceSelect").addEventListener("change", function () {
-    var m = VOICE_METRICS[this.value] || { latency: "88 ms", cost: "$0.075 / 1k chars" };
-    $("#statLatency").textContent = m.latency;
-    $("#statCost").textContent = m.cost;
+  var PROVIDER_NAMES = {
+    studio: "Retell AI & Studio Pro",
+    retell: "Retell AI",
+    neural: "Neural HD",
+    cartesia: "Cartesia Sonic",
+    deepgram: "Deepgram Aura",
+    openai: "OpenAI TTS",
+    elevenlabs: "ElevenLabs Turbo"
+  };
+
+  var currentAudio = null;
+  var currentPlayingVoiceId = null;
+
+  function stopVoiceAudio() {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      currentAudio = null;
+    }
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    currentPlayingVoiceId = null;
+    updatePlayingVisuals();
+  }
+
+  function updatePlayingVisuals() {
+    var allPreviewBtns = document.querySelectorAll(".vc-btn-preview");
+    allPreviewBtns.forEach(function (btn) {
+      var card = btn.closest(".voice-card");
+      var vid = card ? card.dataset.id : null;
+      if (vid && vid === currentPlayingVoiceId) {
+        btn.classList.add("playing");
+        btn.innerHTML = '<span class="eq-wave"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span> ⏹ Stop';
+      } else {
+        btn.classList.remove("playing");
+        btn.innerHTML = '▶ Play Sample';
+      }
+    });
+
+    var mainPreviewBtn = $("#btnPreviewVoice");
+    if (mainPreviewBtn) {
+      var activeVoiceId = $("#voiceSelect") ? $("#voiceSelect").value : null;
+      if (currentPlayingVoiceId && currentPlayingVoiceId === activeVoiceId) {
+        mainPreviewBtn.classList.add("playing");
+        mainPreviewBtn.innerHTML = '<span class="eq-wave"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span> ⏹ Stop Voice Sample';
+      } else {
+        mainPreviewBtn.classList.remove("playing");
+        mainPreviewBtn.innerHTML = '🔊 Play Voice Sample';
+      }
+    }
+  }
+
+  function playVoiceAudio(voiceId, customText, customStyle) {
+    if (!voiceId) return;
+
+    if (currentPlayingVoiceId === voiceId && !customText && !customStyle) {
+      stopVoiceAudio();
+      return;
+    }
+
+    stopVoiceAudio();
+    currentPlayingVoiceId = voiceId;
+    updatePlayingVisuals();
+
+    var v = voiceMap[voiceId];
+    var vName = v ? v.name : voiceId;
+    var pName = v ? (PROVIDER_NAMES[v.provider] || v.provider) : "";
+
+    showToast("▶ Synthesizing Voice: " + vName + " (" + pName + ")");
+
+    var audioUrl = "/api/agents/voice-audio?voice_id=" + encodeURIComponent(voiceId);
+    if (customText) {
+      audioUrl += "&text=" + encodeURIComponent(customText);
+    }
+    if (customStyle) {
+      audioUrl += "&style=" + encodeURIComponent(customStyle);
+    }
+    audioUrl += "&t=" + Date.now();
+
+    var audio = new Audio(audioUrl);
+    currentAudio = audio;
+
+    audio.onended = function () {
+      if (currentPlayingVoiceId === voiceId) {
+        stopVoiceAudio();
+      }
+    };
+
+    audio.onerror = function () {
+      console.warn("Audio stream error, falling back to Web Speech synthesis");
+      if (v) {
+        fallbackWebSpeech(v.name, v.gender, v.provider, customStyle || v.style, customText);
+      } else {
+        stopVoiceAudio();
+      }
+    };
+
+    audio.play().catch(function (err) {
+      console.warn("Audio play prevented:", err);
+      if (v) {
+        fallbackWebSpeech(v.name, v.gender, v.provider, customStyle || v.style, customText);
+      } else {
+        stopVoiceAudio();
+      }
+    });
+  }
+
+  function fallbackWebSpeech(name, gender, provider, style, customText) {
+    if (!("speechSynthesis" in window)) {
+      stopVoiceAudio();
+      return;
+    }
+    var cleanMsg = customText ? cleanSpokenSpeechText(customText) : "";
+    var samplePhrase = cleanMsg || ("Hello! I am " + name + ", powered by " + (PROVIDER_NAMES[provider] || provider) + ". How can I help you today?");
+    var utterance = new SpeechSynthesisUtterance(samplePhrase);
+    var voices = window.speechSynthesis.getVoices() || [];
+    var isFemale = (gender === "female");
+    var isMale = (gender === "male");
+    var sLower = (style || "").toLowerCase();
+
+    var matched = voices.find(function (vox) {
+      var vn = vox.name.toLowerCase();
+      if (isFemale && (vn.indexOf("female") !== -1 || vn.indexOf("zira") !== -1 || vn.indexOf("samantha") !== -1 || vn.indexOf("victoria") !== -1 || vn.indexOf("michelle") !== -1)) return true;
+      if (isMale && (vn.indexOf("male") !== -1 || vn.indexOf("david") !== -1 || vn.indexOf("george") !== -1 || vn.indexOf("alex") !== -1 || vn.indexOf("christopher") !== -1)) return true;
+      return false;
+    });
+
+    if (matched) utterance.voice = matched;
+    utterance.pitch = isMale ? (sLower.indexOf("deep") !== -1 ? 0.75 : 0.88) : isFemale ? 1.05 : 1.0;
+    utterance.rate = 1.0;
+
+    utterance.onend = function () { 
+      stopVoiceAudio(); 
+      setOrbState("listening", "Listening to caller…");
+    };
+    utterance.onerror = function () { 
+      stopVoiceAudio(); 
+      setOrbState("listening", "Listening to caller…");
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function updateProviderTabCounts() {
+    var counts = { all: allVoicesList.length, studio: 0, neural: 0, cartesia: 0, deepgram: 0, openai: 0, elevenlabs: 0 };
+    allVoicesList.forEach(function (v) {
+      if (counts[v.provider] !== undefined) {
+        counts[v.provider]++;
+      }
+    });
+
+    var tabs = document.querySelectorAll("#providerTabs .ptab");
+    tabs.forEach(function (tab) {
+      var p = tab.dataset.prov;
+      if (p === "all") {
+        tab.textContent = "All Providers (" + counts.all + ")";
+      } else if (p === "studio") {
+        tab.textContent = "✨ Retell AI & Studio (" + counts.studio + ")";
+      } else if (p === "neural") {
+        tab.textContent = "⚡ Free Neural HD (" + counts.neural + ")";
+      } else if (p === "elevenlabs") {
+        tab.textContent = "✨ ElevenLabs Turbo (" + counts.elevenlabs + ")";
+      } else if (p === "cartesia") {
+        tab.textContent = "⚡ Cartesia Sonic (" + counts.cartesia + ")";
+      } else if (p === "deepgram") {
+        tab.textContent = "🔊 Deepgram Aura (" + counts.deepgram + ")";
+      } else if (p === "openai") {
+        tab.textContent = "🤖 OpenAI TTS (" + counts.openai + ")";
+      }
+    });
+  }
+
+  var allModelsList = [];
+  var modelMap = {};
+
+  function renderModels(models, selectedModel) {
+    if (!models || !models.length) return;
+    allModelsList = models;
+    modelMap = {};
+    models.forEach(function (m) { modelMap[m.model] = m; });
+
+    var select = $("#llmModelSelect");
+    if (!select) return;
+
+    var googleModels = models.filter(function (m) { return (m.provider === "Google" || m.model.startsWith("gemini")); });
+    var openaiModels = models.filter(function (m) { return (m.provider === "OpenAI" || m.model.startsWith("gpt")); });
+    var anthropicModels = models.filter(function (m) { return (m.provider === "Anthropic" || m.model.startsWith("claude")); });
+    var otherModels = models.filter(function (m) {
+      return !googleModels.includes(m) && !openaiModels.includes(m) && !anthropicModels.includes(m);
+    });
+
+    function renderGroup(label, group) {
+      if (!group.length) return "";
+      return '<optgroup label="' + label + '">' + group.map(function (m) {
+        return '<option value="' + m.model + '">' + m.label + '</option>';
+      }).join("") + '</optgroup>';
+    }
+
+    var html = renderGroup("Google Gemini (Recommended — Ultra-low Latency)", googleModels) +
+               renderGroup("OpenAI", openaiModels) +
+               renderGroup("Anthropic", anthropicModels) +
+               renderGroup("Other Models", otherModels);
+
+    select.innerHTML = html;
+    if (selectedModel && modelMap[selectedModel]) {
+      select.value = selectedModel;
+    }
+    updateModelStats();
+  }
+
+  function updateModelStats() {
+    var select = $("#llmModelSelect");
+    if (!select) return;
+    var m = modelMap[select.value] || { ttft_ms: 180, cost_per_1k_tokens: 0.0001, provider: "Google" };
+    var activeVoiceId = $("#voiceSelect") ? $("#voiceSelect").value : null;
+    var v = activeVoiceId && voiceMap[activeVoiceId] ? voiceMap[activeVoiceId] : null;
+
+    var vLat = v ? v.first_audio_ms : 110;
+    var vCost = v ? v.cost_per_1k_chars : 0.000;
+    var llmCost = m.cost_per_1k_tokens || 0.0001;
+    // Estimated turn cost (assuming ~150 prompt/completion tokens + ~120 chars TTS)
+    var estTurn = (150 * (llmCost / 1000)) + (120 * (vCost / 1000));
+
+    if ($("#statModelTTFT")) $("#statModelTTFT").innerHTML = '⚡ TTFT: <b style="color:var(--ink);font-family:var(--f-mono)">' + (m.ttft_ms || 180) + ' ms</b>';
+    if ($("#statModelCost")) $("#statModelCost").innerHTML = '💰 LLM: <b style="color:var(--ink);font-family:var(--f-mono)">$' + llmCost.toFixed(5).replace(/\.?0+$/, "") + ' / 1k tokens</b>';
+    if ($("#statVoiceLatency")) $("#statVoiceLatency").innerHTML = '🎙️ Voice TTFA: <b style="color:var(--ink);font-family:var(--f-mono)">' + vLat + ' ms</b>';
+    if ($("#statVoiceCost")) {
+      var vCostStr = "$" + vCost.toFixed(3) + " / 1k chars";
+      $("#statVoiceCost").innerHTML = '🏷️ Voice: <b style="color:var(--ink);font-family:var(--f-mono)">' + vCostStr + '</b>';
+    }
+    if ($("#statTotalCost")) $("#statTotalCost").innerHTML = '💵 Est. Turn: <b style="color:var(--accent);font-family:var(--f-mono)">$' + estTurn.toFixed(4) + '</b>';
+    if ($("#statModelProvider")) {
+      var p = m.provider || (m.model && m.model.startsWith("gemini") ? "Google" : (m.model && m.model.startsWith("gpt") ? "OpenAI" : "Anthropic"));
+      $("#statModelProvider").textContent = p;
+    }
+  }
+
+  var currentTargetVoiceId = null;
+
+  function loadVoices(selectedVoiceId) {
+    return fetch("/api/agents/voices")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        allVoicesList = data.voices || [];
+        voiceMap = {};
+        allVoicesList.forEach(function (v) { voiceMap[v.voice_id] = v; });
+
+        if (data.models && data.models.length > 0) {
+          var currSelModel = $("#llmModelSelect") ? $("#llmModelSelect").value : "gemini-2.0-flash";
+          renderModels(data.models, currSelModel);
+        }
+
+        updateProviderTabCounts();
+
+        // Update hidden select for legacy/form support
+        var html = allVoicesList.map(function (v) {
+          return '<option value="' + v.voice_id + '">' + v.name + ' (' + (PROVIDER_NAMES[v.provider] || v.provider) + ')</option>';
+        }).join("");
+        $("#voiceSelect").innerHTML = html;
+
+        if ($("#toneVoiceSelect")) {
+          $("#toneVoiceSelect").innerHTML = html;
+        }
+
+        var voiceToApply = selectedVoiceId || currentTargetVoiceId || pendingSelectedVoiceId;
+        if (voiceToApply && voiceMap[voiceToApply]) {
+          setChosenVoice(voiceToApply);
+        } else if (allVoicesList.length > 0 && !currentTargetVoiceId) {
+          setChosenVoice(allVoicesList[0].voice_id);
+        }
+      })
+      .catch(function (err) {
+        console.error("Error loading voices:", err);
+      });
+  }
+
+  function setChosenVoice(vId) {
+    if (!vId) return;
+    currentTargetVoiceId = vId;
+    var v = voiceMap[vId];
+    if (!v) { 
+      // voiceMap not loaded yet; will apply automatically when loadVoices resolves
+      return; 
+    }
+    $("#voiceSelect").value = vId;
+    pendingSelectedVoiceId = vId;
+
+    if ($("#toneVoiceSelect")) {
+      $("#toneVoiceSelect").value = vId;
+    }
+
+    $("#selVoiceName").textContent = v.name;
+    $("#selVoiceAvatar").textContent = v.name.charAt(0).toUpperCase();
+    $("#selVoiceAvatar").style.background = PROVIDER_COLORS[v.provider] || "var(--accent)";
+    $("#selVoiceProvider").textContent = PROVIDER_NAMES[v.provider] || v.provider;
+    var gText = (v.gender === "female") ? "Female" : (v.gender === "male") ? "Male" : "Neutral";
+    $("#selVoiceStyle").textContent = v.style + " · " + gText;
+    if ($("#statLatency")) $("#statLatency").textContent = v.first_audio_ms + " ms";
+    if ($("#statCost")) $("#statCost").textContent = "$" + v.cost_per_1k_chars.toFixed(3) + " / 1k chars";
+
+    if ($("#modalSelVoiceText")) $("#modalSelVoiceText").textContent = v.name + " (" + (PROVIDER_NAMES[v.provider] || v.provider) + ")";
+    if ($("#testCallVoiceBadge")) $("#testCallVoiceBadge").textContent = "🎙️ " + v.name + " (" + (PROVIDER_NAMES[v.provider] || v.provider) + ")";
+    updatePlayingVisuals();
+    updateModelStats();
+  }
+
+  function renderVoiceGrid() {
+    var q = ($("#voiceSearchInput").value || "").trim().toLowerCase();
+    var g = $("#voiceGenderFilter").value;
+    var filtered = allVoicesList.filter(function (v) {
+      if (activeFilterProvider !== "all" && v.provider !== activeFilterProvider) { return false; }
+      if (g !== "all" && v.gender !== g) { return false; }
+      if (q) {
+        var str = (v.name + " " + v.style + " " + v.provider + " " + (v.gender || "")).toLowerCase();
+        if (str.indexOf(q) === -1) { return false; }
+      }
+      return true;
+    });
+
+    var grid = $("#voiceCardsGrid");
+    if (!filtered.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--ink-faint)">No voices match your search or filter criteria.</div>';
+      return;
+    }
+
+    grid.innerHTML = filtered.map(function (v) {
+      var isSel = (v.voice_id === pendingSelectedVoiceId);
+      var isPlaying = (v.voice_id === currentPlayingVoiceId);
+      var col = PROVIDER_COLORS[v.provider] || "var(--accent)";
+      var gIcon = (v.gender === "female") ? "♀ Female" : (v.gender === "male") ? "♂ Male" : "⚥ Unisex";
+
+      return '<div class="voice-card' + (isSel ? ' selected' : '') + '" data-id="' + v.voice_id + '">' +
+        '<div>' +
+          '<div class="vc-top">' +
+            '<div class="vc-avatar" style="background:' + col + '">' + v.name.charAt(0) + '</div>' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center">' +
+                '<span class="vc-name">' + v.name + '</span>' +
+                '<span class="vc-gender">' + gIcon + '</span>' +
+              '</div>' +
+              '<span style="font-size:10.5px;color:var(--ink-faint);text-transform:uppercase;font-family:var(--f-mono)">' + (PROVIDER_NAMES[v.provider] || v.provider) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="vc-style">' + v.style + '</div>' +
+        '</div>' +
+        '<div>' +
+          '<div class="vc-meta">' +
+            '<span class="vc-chip latency">⚡ ' + v.first_audio_ms + 'ms TTFA</span>' +
+            '<span class="vc-chip" style="background:var(--accent-soft);color:var(--accent);font-weight:600">' + (v.cost_per_1k_chars === 0 ? '✨ 100% Free' : '⚡ Studio Audio') + '</span>' +
+          '</div>' +
+          '<div class="vc-actions">' +
+            '<button class="vc-btn-preview' + (isPlaying ? ' playing' : '') + '" data-id="' + v.voice_id + '" title="Listen to voice acoustic sample">' +
+              (isPlaying ? '<span class="eq-wave"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span> ⏹ Stop' : '▶ Play Sample') +
+            '</button>' +
+            '<button class="vc-btn-select" data-id="' + v.voice_id + '">' + (isSel ? '✓ Selected' : 'Select') + '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+
+    // Bind card click & select button
+    Array.prototype.forEach.call(grid.querySelectorAll(".voice-card"), function (card) {
+      card.addEventListener("click", function (e) {
+        if (e.target.closest(".vc-btn-preview")) { return; }
+        var vid = card.dataset.id;
+        pendingSelectedVoiceId = vid;
+        var v = voiceMap[vid];
+        if (v) {
+          $("#modalSelVoiceText").textContent = v.name + " (" + (PROVIDER_NAMES[v.provider] || v.provider) + ")";
+        }
+        if (e.target.closest(".vc-btn-select")) {
+          setChosenVoice(vid);
+          showToast("🎙️ Voice changed to " + (v ? v.name : vid));
+          saveCurrentAgentForm(true);
+          closeVoiceModal();
+          return;
+        }
+        renderVoiceGrid();
+      });
+    });
+
+    // Bind preview audio buttons inside cards
+    Array.prototype.forEach.call(grid.querySelectorAll(".vc-btn-preview"), function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var card = btn.closest(".voice-card");
+        var vid = card ? card.dataset.id : btn.dataset.id;
+        playVoiceAudio(vid);
+      });
+    });
+  }
+
+  // Open / Close modal
+  function openVoiceModal() {
+    pendingSelectedVoiceId = $("#voiceSelect").value;
+    $("#voiceSearchInput").value = "";
+    $("#voiceGenderFilter").value = "all";
+    activeFilterProvider = "all";
+    Array.prototype.forEach.call(document.querySelectorAll("#providerTabs .ptab"), function (t) {
+      t.classList.toggle("active", t.dataset.prov === "all");
+    });
+    updateProviderTabCounts();
+    renderVoiceGrid();
+    $("#modalVoicePicker").classList.add("open");
+  }
+
+  function closeVoiceModal() {
+    stopVoiceAudio();
+    $("#modalVoicePicker").classList.remove("open");
+  }
+
+  $("#btnOpenVoiceModal").addEventListener("click", openVoiceModal);
+  $("#selectedVoiceCard").addEventListener("click", openVoiceModal);
+  $("#btnCloseVoiceModal").addEventListener("click", closeVoiceModal);
+  $("#btnCancelVoiceModal").addEventListener("click", closeVoiceModal);
+
+  $("#btnConfirmVoiceModal").addEventListener("click", function () {
+    if (pendingSelectedVoiceId) {
+      setChosenVoice(pendingSelectedVoiceId);
+      var v = voiceMap[pendingSelectedVoiceId];
+      showToast("🎙️ Voice set to " + (v ? v.name : pendingSelectedVoiceId));
+      saveCurrentAgentForm(true);
+    }
+    closeVoiceModal();
   });
 
+  // Provider Tab switching
+  $("#providerTabs").addEventListener("click", function (e) {
+    var tab = e.target.closest(".ptab");
+    if (!tab) { return; }
+    Array.prototype.forEach.call(document.querySelectorAll("#providerTabs .ptab"), function (t) {
+      t.classList.remove("active");
+    });
+    tab.classList.add("active");
+    activeFilterProvider = tab.dataset.prov;
+    renderVoiceGrid();
+  });
+
+  $("#voiceSearchInput").addEventListener("input", renderVoiceGrid);
+  $("#voiceGenderFilter").addEventListener("change", renderVoiceGrid);
+
+  $("#btnPreviewVoice").addEventListener("click", function () {
+    var vid = $("#voiceSelect").value;
+    playVoiceAudio(vid);
+  });
+
+  // Human Emotion & Tone Studio custom playback
+  if ($("#btnPlayCustomTone")) {
+    $("#btnPlayCustomTone").addEventListener("click", function () {
+      var voiceId = $("#toneVoiceSelect") ? $("#toneVoiceSelect").value : "neural-aria";
+      var style = $("#toneStyleSelect") ? $("#toneStyleSelect").value : "customerservice";
+      var text = $("#toneCustomTextInput") ? $("#toneCustomTextInput").value.trim() : "";
+      if (!text) {
+        text = "Hello! Thank you for calling. How can I assist you today?";
+      }
+      playVoiceAudio(voiceId, text, style);
+    });
+  }
+
+  // ── Function Tools Management & Execution Logic ───────────────────────────
+  var allTools = [];
+  var activeTools = new Set(["check_availability", "book_appointment", "transfer_call"]);
+  var toolDetailsMap = {};
+  var currentInspectingTool = null;
+
+  var TOOL_ICONS = {
+    check_availability: "📅",
+    book_appointment: "📝",
+    lookup_order: "📦",
+    query_knowledge_base: "📚",
+    execute_webhook: "🌐",
+    transfer_call: "🔄"
+  };
+
+  var TOOL_FRIENDLY_NAMES = {
+    check_availability: "Calendar Slot Lookup",
+    book_appointment: "Appointment Booking Engine",
+    lookup_order: "Order Tracking & Status",
+    query_knowledge_base: "Policy & FAQ Retrieval",
+    execute_webhook: "HTTP Webhook Dispatcher",
+    transfer_call: "Operator Call Transfer"
+  };
+
+  var SAMPLE_TOOL_ARGS = {
+    check_availability: { "service_type": "consultation", "date": "tomorrow" },
+    book_appointment: { "name": "Sarah Miller", "phone": "+15552345678", "date": "2026-09-15", "time_slot": "11:00 AM", "service": "consultation" },
+    lookup_order: { "order_id": "ORD-1042" },
+    query_knowledge_base: { "query": "What are your business hours and pricing?" },
+    execute_webhook: { "endpoint_url": "https://httpbin.org/post", "method": "POST", "payload": { "event": "call_verified" } },
+    transfer_call: { "destination": "+18005550199", "transfer_type": "warm", "department": "billing", "reason": "Invoice assistance" }
+  };
+
+  function updateToolCount() {
+    var countEl = $("#toolCount");
+    if (!countEl) { return; }
+    var total = allTools.length;
+    var activeCount = 0;
+    allTools.forEach(function (t) {
+      if (activeTools.has(t.name)) { activeCount++; }
+    });
+    countEl.textContent = activeCount + " of " + total + " enabled";
+  }
+
+  function renderTools() {
+    var container = $("#toolList");
+    if (!container) { return; }
+
+    if (!allTools.length) {
+      container.innerHTML = '<div style="text-align:center;padding:16px;color:var(--ink-faint);font-size:13px">No tools available in registry.</div>';
+      updateToolCount();
+      return;
+    }
+
+    container.innerHTML = allTools.map(function (t) {
+      var isEnabled = activeTools.has(t.name);
+      var icon = TOOL_ICONS[t.name] || "⚡";
+      var friendlyName = TOOL_FRIENDLY_NAMES[t.name] || t.name.replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+
+      return '<div class="tool-item' + (isEnabled ? ' active' : '') + '" id="tool-row-' + t.name + '" data-tool="' + t.name + '">' +
+        '<div class="tool-info">' +
+          '<div class="tool-info-h">' +
+            '<span>' + icon + '</span>' +
+            '<b>' + friendlyName + '</b>' +
+            '<code>' + t.name + '</code>' +
+          '</div>' +
+          '<div class="tool-desc">' + (t.description || "Callable function tool for dialogue manager.") + '</div>' +
+        '</div>' +
+        '<div class="tool-actions">' +
+          '<button class="btn ghost sm btn-tool-inspect" data-tool="' + t.name + '" title="View tool details & test live execution" style="font-size:11.5px;padding:3px 8px">⚙️ Config</button>' +
+          '<span class="pill-toggle ' + (isEnabled ? 'pill-on' : 'pill-off') + '" data-tool="' + t.name + '" title="Click to toggle tool on/off">' + (isEnabled ? 'on' : 'off') + '</span>' +
+          '<label class="switch" title="Toggle ' + t.name + '">' +
+            '<input type="checkbox" class="tool-toggle" data-tool="' + t.name + '"' + (isEnabled ? ' checked' : '') + '>' +
+            '<span class="slider"></span>' +
+          '</label>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+
+    updateToolCount();
+
+    // Bind event listeners for tool rows
+    Array.prototype.forEach.call(container.querySelectorAll(".tool-toggle"), function (chk) {
+      chk.addEventListener("change", function (e) {
+        e.stopPropagation();
+        var toolName = chk.dataset.tool;
+        setToolState(toolName, chk.checked);
+      });
+    });
+
+    Array.prototype.forEach.call(container.querySelectorAll(".pill-toggle"), function (pill) {
+      pill.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var toolName = pill.dataset.tool;
+        var newState = !activeTools.has(toolName);
+        setToolState(toolName, newState);
+      });
+    });
+
+    Array.prototype.forEach.call(container.querySelectorAll(".btn-tool-inspect"), function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var toolName = btn.dataset.tool;
+        openToolConfigModal(toolName);
+      });
+    });
+  }
+
+  function setToolState(toolName, isEnabled) {
+    if (isEnabled) {
+      activeTools.add(toolName);
+    } else {
+      activeTools.delete(toolName);
+    }
+
+    var row = $("#tool-row-" + toolName);
+    if (row) {
+      row.classList.toggle("active", isEnabled);
+      var pill = row.querySelector(".pill-toggle");
+      if (pill) {
+        pill.className = "pill-toggle " + (isEnabled ? "pill-on" : "pill-off");
+        pill.textContent = isEnabled ? "on" : "off";
+      }
+      var chk = row.querySelector(".tool-toggle");
+      if (chk) {
+        chk.checked = isEnabled;
+      }
+    }
+
+    updateToolCount();
+
+    if (currentInspectingTool && currentInspectingTool.name === toolName) {
+      updateModalToolState();
+    }
+
+    showToast((isEnabled ? "✅ Enabled" : "⭕ Disabled") + " tool: " + toolName);
+  }
+
+  function loadTools() {
+    return fetch("/api/agents/tools")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        allTools = data.tools || [];
+        toolDetailsMap = {};
+        allTools.forEach(function (t) {
+          toolDetailsMap[t.name] = t;
+        });
+        renderTools();
+      })
+      .catch(function (err) {
+        console.error("Failed to load tools", err);
+      });
+  }
+
+  // ── Tool Config / Inspector Modal Logic ──────────────────────────────────
+  function openToolConfigModal(toolName) {
+    var tool = toolDetailsMap[toolName];
+    if (!tool) { return; }
+    currentInspectingTool = tool;
+
+    $("#modalToolIcon").textContent = TOOL_ICONS[tool.name] || "⚙️";
+    $("#modalToolTitle").textContent = TOOL_FRIENDLY_NAMES[tool.name] || tool.name;
+    $("#modalToolName").textContent = tool.name;
+    $("#modalToolCode").textContent = (tool.name === "transfer_call" || tool.name === "execute_webhook") ? "built-in handler" : "async function";
+    $("#modalToolDesc").textContent = tool.description || "No description provided.";
+    $("#modalToolTimeout").textContent = (tool.timeout || 3.0) + "s";
+
+    var fillers = tool.filler_phrases || [];
+    $("#modalToolFillerCount").textContent = "💬 " + fillers.length + " Filler phrase" + (fillers.length === 1 ? "" : "s");
+
+    $("#modalToolParamsSchema").textContent = JSON.stringify(tool.parameters || {}, null, 2);
+
+    var sampleArgs = SAMPLE_TOOL_ARGS[tool.name] || {};
+    $("#modalToolTestArgs").value = JSON.stringify(sampleArgs, null, 2);
+    $("#toolTestResultBox").style.display = "none";
+
+    updateModalToolState();
+    $("#modalToolConfig").classList.add("open");
+  }
+
+  function updateModalToolState() {
+    if (!currentInspectingTool) return;
+    var isEnabled = activeTools.has(currentInspectingTool.name);
+    var pill = $("#modalToolStatusPill");
+    if (pill) {
+      pill.className = "pill-toggle " + (isEnabled ? "pill-on" : "pill-off");
+      pill.textContent = isEnabled ? "ACTIVE (ON)" : "DISABLED (OFF)";
+    }
+    var btn = $("#btnToggleModalTool");
+    if (btn) {
+      btn.textContent = isEnabled ? "Disable This Tool" : "Enable This Tool";
+    }
+  }
+
+  function closeToolConfigModal() {
+    $("#modalToolConfig").classList.remove("open");
+    currentInspectingTool = null;
+  }
+
+  $("#btnCloseToolConfigModal").addEventListener("click", closeToolConfigModal);
+  $("#btnCloseToolConfig").addEventListener("click", closeToolConfigModal);
+
+  $("#btnToggleModalTool").addEventListener("click", function () {
+    if (!currentInspectingTool) return;
+    var isEnabled = !activeTools.has(currentInspectingTool.name);
+    setToolState(currentInspectingTool.name, isEnabled);
+  });
+
+  // Tool Sandbox Dry-Run Execution
+  $("#btnRunToolTest").addEventListener("click", function () {
+    if (!currentInspectingTool) return;
+    var btn = this;
+    var raw = $("#modalToolTestArgs").value.trim() || "{}";
+    var argsObj = {};
+    try {
+      argsObj = JSON.parse(raw);
+    } catch (e) {
+      showToast("❌ Invalid JSON in test arguments");
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Running…";
+    $("#toolTestResultBox").style.display = "block";
+    $("#toolTestStatus").style.color = "var(--accent)";
+    $("#toolTestStatus").textContent = "⏳ Executing tool…";
+    $("#toolTestDuration").textContent = "";
+    $("#toolTestOutput").textContent = "Dispatching to tool engine…";
+
+    var t0 = performance.now();
+    fetch("/api/agents/tools/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tool_name: currentInspectingTool.name,
+        arguments: argsObj
+      })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        btn.disabled = false;
+        btn.textContent = "▶ Run Tool";
+        var t1 = performance.now();
+        var ms = Math.round(t1 - t0);
+
+        if (data.status === "ok") {
+          var exec = data.execution || {};
+          $("#toolTestStatus").style.color = "var(--pos)";
+          $("#toolTestStatus").textContent = "✅ " + (exec.status || "SUCCESS").toUpperCase();
+          $("#toolTestDuration").textContent = (exec.duration_ms ? exec.duration_ms.toFixed(1) + "ms" : ms + "ms");
+          $("#toolTestOutput").textContent = JSON.stringify(exec.result !== undefined ? exec.result : exec, null, 2);
+          showToast("🧪 Tool test passed (" + ms + "ms)");
+        } else {
+          $("#toolTestStatus").style.color = "var(--neg, #E5484D)";
+          $("#toolTestStatus").textContent = "❌ ERROR: " + (data.error || "Failed");
+          $("#toolTestDuration").textContent = ms + "ms";
+          $("#toolTestOutput").textContent = JSON.stringify(data, null, 2);
+          showToast("❌ Tool execution failed");
+        }
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = "▶ Run Tool";
+        $("#toolTestStatus").style.color = "var(--neg, #E5484D)";
+        $("#toolTestStatus").textContent = "❌ EXECUTION FAILED";
+        $("#toolTestDuration").textContent = "";
+        $("#toolTestOutput").textContent = String(err);
+        showToast("❌ Network error executing tool");
+      });
+  });
+
+  // ── Add Custom Webhook Tool Modal Logic ────────────────────────────────────
+  function openAddCustomToolModal() {
+    $("#newToolName").value = "";
+    $("#newToolDesc").value = "";
+    $("#newToolEndpoint").value = "";
+    $("#newToolMethod").value = "POST";
+    $("#newToolTimeout").value = "3.0";
+    $("#newToolFiller").value = "";
+    $("#newToolParams").value = '{\n  "type": "object",\n  "properties": {\n    "query": { "type": "string" }\n  }\n}';
+    $("#modalAddCustomTool").classList.add("open");
+  }
+
+  function closeAddCustomToolModal() {
+    $("#modalAddCustomTool").classList.remove("open");
+  }
+
+  $("#btnOpenAddCustomToolModal").addEventListener("click", openAddCustomToolModal);
+  $("#btnCloseAddCustomToolModal").addEventListener("click", closeAddCustomToolModal);
+  $("#btnCancelAddCustomTool").addEventListener("click", closeAddCustomToolModal);
+
+  $("#btnSaveCustomTool").addEventListener("click", function () {
+    var name = $("#newToolName").value.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
+    var desc = $("#newToolDesc").value.trim();
+    var endpoint = $("#newToolEndpoint").value.trim();
+    var method = $("#newToolMethod").value;
+    var timeout = parseFloat($("#newToolTimeout").value) || 3.0;
+    var filler = $("#newToolFiller").value.trim();
+    var paramsRaw = $("#newToolParams").value.trim();
+
+    if (!name) {
+      showToast("❌ Please enter a tool identifier name");
+      $("#newToolName").focus();
+      return;
+    }
+    if (!desc) {
+      showToast("❌ Please provide a description for the LLM");
+      $("#newToolDesc").focus();
+      return;
+    }
+
+    var paramsObj = { type: "object", properties: {} };
+    if (paramsRaw) {
+      try {
+        paramsObj = JSON.parse(paramsRaw);
+      } catch (e) {
+        showToast("❌ Invalid JSON Schema parameters");
+        $("#newToolParams").focus();
+        return;
+      }
+    }
+
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = "Registering…";
+
+    fetch("/api/agents/tools/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: name,
+        description: desc,
+        endpoint_url: endpoint,
+        method: method,
+        timeout: timeout,
+        filler_phrases: filler ? [filler] : ["One moment while I contact " + name + "..."],
+        parameters: paramsObj
+      })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        btn.disabled = false;
+        btn.textContent = "Register & Enable Tool";
+
+        if (data.status === "ok") {
+          var registered = data.tool;
+          var existingIdx = allTools.findIndex(function (t) { return t.name === registered.name; });
+          if (existingIdx !== -1) {
+            allTools[existingIdx] = registered;
+          } else {
+            allTools.push(registered);
+          }
+          toolDetailsMap[registered.name] = registered;
+          activeTools.add(registered.name);
+
+          renderTools();
+          closeAddCustomToolModal();
+          showToast("✨ Custom tool '" + registered.name + "' registered & enabled!");
+        } else {
+          showToast("❌ Failed: " + (data.error || "Could not register tool"));
+        }
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = "Register & Enable Tool";
+        showToast("❌ Network error registering tool");
+      });
+  });
+
+  function deriveFirstMessageFromPrompt(prompt, name) {
+    prompt = (prompt || "").trim();
+    if (!prompt) return "Hi, I'm an AI assistant from the intake team. How can I help you today?";
+
+    var lines = prompt.split("\n").map(function(l) { return l.trim(); }).filter(Boolean);
+    for (var i = 0; i < Math.min(lines.length, 4); i++) {
+      var line = lines[i];
+
+      // Pattern 1: "You are Maya, an intake specialist answering calls for Bottini & Bottini, Inc."
+      var mFull = line.match(/you are ([A-Z][a-z]+)[,\s]+(?:an?|the)?\s*([a-zA-Z\s]+?)\s*(?:answering calls for|for|at)\s*([^\.]+)/i);
+      if (mFull) {
+        var pName = mFull[1].trim();
+        var pRole = mFull[2].trim();
+        var pCompany = mFull[3].replace(/\.$/, "").trim();
+        var team = /intake/i.test(pRole) ? "the intake team" : (/support/i.test(pRole) ? "the support team" : "the " + pRole);
+        return "Hi, I'm " + pName + " from " + team + " at " + pCompany + ". I'm an AI assistant, how can I help you today?";
+      }
+
+      // Pattern 2: "You are Maya, an intake specialist..."
+      var mNameRole = line.match(/you are ([A-Z][a-z]+)[,\s]+(?:an?|the)?\s*([a-zA-Z\s]+?)(?:\.|$)/i);
+      if (mNameRole) {
+        var pName2 = mNameRole[1].trim();
+        var pRole2 = mNameRole[2].trim();
+        var team2 = /intake/i.test(pRole2) ? "the intake team" : "the " + pRole2;
+        return "Hi, I'm " + pName2 + " from " + team2 + ". I'm an AI assistant, how can I help you today?";
+      }
+
+      var m = line.match(/you are (?:the|an|a)?\s*(.*?)(?:\.|$)/i);
+      if (m && m[1]) {
+        var role = m[1].trim();
+        if (role.toLowerCase().indexOf(" for ") !== -1) {
+          var parts = role.split(/\s+for\s+/i);
+          var entity = parts[parts.length - 1].replace(/\.$/, "").trim();
+          return "Hi, thanks for calling " + entity + ". I'm an AI assistant from the intake team, how can I help you today?";
+        } else if (role.toLowerCase().indexOf(" at ") !== -1) {
+          var parts = role.split(/\s+at\s+/i);
+          var entity = parts[parts.length - 1].replace(/\.$/, "").trim();
+          return "Hi, thanks for calling " + entity + ". I'm an AI assistant from the intake team, how can I help you today?";
+        } else {
+          var cleanRole = role.replace(/\b(assistant|agent|representative|bot|ai)\b/gi, "").trim();
+          if (cleanRole) {
+            return "Hi, I'm an AI assistant from " + cleanRole + ". How can I help you today?";
+          }
+        }
+      }
+      if (/^(hello|hi|welcome|thanks for calling|good morning|good afternoon)/i.test(line)) {
+        var clean = line.split(/[.!?]\s+/)[0].trim();
+        if (clean.length > 5 && clean.length < 140) {
+          return clean + (/[.!?]$/.test(clean) ? "" : ".");
+        }
+      }
+    }
+    return "Hi, I'm an AI assistant from the intake team. How can I help you today?";
+  }
+
+  // Model select change listener
+  if ($("#llmModelSelect")) {
+    $("#llmModelSelect").addEventListener("change", function () {
+      updateModelStats();
+    });
+  }
+
+  // System prompt listener for auto placeholder
+  if ($("#systemPrompt")) {
+    $("#systemPrompt").addEventListener("input", function () {
+      try {
+        localStorage.setItem("agy_draft_system_prompt", this.value);
+      } catch(e) {}
+      if (!$("#firstMessage").value.trim()) {
+        $("#firstMessage").placeholder = "Auto: " + deriveFirstMessageFromPrompt(this.value);
+      }
+    });
+  }
+
+  if ($("#firstMessage")) {
+    $("#firstMessage").addEventListener("input", function () {
+      try {
+        localStorage.setItem("agy_draft_first_message", this.value);
+      } catch(e) {}
+    });
+  }
+
   // Save changes action
+  function saveCurrentAgentForm(isAuto) {
+    var selectedToolsArray = Array.from(activeTools);
+    var selectedModel = $("#llmModelSelect") ? $("#llmModelSelect").value : "gemini-2.0-flash";
+    var promptVal = $("#systemPrompt").value.trim();
+    var firstMsgVal = $("#firstMessage").value.trim();
+
+    // If First Message is empty, auto-derive directly from Prompt!
+    if (!firstMsgVal) {
+      firstMsgVal = deriveFirstMessageFromPrompt(promptVal, $("#agentName").value.trim());
+      $("#firstMessage").value = firstMsgVal;
+    }
+
+    var payload = {
+      agent_id: currentLoadedAgentId,
+      name: $("#agentName").value.trim() || "Intake Agent",
+      first_message: firstMsgVal,
+      system_prompt: promptVal,
+      speak_first: $("#speakFirstSelect") ? $("#speakFirstSelect").value : "ai",
+      voice_id: $("#voiceSelect").value,
+      llm_model: selectedModel,
+      tools: selectedToolsArray
+    };
+
+    try {
+      localStorage.setItem("agy_draft_system_prompt", promptVal);
+      localStorage.setItem("agy_draft_first_message", firstMsgVal);
+      localStorage.setItem("agy_draft_speak_first", payload.speak_first);
+    } catch(e) {}
+
+    return fetch("/api/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data.status === "ok") {
+        if (data.agent && data.agent.agent_id) {
+          currentLoadedAgentId = data.agent.agent_id;
+        }
+        if (!isAuto) {
+          showToast("✅ Agent saved (" + selectedModel + " · " + selectedToolsArray.length + " tools)");
+        }
+        $("#editMeta").textContent = "edited just now";
+        $("#agentCardTitle").textContent = payload.name;
+        $("#pageTitle").textContent = payload.name;
+      } else {
+        if (!isAuto) {
+          showToast("❌ " + (data.error || "Could not save agent"));
+        }
+      }
+    }).catch(function () {
+      if (!isAuto) {
+        showToast("❌ Network error saving agent");
+      }
+    });
+  }
+
   $("#btnSave").addEventListener("click", function () {
     var btn = this;
     btn.disabled = true;
     btn.textContent = "Saving…";
 
-    var payload = {
-      name: $("#agentName").value.trim(),
-      first_message: $("#firstMessage").value.trim(),
-      system_prompt: $("#systemPrompt").value.trim(),
-      voice_id: $("#voiceSelect").value,
-      llm_model: "gpt-4o-mini",
-      tools: ["search_knowledge_base", "book_consultation", "transfer_to_human"]
-    };
-
-    fetch("/api/agents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    }).then(function (r) { return r.json(); }).then(function (data) {
+    saveCurrentAgentForm(false).then(function () {
       btn.disabled = false;
       btn.textContent = "Save changes";
-      showToast("✅ Agent changes saved successfully");
-      $("#editMeta").textContent = "edited just now";
-      $("#agentCardTitle").textContent = payload.name;
-      $("#pageTitle").textContent = payload.name;
-    }).catch(function (e) {
-      btn.disabled = false;
-      btn.textContent = "Save changes";
-      showToast("✅ Agent changes saved (local)");
-      $("#editMeta").textContent = "edited just now";
     });
   });
 
-  // Test call action
-  $("#btnTest").addEventListener("click", function () {
-    showToast("📞 Launching test call simulation with " + $("#agentName").value + "…");
-    setTimeout(function () {
-      window.location.href = "/softphone.html";
-    }, 1000);
-  });
+  // ── Retell-Style In-Page Live Test Call Simulator ───────────────────────────
+  var testCallTimerInterval = null;
+  var testCallStartTime = 0;
+  var testCallActive = false;
+  var testCallUtterances = [];
+  var testCallAudio = null;
+  var testCallRecognition = null;
+  var isMicListening = false;
 
-  // Preview voice synthesizer
-  $("#btnPreviewVoice").addEventListener("click", function () {
-    var btn = this;
-    btn.disabled = true;
-    btn.textContent = "Playing voice sample…";
+  function setOrbState(state, label) {
+    var orb = $("#testCallOrb");
+    var eq = $("#testCallOrbEq");
+    var lbl = $("#testCallStateLabel");
+    if (!orb || !lbl) return;
+
+    orb.className = "retell-orb " + state;
+    lbl.textContent = label || (state === "speaking" ? "Speaking…" : state === "thinking" ? "Thinking…" : "Listening…");
+    if (eq) {
+      eq.style.display = (state === "speaking" ? "inline-flex" : "none");
+    }
+  }
+
+  function cleanSpokenSpeechText(text) {
+    if (!text || typeof text !== "string") return "";
+    var t = text.trim();
+    if (t.toLowerCase() === "undefined" || t.toLowerCase() === "null" || t.toLowerCase() === "none") return "";
+
+    // 1. Remove XML/HTML tags and thought blocks: <thought>...</thought>, <response>...</response>
+    t = t.replace(/<thought[\s\S]*?<\/thought>/gi, " ")
+         .replace(/<thinking[\s\S]*?<\/thinking>/gi, " ")
+         .replace(/<script[\s\S]*?<\/script>/gi, " ")
+         .replace(/<[^>]+>/g, " ");
+
+    // 2. Remove JSON objects: {"...": "..."}
+    t = t.replace(/\{[^{}]*\}/g, " ");
+
+    // 3. Remove bracketed tool indicators: [book_appointment], [transfer_call], [check_availability]
+    t = t.replace(/\[[a-zA-Z0-9_\-\s]+\]/g, " ");
+
+    // 4. Remove or normalize URLs: https://www.example.com/page -> "our website"
+    t = t.replace(/https?:\/\/(?:www\.)?[^\s/$.?#].[^\s]*/gi, "our website")
+         .replace(/www\.[^\s/$.?#].[^\s]*/gi, "our website");
+
+    // 5. Remove Markdown links: [Title](url) -> Title
+    t = t.replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1");
+
+    // 6. Remove Markdown formatting: **bold**, *italic*, ## headings, `code`, bullets
+    t = t.replace(/[*_~`#]/g, " ")
+         .replace(/^\s*[-*+]\s+/gm, "")
+         .replace(/^\s*\d+\.\s+/gm, "");
+
+    // 7. Clean HTML entities
+    t = t.replace(/&amp;/g, "and").replace(/&lt;/g, "less than").replace(/&gt;/g, "greater than").replace(/&quot;/g, '"');
+
+    // 8. Clean redundant special symbols and whitespace
+    t = t.replace(/[\\/{}\[\]<>]/g, " ").replace(/\s+/g, " ").trim();
+
+    // 9. Extract first 1-2 clean sentences for crisp conversational speech
+    var sentences = t.split(/(?<=[.!?])\s+/);
+    if (sentences && sentences.length > 0) {
+      var cleanSentences = sentences.filter(function(s) { return s.trim().length > 3; });
+      if (cleanSentences.length > 2) {
+        t = cleanSentences.slice(0, 2).join(" ");
+      } else if (cleanSentences.length > 0) {
+        t = cleanSentences.join(" ");
+      }
+    }
+    return t.trim();
+  }
+
+  function appendTestCallMessage(speaker, text, meta) {
+    var container = $("#testCallTranscript");
+    if (!container) return;
+
+    var cleanDisplay = (speaker === "agent") ? cleanSpokenSpeechText(text) : (text || "").trim();
+    if (!cleanDisplay) cleanDisplay = text;
+
+    var msgDiv = document.createElement("div");
+    msgDiv.className = "test-msg " + speaker;
+
+    var vId = $("#voiceSelect").value;
+    var vObj = voiceMap[vId];
+    var vName = vObj ? vObj.name : "Agent";
+
+    var bubble = document.createElement("div");
+    bubble.className = "test-msg-bubble";
+    bubble.textContent = cleanDisplay;
+    msgDiv.appendChild(bubble);
+
+    if (speaker === "agent" && meta && meta.tool) {
+      var toolEl = document.createElement("div");
+      toolEl.className = "test-msg-tool";
+      toolEl.innerHTML = "🛠️ <b>Tool:</b> " + meta.tool;
+      msgDiv.appendChild(toolEl);
+    }
+
+    var metaEl = document.createElement("div");
+    metaEl.className = "test-msg-meta";
+    if (speaker === "agent") {
+      var lat = meta && meta.first_audio_ms ? meta.first_audio_ms + "ms TTFA" : "120ms TTFA";
+      metaEl.innerHTML = '<span>🎙️ ' + vName + '</span><span>•</span><span>⚡ ' + lat + '</span>';
+    } else {
+      metaEl.innerHTML = '<span>👤 Caller</span><span>•</span><span>🎙️ Voice Input</span>';
+    }
+    msgDiv.appendChild(metaEl);
+
+    container.appendChild(msgDiv);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function playAgentVoiceResponse(text, onComplete) {
+    if (testCallAudio) {
+      try { testCallAudio.pause(); } catch (e) {}
+      testCallAudio = null;
+    }
+    var cleanText = cleanSpokenSpeechText(text);
+    if (!cleanText) {
+      cleanText = $("#firstMessage").value.trim() || deriveFirstMessageFromPrompt($("#systemPrompt").value.trim(), $("#agentName").value.trim());
+      cleanText = cleanSpokenSpeechText(cleanText);
+    }
+
+    var vId = ($("#voiceSelect") && $("#voiceSelect").value) ? $("#voiceSelect").value : "studio-maya";
+    var vObj = voiceMap[vId] || { name: "Maya", gender: "female", provider: "studio", style: "conversational" };
+    var style = $("#toneStyleSelect") ? $("#toneStyleSelect").value : "customerservice";
+    var url = "/api/agents/voice-audio?voice_id=" + encodeURIComponent(vId) +
+              "&text=" + encodeURIComponent(cleanText) +
+              "&style=" + encodeURIComponent(style) +
+              "&_t=" + Date.now();
+
+    setOrbState("speaking", "Speaking response…");
+    testCallAudio = new Audio(url);
+
+    testCallAudio.onended = function () {
+      setOrbState("listening", "Listening to caller…");
+      if (onComplete) onComplete();
+    };
+
+    testCallAudio.onerror = function () {
+      console.warn("Audio element failed, falling back to Web Speech synthesis");
+      fallbackWebSpeech(vObj.name, vObj.gender, vObj.provider, style || vObj.style, cleanText);
+      if (onComplete) onComplete();
+    };
+
+    testCallAudio.play().catch(function (err) {
+      console.warn("Audio play rejected, falling back to Web Speech:", err);
+      fallbackWebSpeech(vObj.name, vObj.gender, vObj.provider, style || vObj.style, cleanText);
+      if (onComplete) onComplete();
+    });
+  }
+
+  function sendCallerUtterance(text) {
+    text = (text || "").trim();
+    if (!text || !testCallActive) return;
+
+    appendTestCallMessage("caller", text);
+    testCallUtterances.push(text);
+    $("#testCallInput").value = "";
+
+    setOrbState("thinking", "Agent thinking & selecting tools…");
+
+    var promptVal = $("#systemPrompt").value.trim();
+    var firstMsgVal = $("#firstMessage").value.trim() || deriveFirstMessageFromPrompt(promptVal, $("#agentName").value.trim());
+
+    var payload = {
+      agent_id: currentLoadedAgentId || "test-agent",
+      system_prompt: promptVal,
+      first_message: firstMsgVal,
+      voice_id: $("#voiceSelect").value,
+      llm_model: $("#llmModelSelect") ? $("#llmModelSelect").value : "gemini-2.0-flash",
+      tools: Array.from(activeTools),
+      speak_first: $("#speakFirstSelect") ? $("#speakFirstSelect").value : "ai",
+      utterances: testCallUtterances
+    };
+
+    fetch("/api/agents/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.status === "ok" && data.result && data.result.turns) {
+          var turns = data.result.turns;
+          var lastTurn = turns[turns.length - 1];
+          if (lastTurn && lastTurn.speaker === "agent" && lastTurn.text) {
+            appendTestCallMessage("agent", lastTurn.text, {
+              tool: lastTurn.tool,
+              first_audio_ms: lastTurn.first_audio_ms
+            });
+            playAgentVoiceResponse(lastTurn.text);
+            return;
+          }
+        }
+        // Fallback response
+        var fallback = "I received your request regarding: " + text + ". Let me help you with that.";
+        appendTestCallMessage("agent", fallback, { first_audio_ms: 180 });
+        playAgentVoiceResponse(fallback);
+      })
+      .catch(function () {
+        var fallback = "Thank you for sharing that. How else can I assist you today?";
+        appendTestCallMessage("agent", fallback, { first_audio_ms: 200 });
+        playAgentVoiceResponse(fallback);
+      });
+  }
+
+  function startInPageTestCall() {
+    saveCurrentAgentForm(true);
+    testCallActive = true;
+    testCallUtterances = [];
+
+    var agentName = $("#agentName").value.trim() || "Intake Agent";
+    var vId = ($("#voiceSelect") && $("#voiceSelect").value) ? $("#voiceSelect").value : "studio-calvin";
+    var vObj = voiceMap[vId];
+    var vName = vObj ? vObj.name : "Camille (Studio Pro)";
+
+    $("#testCallAgentName").textContent = agentName;
+    $("#testCallVoiceBadge").textContent = "🎙️ " + vName;
+    $("#testCallTranscript").innerHTML = "";
+    $("#modalTestCall").classList.add("open");
+
+    // Start Call Timer
+    testCallStartTime = Date.now();
+    if (testCallTimerInterval) clearInterval(testCallTimerInterval);
+    testCallTimerInterval = setInterval(function () {
+      var sec = Math.floor((Date.now() - testCallStartTime) / 1000);
+      var m = Math.floor(sec / 60);
+      var s = sec % 60;
+      $("#testCallTimer").textContent = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+    }, 1000);
+
+    // Check Who Speaks First mode
+    var speakMode = $("#speakFirstSelect") ? $("#speakFirstSelect").value : "ai";
+    var promptVal = $("#systemPrompt").value.trim();
+    var firstMsg = $("#firstMessage").value.trim() || deriveFirstMessageFromPrompt(promptVal, agentName);
+
+    if (speakMode === "ai") {
+      appendTestCallMessage("agent", firstMsg, { first_audio_ms: 110 });
+      playAgentVoiceResponse(firstMsg);
+    } else {
+      setOrbState("listening", "Listening for caller to speak first…");
+      var infoDiv = document.createElement("div");
+      infoDiv.style.textAlign = "center";
+      infoDiv.style.padding = "6px 12px";
+      infoDiv.style.fontSize = "11.5px";
+      infoDiv.style.color = "var(--ink-faint)";
+      infoDiv.style.fontFamily = "var(--f-mono)";
+      infoDiv.innerHTML = "👤 <i>User Speaks First mode enabled. Speak into microphone or type below.</i>";
+      $("#testCallTranscript").appendChild(infoDiv);
+    }
+
+    // Setup & start live microphone speech recognition
+    setupSpeechRecognition();
+    startSpeechRecognition();
+  }
+
+  function endInPageTestCall() {
+    testCallActive = false;
+    if (testCallTimerInterval) clearInterval(testCallTimerInterval);
+    if (testCallAudio) {
+      try { testCallAudio.pause(); } catch (e) {}
+      testCallAudio = null;
+    }
+    stopSpeechRecognition();
+    $("#modalTestCall").classList.remove("open");
+    showToast("⏹️ Call ended");
+  }
+
+  var micSilenceTimer = null;
+
+  function startSpeechRecognition() {
+    var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ audio: true }).catch(function (err) {
+          console.warn("Microphone access error:", err);
+        });
+      }
+      return;
+    }
+
+    if (!testCallRecognition) {
+      setupSpeechRecognition();
+    }
+
+    isMicListening = true;
+    window.isMicListening = true;
+    var btn = $("#btnTestCallMic");
+    if (btn) btn.classList.add("active");
+    if ($("#testCallInput")) $("#testCallInput").placeholder = "🎙️ Listening to you... (speak now or type)";
 
     try {
-      var ctx = new (window.AudioContext || window.webkitAudioContext)();
-      var osc = ctx.createOscillator();
-      var gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(440, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.3);
-      gain.gain.setValueAtTime(0.2, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.5);
-    } catch (e) {}
+      testCallRecognition.start();
+    } catch (e) {
+      // recognition already active
+    }
+  }
 
-    showToast("🔊 Voice preview: " + $("#voiceSelect").options[$("#voiceSelect").selectedIndex].text);
-    setTimeout(function () {
-      btn.disabled = false;
-      btn.textContent = "Preview voice";
-    }, 1200);
+  function setupSpeechRecognition() {
+    var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) return;
+
+    try {
+      if (testCallRecognition) {
+        try { testCallRecognition.abort(); } catch (e) {}
+      }
+      testCallRecognition = new SpeechRec();
+      testCallRecognition.continuous = true;
+      testCallRecognition.interimResults = true;
+      testCallRecognition.lang = "en-US";
+
+      testCallRecognition.onstart = function () {
+        isMicListening = true;
+        var btn = $("#btnTestCallMic");
+        if (btn) btn.classList.add("active");
+        if ($("#testCallInput")) $("#testCallInput").placeholder = "🎙️ Listening to you... (speak now or type)";
+      };
+
+      testCallRecognition.onresult = function (e) {
+        if (!testCallActive) return;
+        var interimTranscript = "";
+        var finalTranscript = "";
+
+        for (var i = e.resultIndex; i < e.results.length; i++) {
+          var res = e.results[i];
+          if (res.isFinal) {
+            finalTranscript += res[0].transcript;
+          } else {
+            interimTranscript += res[0].transcript;
+          }
+        }
+
+        var inputEl = $("#testCallInput");
+        if (interimTranscript && inputEl) {
+          inputEl.value = interimTranscript;
+          setOrbState("listening", "Listening: \"" + interimTranscript + "\"…");
+        }
+
+        if (finalTranscript.trim()) {
+          if (inputEl) inputEl.value = finalTranscript.trim();
+          if (micSilenceTimer) clearTimeout(micSilenceTimer);
+          micSilenceTimer = setTimeout(function () {
+            if (testCallActive && finalTranscript.trim()) {
+              sendCallerUtterance(finalTranscript.trim());
+            }
+          }, 600);
+        }
+      };
+
+      testCallRecognition.onerror = function (e) {
+        console.warn("Speech recognition event:", e.error);
+        if (e.error === "not-allowed" || e.error === "permission-denied") {
+          isMicListening = false;
+          var btn = $("#btnTestCallMic");
+          if (btn) btn.classList.remove("active");
+          showToast("⚠️ Microphone access blocked. Please allow mic permissions in your browser.");
+        } else if (e.error === "no-speech") {
+          // Normal silence, keep listening
+        } else if (e.error === "audio-capture") {
+          isMicListening = false;
+          showToast("⚠️ No microphone device found.");
+        }
+      };
+
+      testCallRecognition.onend = function () {
+        if (isMicListening && testCallActive && !testCallAudio) {
+          try { testCallRecognition.start(); } catch (e) {}
+        }
+      };
+    } catch (e) {
+      console.warn("Speech recognition setup error:", e);
+    }
+  }
+
+  function toggleMic() {
+    var btn = $("#btnTestCallMic");
+    var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      showToast("ℹ️ Speech recognition is not available in this browser. Please use text chat.");
+      return;
+    }
+
+    if (isMicListening) {
+      isMicListening = false;
+      window.isMicListening = false;
+      if (btn) btn.classList.remove("active");
+      if ($("#testCallInput")) $("#testCallInput").placeholder = "Speak into mic or type a message to your agent…";
+      showToast("🔇 Microphone muted");
+      try {
+        if (testCallRecognition) testCallRecognition.stop();
+      } catch (e) {}
+    } else {
+      isMicListening = true;
+      window.isMicListening = true;
+      if (btn) btn.classList.add("active");
+      showToast("🎙️ Microphone active — listening for speech");
+      startSpeechRecognition();
+    }
+  }
+
+  function stopSpeechRecognition() {
+    isMicListening = false;
+    window.isMicListening = false;
+    if ($("#btnTestCallMic")) $("#btnTestCallMic").classList.remove("active");
+    if (testCallRecognition) {
+      try { testCallRecognition.stop(); } catch (e) {}
+    }
+  }
+
+  window.isMicActive = function () { return isMicListening; };
+
+  // Bind Test Call UI controls
+  $("#btnTest").addEventListener("click", startInPageTestCall);
+  $("#btnEndTestCall").addEventListener("click", endInPageTestCall);
+  $("#btnTestCallMic").addEventListener("click", toggleMic);
+
+  // Close test call drawer on backdrop click
+  $("#modalTestCall").addEventListener("click", function (e) {
+    if (e.target === this) {
+      endInPageTestCall();
+    }
   });
+
+  $("#btnTestCallSend").addEventListener("click", function () {
+    sendCallerUtterance($("#testCallInput").value);
+  });
+
+  $("#testCallInput").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      sendCallerUtterance(this.value);
+    }
+  });
+
+  // Quick Prompt chips
+  if ($("#testCallQuickPrompts")) {
+    $("#testCallQuickPrompts").addEventListener("click", function (e) {
+      var chip = e.target.closest(".quick-chip");
+      if (chip && chip.dataset.text) {
+        sendCallerUtterance(chip.dataset.text);
+      }
+    });
+  }
 
   $("#btnShare").addEventListener("click", function () {
     showToast("🔗 Agent configuration link copied to clipboard");
+  });
+
+  // Dynamic Live Data Loading
+  var hasLoadedInitialAgent = false;
+  var currentLoadedAgentId = null;
+
+  function loadInitialAgent() {
+    return fetch("/api/agents")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var agents = data.agents || [];
+        if ($("#navCtAgents")) { $("#navCtAgents").textContent = agents.length || 1; }
+        if (agents.length > 0) {
+          var activeId = data.active_agent;
+          var targetAgent = (activeId ? agents.find(function(a) { return a.agent_id === activeId; }) : null) ||
+                            agents.find(function(a) { return a.active; }) ||
+                            agents[0];
+          currentLoadedAgentId = targetAgent.agent_id || null;
+          hasLoadedInitialAgent = true;
+          $("#agentName").value = targetAgent.name || "Intake Agent";
+          $("#systemPrompt").value = targetAgent.system_prompt || "";
+          $("#firstMessage").value = targetAgent.first_message || deriveFirstMessageFromPrompt(targetAgent.system_prompt, targetAgent.name);
+          $("#agentCardTitle").textContent = targetAgent.name || "Intake Agent";
+          $("#pageTitle").textContent = targetAgent.name || "Intake Agent";
+          if (targetAgent.llm_model && $("#llmModelSelect")) {
+            $("#llmModelSelect").value = targetAgent.llm_model;
+            updateModelStats();
+          }
+          if (targetAgent.speak_first && $("#speakFirstSelect")) {
+            $("#speakFirstSelect").value = targetAgent.speak_first;
+          }
+          if (targetAgent.voice_id) {
+            setChosenVoice(targetAgent.voice_id);
+          }
+          if (Array.isArray(targetAgent.tools) && targetAgent.tools.length > 0) {
+            activeTools = new Set(targetAgent.tools);
+            renderTools();
+          }
+        }
+      })
+      .catch(function (err) {
+        console.error("Error loading agent config:", err);
+      });
+  }
+
+  function pollLiveStats() {
+    fetch("/api/calls/stats")
+      .then(function (r) { return r.json(); })
+      .then(function (stats) {
+        if ($("#navCtCalls")) { $("#navCtCalls").textContent = stats.calls || 0; }
+      })
+      .catch(function () {});
+
+    fetch("/api/telephony/calls")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var active = (data.calls || []).filter(function (c) {
+          return c.status === "active" || c.status === "ringing" || c.status === "initiated" || c.status === "in_progress";
+        });
+        var count = active.length;
+        if ($("#navCtOverview")) { $("#navCtOverview").textContent = count + " live"; }
+        var statusEl = $("#callStatus");
+        if (statusEl) {
+          if (count === 0) {
+            statusEl.textContent = "0 calls in progress (Idle)";
+          } else if (count === 1) {
+            statusEl.textContent = "1 call in progress";
+          } else {
+            statusEl.textContent = count + " calls in progress";
+          }
+        }
+      })
+      .catch(function () {
+        if ($("#callStatus")) { $("#callStatus").textContent = "0 calls in progress"; }
+      });
+  }
+
+  Promise.all([loadVoices(), loadTools()]).then(function () {
+    return loadInitialAgent();
+  }).then(function () {
+    pollLiveStats();
+    setInterval(pollLiveStats, 5000);
+  }).catch(function (err) {
+    console.error("App init error:", err);
   });
 })();
 </script>
