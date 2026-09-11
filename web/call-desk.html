@@ -1140,6 +1140,7 @@
     }).then(function (r) { return r.json(); }).then(function (res) {
       btn.disabled = false;
       btn.textContent = "⚡ Confirm & Purchase Number";
+      if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Provisioning failed")); return; }
       closePurchaseModal();
       showToast("🎉 Number " + payload.phone_number + " activated & assigned to " + payload.agent_name + "!");
       loadTelephony();
@@ -1192,6 +1193,7 @@
     }).then(function (r) { return r.json(); }).then(function (res) {
       btn.disabled = false;
       btn.textContent = "Save Routing";
+      if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Routing update failed")); return; }
       closeRouteModal();
       showToast("✅ Inbound calls on " + payload.phone_number + " now route to " + payload.agent_name);
       loadOwnedNumbers();
@@ -1257,6 +1259,7 @@
       }).then(function (r) { return r.json(); }).then(function (res) {
         btn.disabled = false;
         btn.textContent = "Create Inbound Trunk";
+        if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Trunk creation failed")); return; }
         closeInboundTrunkModal();
         showToast("✅ Inbound Trunk " + name + " created successfully");
         loadTrunksAndRules();
@@ -1319,6 +1322,7 @@
       }).then(function (r) { return r.json(); }).then(function (res) {
         btn.disabled = false;
         btn.textContent = "Create Outbound Trunk";
+        if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Trunk creation failed")); return; }
         closeOutboundTrunkModal();
         showToast("✅ Outbound Trunk " + name + " created successfully");
         loadTrunksAndRules();
@@ -1338,7 +1342,8 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone_number: num })
-    }).then(function (r) { return r.json(); }).then(function () {
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Release failed")); return; }
       showToast("🗑 Number " + num + " released successfully");
       loadTelephony();
     }).catch(function (e) {

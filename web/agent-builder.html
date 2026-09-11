@@ -550,7 +550,8 @@
       <!-- Provider Tabs -->
       <div class="provider-tabs" id="providerTabs">
         <button class="ptab active" data-prov="all">All Voices</button>
-        <button class="ptab" data-prov="studio">✨ Retell AI & Studio Pro (18 Voices)</button>
+        <button class="ptab" data-prov="retell">🎧 Retell AI (0)</button>
+        <button class="ptab" data-prov="studio">✨ Studio Pro (18 Voices)</button>
         <button class="ptab" data-prov="neural">⚡ Free Neural HD</button>
         <button class="ptab" data-prov="elevenlabs">✨ ElevenLabs Turbo</button>
         <button class="ptab" data-prov="cartesia">⚡ Cartesia Sonic (Sub-100ms)</button>
@@ -783,6 +784,7 @@
 
   var PROVIDER_COLORS = {
     studio: "#4F46E5",
+    retell: "#0EA5E9",
     neural: "#2F7A4F",
     cartesia: "#C2560F",
     deepgram: "#13B58C",
@@ -791,7 +793,7 @@
   };
 
   var PROVIDER_NAMES = {
-    studio: "Retell AI & Studio Pro",
+    studio: "Studio Pro",
     retell: "Retell AI",
     neural: "Neural HD",
     cartesia: "Cartesia Sonic",
@@ -889,6 +891,10 @@
     };
 
     audio.play().catch(function (err) {
+      // pause() on a not-yet-started element rejects play() with AbortError; that is a
+      // deliberate stop (user picked another voice), not a playback failure.
+      if (err && err.name === "AbortError") { return; }
+      if (currentAudio !== audio) { return; }
       console.warn("Audio play prevented:", err);
       if (v) {
         fallbackWebSpeech(v.name, v.gender, v.provider, customStyle || v.style, customText);
@@ -922,12 +928,13 @@
     utterance.pitch = isMale ? (sLower.indexOf("deep") !== -1 ? 0.75 : 0.88) : isFemale ? 1.05 : 1.0;
     utterance.rate = 1.0;
 
-    utterance.onend = function () { 
-      stopVoiceAudio(); 
+    // Only tear down playback state if no newer <audio> has started since this utterance began.
+    utterance.onend = function () {
+      if (!currentAudio) { stopVoiceAudio(); }
       setOrbState("listening", "Listening to caller…");
     };
-    utterance.onerror = function () { 
-      stopVoiceAudio(); 
+    utterance.onerror = function () {
+      if (!currentAudio) { stopVoiceAudio(); }
       setOrbState("listening", "Listening to caller…");
     };
 
@@ -935,7 +942,7 @@
   }
 
   function updateProviderTabCounts() {
-    var counts = { all: allVoicesList.length, studio: 0, neural: 0, cartesia: 0, deepgram: 0, openai: 0, elevenlabs: 0 };
+    var counts = { all: allVoicesList.length, studio: 0, retell: 0, neural: 0, cartesia: 0, deepgram: 0, openai: 0, elevenlabs: 0 };
     allVoicesList.forEach(function (v) {
       if (counts[v.provider] !== undefined) {
         counts[v.provider]++;
@@ -948,7 +955,10 @@
       if (p === "all") {
         tab.textContent = "All Providers (" + counts.all + ")";
       } else if (p === "studio") {
-        tab.textContent = "✨ Retell AI & Studio (" + counts.studio + ")";
+        tab.textContent = "✨ Studio Pro (" + counts.studio + ")";
+      } else if (p === "retell") {
+        tab.textContent = "🎧 Retell AI (" + counts.retell + ")";
+        tab.title = counts.retell ? "Live Retell AI platform voice library" : "Add RETELL_API_KEY on the API Keys page to sync the Retell voice library";
       } else if (p === "neural") {
         tab.textContent = "⚡ Free Neural HD (" + counts.neural + ")";
       } else if (p === "elevenlabs") {
@@ -1912,7 +1922,10 @@
       if (onComplete) onComplete();
     };
 
+    var thisAudio = testCallAudio;
     testCallAudio.play().catch(function (err) {
+      if (err && err.name === "AbortError") { return; }   // superseded by a newer response
+      if (testCallAudio !== thisAudio) { return; }
       console.warn("Audio play rejected, falling back to Web Speech:", err);
       fallbackWebSpeech(vObj.name, vObj.gender, vObj.provider, style || vObj.style, cleanText);
       if (onComplete) onComplete();

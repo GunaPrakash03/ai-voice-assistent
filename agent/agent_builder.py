@@ -109,6 +109,44 @@ VOICE_CATALOG: List[VoiceOption] = [
     VoiceOption("neural-prabhat", "Prabhat (Indian English)", "neural", "edge-neural",
                 "Friendly, clear Indian English advisor", "male", 130, 0.000),
 
+    # Retell AI Platform Voices (sample-backed · 0 API keys needed)
+    # Play Sample = original Retell recording; live/custom text = tuned neural match (see NEURAL_VOICE_MAP).
+    VoiceOption("retell-cimo", "Cimo (Retell AI)", "retell", "retell-sample+neural",
+                "American · Young · Warm, natural receptionist · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-kate", "Kate (Retell AI)", "retell", "retell-sample+neural",
+                "American · Middle Aged · Friendly, clear support · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-marissa", "Marissa (Retell AI)", "retell", "retell-sample+neural",
+                "American · Young · Bright, energetic sales · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-nico", "Nico (Retell AI)", "retell", "retell-sample+neural",
+                "American · Middle Aged · Deep, confident advisor · Sample: original recording · Live: neural match", "male", 115, 0.000),
+    VoiceOption("retell-sloane", "Sloane (Retell AI)", "retell", "retell-sample+neural",
+                "American · Young · Fast, upbeat dispatcher · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-brynne", "Brynne (Retell AI)", "retell", "retell-sample+neural",
+                "American · Young · Soft, empathetic care · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-grace", "Grace (Retell AI)", "retell", "retell-sample+neural",
+                "American · Middle Aged · Calm, professional · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-lily", "Lily (Retell AI)", "retell", "retell-sample+neural",
+                "American · Young · Expressive, conversational · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-rita", "Rita (Retell AI)", "retell", "retell-sample+neural",
+                "American · Young · Cheerful, welcoming · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-willa", "Willa (Retell AI)", "retell", "retell-sample+neural",
+                "British · Middle Aged · Polished RP concierge · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-ashley", "Ashley (Retell AI)", "retell", "retell-sample+neural",
+                "British · Young · Warm, friendly assistant · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-chloe", "Chloe (Retell AI)", "retell", "retell-sample+neural",
+                "American · Young · Vibrant, engaging · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-leland", "Leland (Retell AI)", "retell", "retell-sample+neural",
+                "American · Young · Relaxed, approachable · Sample: original recording · Live: neural match", "male", 115, 0.000),
+    VoiceOption("retell-della", "Della (Retell AI)", "retell", "retell-sample+neural",
+                "American · Middle Aged · Steady, reassuring · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-merritt", "Merritt (Retell AI)", "retell", "retell-sample+neural",
+                "American · Young · Light, youthful · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-maren", "Maren (Retell AI)", "retell", "retell-sample+neural",
+                "British · Middle Aged · Measured broadcaster · Sample: original recording · Live: neural match", "male", 115, 0.000),
+    VoiceOption("retell-andrea", "Andrea (Retell AI)", "retell", "retell-sample+neural",
+                "Latin American · Young · Bilingual, friendly · Sample: original recording · Live: neural match", "female", 115, 0.000),
+    VoiceOption("retell-andrea-es", "Andrea (Español) (Retell AI)", "retell", "retell-sample+neural",
+                "Español · Young · Bilingual customer care · Sample: original recording · Live: neural match", "female", 115, 0.000),
     # Studio Pro Ultra-Realistic Platform Voices (18 Studio Personas · 0 API Keys Needed)
     VoiceOption("studio-calvin", "Camille (Studio Pro)", "studio", "studio-neural-v2",
                 "American · Middle Aged · Calm, friendly & warm conversational concierge", "female", 110, 0.000),
@@ -428,13 +466,46 @@ class AgentBuilder:
         )
 
     # ── Catalogues ───────────────────────────────────────────────────────────
-    def list_voices(self) -> List[Dict[str, Any]]:
-        return [v.to_dict() for v in VOICE_CATALOG]
+    def list_voices(self, refresh_retell: bool = False) -> List[Dict[str, Any]]:
+        voices = [v.to_dict() for v in VOICE_CATALOG]
+        voices.extend(self._retell_voice_dicts(refresh_retell))
+        return voices
+
+    @staticmethod
+    def _retell_voice_dicts(refresh: bool = False) -> List[Dict[str, Any]]:
+        """Retell AI platform voices (live library when RETELL_API_KEY is set, else cached copy)."""
+        try:
+            from agent import retell_voices
+            return retell_voices.list_retell_voice_options(force_refresh=refresh)
+        except Exception as ex:
+            log.warning("Retell voice library unavailable: %s", ex)
+            return []
+
+    def _get_retell_voice(self, voice_id: str) -> Optional[VoiceOption]:
+        try:
+            from agent import retell_voices
+            if not retell_voices.is_retell_voice_id(voice_id):
+                return None
+            rec = retell_voices.get_retell_voice(voice_id)
+            if not rec:
+                return None
+            d = retell_voices.to_voice_option_dict(rec)
+            return VoiceOption(
+                voice_id=d["voice_id"], name=d["name"], provider=d["provider"], model=d["model"],
+                style=d["style"], gender=d["gender"], first_audio_ms=d["first_audio_ms"],
+                cost_per_1k_chars=d["cost_per_1k_chars"],
+            )
+        except Exception as ex:
+            log.warning("Retell voice lookup failed for %s: %s", voice_id, ex)
+            return None
 
     def get_voice(self, voice_id: str) -> Optional[VoiceOption]:
         exact = next((v for v in VOICE_CATALOG if v.voice_id == voice_id), None)
         if exact:
             return exact
+        retell = self._get_retell_voice(voice_id)
+        if retell:
+            return retell
         norm = str(voice_id).lower().replace("eleven-", "").replace("aura-", "").replace("openai-", "")
         return next((v for v in VOICE_CATALOG if norm in v.name.lower() or norm in v.voice_id.lower()), None)
 

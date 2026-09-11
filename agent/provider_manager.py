@@ -38,6 +38,13 @@ KNOWN_PROVIDERS = {
         "docs_url": "https://play.cartesia.ai",
         "description": "Sub-100ms ultra-low latency voice synthesis engine designed for conversational agents.",
     },
+    "retell": {
+        "name": "Retell AI Voice Library",
+        "category": "voice",
+        "env_keys": ["RETELL_API_KEY"],
+        "docs_url": "https://dashboard.retellai.com/apiKey",
+        "description": "Retell AI platform voice library: official previews for every Retell voice, with custom text routed through the voice's underlying engine (ElevenLabs / OpenAI / Deepgram).",
+    },
     "deepgram": {
         "name": "Deepgram (Aura TTS & Nova STT)",
         "category": "multimodal",
@@ -252,6 +259,40 @@ class ProviderManager:
                     "provider": "elevenlabs",
                     "connected": False,
                     "error": f"Failed to connect to ElevenLabs: {str(ex)}",
+                }
+
+        # 1b. Retell AI voice library
+        elif provider_id == "retell":
+            try:
+                from agent import retell_voices
+                voices = retell_voices.fetch_retell_voices(key)
+                elapsed_ms = int((time.perf_counter() - start) * 1000)
+                summary = retell_voices.library_summary(voices)
+                engines = ", ".join(f"{k} {v}" for k, v in sorted(summary["by_engine"].items()))
+                return {
+                    "status": "ok",
+                    "provider": "retell",
+                    "connected": True,
+                    "latency_ms": elapsed_ms,
+                    "details": f"Authenticated with Retell AI! Synced {summary['total']} platform voices ({engines}).",
+                    "voices_count": summary["total"],
+                    "by_engine": summary["by_engine"],
+                    "sample_voices": summary["sample"],
+                }
+            except urllib.error.HTTPError as he:
+                return {
+                    "status": "error",
+                    "provider": "retell",
+                    "connected": False,
+                    "code": he.code,
+                    "error": f"Retell API returned HTTP {he.code}: {he.reason}",
+                }
+            except Exception as ex:
+                return {
+                    "status": "error",
+                    "provider": "retell",
+                    "connected": False,
+                    "error": f"Failed to connect to Retell AI: {str(ex)}",
                 }
 
         # 2. Google Gemini

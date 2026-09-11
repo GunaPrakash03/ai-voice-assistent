@@ -306,10 +306,14 @@ class Handler(SimpleHTTPRequestHandler):
             })
             return
         elif parsed.path == "/api/agents/voices":
+            vq = parse_qs(parsed.query)
+            refresh = (vq.get("refresh") or ["0"])[0] in ("1", "true", "yes")
+            from agent.retell_voices import get_retell_api_key
             self._send_json({
                 "status": "ok",
-                "voices": agent_builder.list_voices(),
+                "voices": agent_builder.list_voices(refresh_retell=refresh),
                 "models": agent_builder.list_models(),
+                "retell_configured": bool(get_retell_api_key()),
             })
             return
         elif parsed.path == "/api/agents/voice-audio":
@@ -555,12 +559,15 @@ class Handler(SimpleHTTPRequestHandler):
                 rec = telephony_manager.purchase_number(
                     phone_number=number,
                     friendly_name=friendly,
-                    assigned_trunk_id=trunk_id,
-                    assigned_agent=agent_name,
+                    assigned_trunk_id=trunk_id or "trunk-inbound-primary",
+                    assigned_agent=agent_name or "Intake Agent",
                 )
                 self._send_json({"status": "ok", "number": rec})
+            except ValueError as e:
+                code = 409 if "already provisioned" in str(e) else 400
+                self._send_json({"status": "error", "error": str(e)}, code)
             except Exception as e:
-                self._send_json({"status": "error", "error": str(e)}, 400)
+                self._send_json({"status": "error", "error": str(e)}, 500)
             return
 
         elif parsed.path == "/api/telephony/numbers/release":
@@ -569,7 +576,10 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"error": "Missing 'phone_number' parameter"}, 400)
                 return
             ok = telephony_manager.release_number(number)
-            self._send_json({"status": "ok" if ok else "error", "released": ok})
+            if not ok:
+                self._send_json({"status": "error", "released": False, "error": f"{number} is not an active owned number"}, 404)
+                return
+            self._send_json({"status": "ok", "released": True})
             return
 
         elif parsed.path == "/api/telephony/numbers/route":
@@ -579,19 +589,30 @@ class Handler(SimpleHTTPRequestHandler):
             if not number:
                 self._send_json({"error": "Missing 'phone_number' parameter"}, 400)
                 return
-            res = telephony_manager.update_number_routing(number, agent_name, trunk_id)
+            try:
+                res = telephony_manager.update_number_routing(number, agent_name, trunk_id)
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
             if not res:
-                self._send_json({"status": "error", "error": "Number not found"}, 404)
+                self._send_json({"status": "error", "error": "Number not found or not active"}, 404)
                 return
             self._send_json({"status": "ok", "number": res})
             return
 
         elif parsed.path == "/api/telephony/trunks/inbound":
-            from agent.telephony_manager import SIPInboundTrunk
-            t_id = payload.get("trunk_id", "").strip() or f"trunk-in-{int(time.time())}"
-            name = payload.get("name", "Custom Inbound Trunk").strip()
+            from agent.telephony_manager import SIPInboundTrunk, validate_inbound_trunk_payload
+            t_id = str(payload.get("trunk_id", "")).strip() or f"trunk-in-{int(time.time())}"
+            name = str(payload.get("name") or "Custom Inbound Trunk").strip()
             numbers = payload.get("numbers", [])
-            allowed = payload.get("allowed_addresses", ["0.0.0.0/0"])
+            allowed = payload.get("allowed_addresses") or ["0.0.0.0/0"]
+            errors = validate_inbound_trunk_payload(t_id, name, numbers, allowed)
+            if errors:
+                self._send_json({"status": "error", "error": "; ".join(errors), "errors": errors}, 400)
+                return
+            if telephony_manager.has_trunk(t_id) and not payload.get("replace"):
+                self._send_json({"status": "error", "error": f"Trunk id '{t_id}' already exists. Choose another id or pass replace=true."}, 409)
+                return
             trunk = SIPInboundTrunk(
                 trunk_id=t_id,
                 name=name,
@@ -601,15 +622,23 @@ class Handler(SimpleHTTPRequestHandler):
                 auth_password=payload.get("auth_password"),
             )
             telephony_manager.register_inbound_trunk(trunk)
-            self._send_json({"status": "ok", "trunk": asdict(trunk)})
+            self._send_json({"status": "ok", "trunk": telephony_manager._public_trunk(trunk)})
             return
 
         elif parsed.path == "/api/telephony/trunks/outbound":
-            from agent.telephony_manager import SIPOutboundTrunk
-            t_id = payload.get("trunk_id", "").strip() or f"trunk-out-{int(time.time())}"
-            name = payload.get("name", "Custom Outbound Trunk").strip()
-            address = payload.get("address", "sip.telnyx.com:5060").strip()
-            numbers = payload.get("numbers", ["+18005550199"])
+            from agent.telephony_manager import SIPOutboundTrunk, validate_outbound_trunk_payload
+            t_id = str(payload.get("trunk_id", "")).strip() or f"trunk-out-{int(time.time())}"
+            name = str(payload.get("name") or "Custom Outbound Trunk").strip()
+            address = str(payload.get("address") or "").strip()
+            numbers = payload.get("numbers", [])
+            transport = str(payload.get("transport") or "udp").lower()
+            errors = validate_outbound_trunk_payload(t_id, name, address, numbers, transport)
+            if errors:
+                self._send_json({"status": "error", "error": "; ".join(errors), "errors": errors}, 400)
+                return
+            if telephony_manager.has_trunk(t_id) and not payload.get("replace"):
+                self._send_json({"status": "error", "error": f"Trunk id '{t_id}' already exists. Choose another id or pass replace=true."}, 409)
+                return
             trunk = SIPOutboundTrunk(
                 trunk_id=t_id,
                 name=name,
@@ -617,10 +646,10 @@ class Handler(SimpleHTTPRequestHandler):
                 numbers=numbers,
                 auth_username=payload.get("auth_username"),
                 auth_password=payload.get("auth_password"),
-                transport=payload.get("transport", "udp"),
+                transport=transport,
             )
             telephony_manager.register_outbound_trunk(trunk)
-            self._send_json({"status": "ok", "trunk": asdict(trunk)})
+            self._send_json({"status": "ok", "trunk": telephony_manager._public_trunk(trunk)})
             return
 
         elif parsed.path in ("/api/telephony/calls/end", "/api/telephony/calls/hangup"):

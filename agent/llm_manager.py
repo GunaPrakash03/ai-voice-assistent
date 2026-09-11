@@ -273,7 +273,13 @@ class StreamingDialogueManager:
             order_id = m.group(1).upper() if m and m.group(1).isalnum() else "1042"
             return ("lookup_order", {"order_id": order_id})
         elif "available" in lower or "availability" in lower or "schedule" in lower or "free slots" in lower or "openings" in lower or "is or not" in lower or "is available" in lower:
-            service = f"{specialty} with {doctor_name}"
+            # Honour a concrete service the caller named; otherwise fall back to the clinic default.
+            if "dental" in lower:
+                service = "dental cleaning"
+            elif "oil change" in lower or ("oil" in lower and "car" in lower):
+                service = "oil change"
+            else:
+                service = f"{specialty} with {doctor_name}"
             return ("check_availability", {"service_type": service, "date": date})
         elif ("book" in lower or "reserve" in lower or "reservation" in lower or "appointment" in lower or "choose" in lower or "want to choose" in lower or "make an appointment" in lower) and not ("no" in lower and len(lower.split()) <= 4):
             return ("book_appointment", {

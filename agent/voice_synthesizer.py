@@ -5,7 +5,10 @@ Fetches genuine authentic human speech audio directly from:
 2. Deepgram Aura Official TTS API (https://api.deepgram.com/v1/speak) with DEEPGRAM_API_KEY
 3. Cartesia Sonic Official WebSocket / REST API with CARTESIA_API_KEY
 4. OpenAI TTS Official API (https://api.openai.com/v1/audio/speech) with OPENAI_API_KEY
-5. High-Definition Neural TTS fallback for voices when third-party keys are unconfigured.
+5. Retell AI platform voice library (https://api.retellai.com/list-voices) with RETELL_API_KEY:
+   official Retell preview MP3s for sample playback, and custom text routed through the
+   voice's underlying engine (ElevenLabs / OpenAI / Deepgram), since Retell has no TTS endpoint.
+6. High-Definition Neural TTS fallback for voices when third-party keys are unconfigured.
 """
 
 import asyncio
@@ -13,10 +16,40 @@ import io
 import json
 import logging
 import os
+import re
 import urllib.request
 from typing import Dict, Optional
 
 log = logging.getLogger("voice-synthesizer")
+
+_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _load_dotenv_once(path: str = os.path.join(_ROOT_DIR, ".env")) -> None:
+    """
+    Load .env into os.environ (never overriding values already set) so provider
+    keys are available on the very first synthesis request, independent of
+    whether agent.provider_manager has been imported yet.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                if k and k not in os.environ:
+                    os.environ[k] = v.strip().strip("'\"")
+    except FileNotFoundError:
+        pass
+    except Exception as ex:
+        log.warning("Could not load .env: %s", ex)
+
+
+_load_dotenv_once()
+
+from agent import retell_voices as _retell
 
 # Global in-memory cache for ultra-fast instant audio playback (<5ms response)
 _AUDIO_CACHE: Dict[str, bytes] = {}
@@ -342,6 +375,113 @@ def _fetch_cartesia_tts(voice_id: str, text: str, api_key: str) -> Optional[byte
         return None
 
 
+_ELEVEN_LIBRARY_BY_NAME: Dict[str, str] = {}
+
+
+def _resolve_elevenlabs_voice_id_by_name(name: str, api_key: str) -> Optional[str]:
+    """Finds a voice in the caller's own ElevenLabs library by (case-insensitive) name."""
+    key = name.strip().lower()
+    if not key:
+        return None
+    if key in _ELEVEN_LIBRARY_BY_NAME:
+        return _ELEVEN_LIBRARY_BY_NAME[key] or None
+    try:  # built-in catalogue first (no network round-trip)
+        from agent.agent_builder import VOICE_CATALOG
+        for v in VOICE_CATALOG:
+            if v.provider == "elevenlabs" and v.name.strip().lower() == key:
+                _ELEVEN_LIBRARY_BY_NAME[key] = v.voice_id
+                return v.voice_id
+    except Exception:
+        pass
+    try:
+        req = urllib.request.Request(
+            "https://api.elevenlabs.io/v1/voices",
+            headers={"xi-api-key": api_key, "User-Agent": "VoiceAgentService/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=6.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        for v in data.get("voices", []):
+            full = str(v.get("name") or "").strip().lower()
+            # Library names look like "Sarah - Warm, Friendly" or "Adam (Workspace Cloned)"; index both forms.
+            short = re.split(r"\s+-\s+|\s*\(", full, maxsplit=1)[0].strip()
+            for n in (full, short):
+                if n and n not in _ELEVEN_LIBRARY_BY_NAME:
+                    _ELEVEN_LIBRARY_BY_NAME[n] = v.get("voice_id") or ""
+    except Exception as ex:
+        log.warning("ElevenLabs library lookup failed: %s", ex)
+    _ELEVEN_LIBRARY_BY_NAME.setdefault(key, "")
+    return _ELEVEN_LIBRARY_BY_NAME[key] or None
+
+
+def _fetch_elevenlabs_tts(raw_voice_id: str, text: str, api_key: str) -> Optional[bytes]:
+    """Calls official ElevenLabs Turbo v2.5 TTS."""
+    try:
+        payload = {
+            "text": text,
+            "model_id": "eleven_turbo_v2_5",
+            "voice_settings": {"stability": 0.50, "similarity_boost": 0.80, "style": 0.15, "use_speaker_boost": True},
+        }
+        req = urllib.request.Request(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{raw_voice_id}",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"xi-api-key": api_key, "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=8.0) as resp:
+            return resp.read() or None
+    except Exception as ex:
+        log.warning("ElevenLabs TTS failed for voice %s: %s", raw_voice_id, ex)
+        return None
+
+
+def _synthesize_retell_voice(voice_id: str, phrase: str, custom_text: str, gender: str) -> Optional[bytes]:
+    """
+    Retell AI has no text-to-speech endpoint. Strategy:
+      * sample preview (no custom text)  -> official Retell preview MP3 (authentic voice)
+      * custom text                      -> underlying engine named by the Retell record
+                                            (ElevenLabs by voice name, OpenAI by voice name,
+                                             Deepgram Aura by model name)
+      * anything else                    -> None, caller falls back to neural map
+    """
+    record = _retell.get_retell_voice(voice_id)
+    if not custom_text:
+        preview = _retell.get_retell_preview_audio(voice_id)
+        if preview:
+            return preview
+    engine = _retell.underlying_engine(record) if record else (_retell.RETELL_ID_PATTERN.match(voice_id).group(1).lower() if _retell.RETELL_ID_PATTERN.match(voice_id) else "")
+    name = _retell.plain_voice_name(record) if record else _retell.RETELL_ID_PATTERN.sub("", voice_id)
+    if engine in ("elevenlabs", "11labs"):
+        xi_key = os.getenv("ELEVEN_API_KEY") or os.getenv("ELEVENLABS_API_KEY") or os.getenv("XI_API_KEY")
+        if xi_key:
+            raw = _resolve_elevenlabs_voice_id_by_name(name, xi_key)
+            if raw:
+                audio = _fetch_elevenlabs_tts(raw, phrase, xi_key)
+                if audio:
+                    return audio
+            else:
+                log.info("Retell voice %s (%s) is not in this ElevenLabs library; using neural fallback", voice_id, name)
+    elif engine == "openai":
+        oa_key = os.getenv("OPENAI_API_KEY")
+        if oa_key:
+            audio = _fetch_openai_tts(name.lower(), phrase, oa_key)
+            if audio:
+                return audio
+    elif engine == "deepgram":
+        dg_key = os.getenv("DEEPGRAM_API_KEY")
+        if dg_key:
+            audio = _fetch_deepgram_tts(f"aura-{name.lower()}-en", phrase, dg_key)
+            if audio:
+                return audio
+    return None
+
+
+def _retell_neural_fallback_key(voice_id: str) -> str:
+    """11labs-Cimo -> retell-cimo (matches the tuned entries in NEURAL_VOICE_MAP)."""
+    if voice_id.lower().startswith("retell-"):
+        return voice_id.lower()
+    name = _retell.RETELL_ID_PATTERN.sub("", voice_id).lower()
+    return f"retell-{name}"
+
+
 def clean_spoken_speech_text(text: str) -> str:
     """Strips XML/HTML/SSML tags, URLs, brackets, JSON, Markdown, and prompt directives so only clean spoken sentences are vocalized."""
     if not text or not isinstance(text, str):
@@ -439,10 +579,22 @@ async def generate_speech_audio_bytes(
         "deepgram": "Deepgram Aura",
         "openai": "OpenAI TTS",
         "elevenlabs": "ElevenLabs Turbo",
+        "retell": "Retell AI",
     }
     clean_name = name.replace("(Studio Pro)", "").replace("(Free Neural)", "").replace("(Spanish Studio Pro)", "").replace("(Retell AI)", "").replace("(British Free)", "").replace("(Indian English Free)", "").replace("(Aussie Free)", "").strip() or "Assistant"
     
     phrase = cleaned_input or f"Hello! I am {clean_name}, your AI voice assistant. How can I help you today?"
+
+    # 0. Retell AI platform voice library
+    if provider == "retell" or _retell.is_retell_voice_id(voice_id):
+        retell_audio = _synthesize_retell_voice(voice_id, phrase, cleaned_input, gender)
+        if retell_audio:
+            _AUDIO_CACHE[cache_key] = retell_audio
+            return retell_audio
+        # Route the neural fallback through the tuned retell-<name> profile if we have one.
+        fb_key = _retell_neural_fallback_key(voice_id)
+        if fb_key in NEURAL_VOICE_MAP and voice_id not in NEURAL_VOICE_MAP:
+            voice_id = fb_key
 
     # 1. ElevenLabs Official Portal Audio
     if provider == "elevenlabs" or voice_id.startswith("eleven-"):
@@ -484,7 +636,7 @@ async def generate_speech_audio_bytes(
 
     # 2. Deepgram Aura Official TTS (uses DEEPGRAM_API_KEY from .env)
     if provider == "deepgram" or voice_id.startswith("aura-"):
-        dg_key = os.getenv("DEEPGRAM_API_KEY", "0d47c5e9889b40517b7e0e557940c7489dda4b31")
+        dg_key = os.getenv("DEEPGRAM_API_KEY")
         if dg_key:
             dg_audio = _fetch_deepgram_tts(voice_id, phrase, dg_key)
             if dg_audio:

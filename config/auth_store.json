@@ -98,6 +98,24 @@
       "rate_limit_rpm": 150,
       "metadata": {},
       "active": true
+    },
+    {
+      "workspace_id": "ws-06b257a4",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1789123379.8708065,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
+    },
+    {
+      "workspace_id": "ws-20b31b7b",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1789123574.9976478,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
     }
   ],
   "users": [
@@ -187,6 +205,22 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1789100351.0903394,
+      "active": true
+    },
+    {
+      "user_id": "usr-9ce14fe9",
+      "workspace_id": "ws-06b257a4",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1789123379.8810146,
+      "active": true
+    },
+    {
+      "user_id": "usr-b70850d3",
+      "workspace_id": "ws-20b31b7b",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1789123575.004639,
       "active": true
     }
   ],
@@ -650,7 +684,99 @@
       "expires_at": null,
       "last_used_at": null,
       "revoked": false
+    },
+    {
+      "key_id": "key-d079eae7c6a9",
+      "workspace_id": "ws-06b257a4",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_LLva...",
+      "key_hash": "6f00fd39a65a29668eecf747799579c6dea8cb00840d99b45aebcf7a18bc0f61",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789123379.8743641,
+      "expires_at": null,
+      "last_used_at": 1789123379.878706,
+      "revoked": true
+    },
+    {
+      "key_id": "key-9cc7f621bb74",
+      "workspace_id": "ws-06b257a4",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live_eCeC...",
+      "key_hash": "c93a3a2bf4eb200e82fab0011b1f10216159758ea359651f27facbfa3212d2d7",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789123379.8885932,
+      "expires_at": null,
+      "last_used_at": 1789123379.8915367,
+      "revoked": false
+    },
+    {
+      "key_id": "key-c937b8d5316d",
+      "workspace_id": "ws-06b257a4",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_BdUH...",
+      "key_hash": "0d257a4105da681a832c38410b8a9f6d70a4e4ec6018e8a638504e42cebb20a5",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1789123379.9438918,
+      "expires_at": null,
+      "last_used_at": 1789123379.9461095,
+      "revoked": false
+    },
+    {
+      "key_id": "key-97f4f650352e",
+      "workspace_id": "ws-20b31b7b",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_haHx...",
+      "key_hash": "b1deac2429cbd2823a698b7b9f6091d2a7578e6f516750c2865c153f196565fc",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789123575.0001466,
+      "expires_at": null,
+      "last_used_at": 1789123575.0031993,
+      "revoked": true
+    },
+    {
+      "key_id": "key-73f63b4247e8",
+      "workspace_id": "ws-20b31b7b",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live_pYql...",
+      "key_hash": "b3b1611c16a2a22a145398e0ee5ef4d252f6414912460e6974a1f60807354cfc",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789123575.0092576,
+      "expires_at": null,
+      "last_used_at": 1789123575.0110729,
+      "revoked": false
+    },
+    {
+      "key_id": "key-f09fa268f35d",
+      "workspace_id": "ws-20b31b7b",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_8rfK...",
+      "key_hash": "f590bd00d4475622288f55b61f1c17fb58eded729398ad493674f1a7faecc5cc",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1789123575.0657349,
+      "expires_at": null,
+      "last_used_at": null,
+      "revoked": false
     }
   ],
-  "updated_at": 1789100351.1485283
+  "updated_at": 1789123575.066725
 }

@@ -167,7 +167,7 @@
       <div class="banner">
         <div class="banner-text">
           <b>🔐 Unified Voice &amp; LLM Key Management</b>
-          <p>Configure API keys for ElevenLabs, Cartesia, Deepgram, Google Gemini, OpenAI, Claude, and Telephony. Keys are encrypted, securely stored in <code>.env</code>, and dynamically loaded into real-time voice sessions.</p>
+          <p>Configure API keys for ElevenLabs, Retell AI, Cartesia, Deepgram, Google Gemini, OpenAI, Claude, and Telephony. Keys are encrypted, securely stored in <code>.env</code>, and dynamically loaded into real-time voice sessions.</p>
         </div>
         <a href="/agent-builder.html" class="btn btn-outline" style="white-space:nowrap">🎙️ Open Agent Builder →</a>
       </div>
@@ -201,6 +201,33 @@
           <div class="pcard-actions">
             <a href="https://elevenlabs.io/app/speech-synthesis" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">ElevenLabs Console ↗</a>
             <span style="font-size:11.5px;color:var(--ink-faint)">Voice Studio: 46 total voices</span>
+          </div>
+        </div>
+
+        <!-- Retell AI Card -->
+        <div class="pcard" id="card-retell">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#0EA5E9;color:#fff">R</div>
+              <div>
+                <div class="pcard-name">Retell AI Voice Library</div>
+                <div class="pcard-meta"><code>RETELL_API_KEY</code> · Platform Voice Library Sync</div>
+              </div>
+            </div>
+            <span class="status-pill sp-off" id="pill-retell">UNCONFIGURED</span>
+          </div>
+          <div class="pcard-desc">Syncs every voice from your Retell AI workspace with official previews. Retell has no TTS endpoint, so custom text is spoken through each voice's underlying engine (ElevenLabs, OpenAI, Deepgram) using the keys above.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-RETELL_API_KEY" placeholder="key_..." data-provider="retell">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+            </div>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="retell">⚡ Test &amp; Sync</button>
+          </div>
+          <div class="diag-box" id="diag-retell"></div>
+          <div class="pcard-actions">
+            <a href="https://dashboard.retellai.com/apiKey" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Retell Dashboard ↗</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">Voices appear in Agent Builder → 🎧 Retell AI tab</span>
           </div>
         </div>
 

@@ -1,0 +1,86 @@
+{
+  "inbound": [
+    {
+      "trunk_id": "trunk-inbound-primary",
+      "name": "Primary Inbound Carrier Trunk",
+      "numbers": [
+        "+18005550199",
+        "+18885550142",
+        "+14158000129"
+      ],
+      "allowed_addresses": [
+        "192.0.2.0/24",
+        "198.51.100.0/24"
+      ],
+      "auth_username": null,
+      "auth_password": null,
+      "metadata": {
+        "carrier": "telnyx",
+        "region": "us-east"
+      }
+    }
+  ],
+  "outbound": [
+    {
+      "trunk_id": "trunk-outbound-primary",
+      "name": "Primary Outbound Carrier Trunk",
+      "address": "sip.telnyx.com:5060",
+      "numbers": [
+        "+18005550199"
+      ],
+      "auth_username": "voice_outbound_user",
+      "auth_password": "secret_sip_pass",
+      "transport": "udp",
+      "metadata": {
+        "carrier": "telnyx"
+      }
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "rule-inbound-default",
+      "name": "Default Customer Support Routing",
+      "trunk_ids": [
+        "trunk-inbound-primary"
+      ],
+      "room_prefix": "call-",
+      "agent_name": "VoiceAssistantAgent",
+      "pin": null,
+      "metadata": {}
+    },
+    {
+      "rule_id": "rule-18005550199",
+      "name": "DID Routing for +1 (800) 555-0199 (Toll-Free)",
+      "trunk_ids": [
+        "trunk-inbound-primary"
+      ],
+      "room_prefix": "call-",
+      "agent_name": "Intake Agent",
+      "pin": null,
+      "metadata": {}
+    },
+    {
+      "rule_id": "rule-18885550142",
+      "name": "DID Routing for +1 (888) 555-0142 (Toll-Free)",
+      "trunk_ids": [
+        "trunk-inbound-primary"
+      ],
+      "room_prefix": "call-",
+      "agent_name": "Support Agent",
+      "pin": null,
+      "metadata": {}
+    },
+    {
+      "rule_id": "rule-14158000129",
+      "name": "DID Routing for +1 (415) 800-0129",
+      "trunk_ids": [
+        "trunk-inbound-primary"
+      ],
+      "room_prefix": "call-",
+      "agent_name": "Apex Legal Assistant",
+      "pin": null,
+      "metadata": {}
+    }
+  ],
+  "updated_at": 1789124042.6085413
+}

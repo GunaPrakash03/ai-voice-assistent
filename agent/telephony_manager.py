@@ -11,6 +11,7 @@ Components:
 """
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
@@ -25,6 +26,8 @@ log = logging.getLogger("telephony-manager")
 E164_REGEX = re.compile(r"^\+?[1-9]\d{1,14}$")
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
 PHONE_NUMBERS_FILE = os.path.join(CONFIG_DIR, "phone_numbers.json")
+SIP_TRUNKS_FILE = os.path.join(CONFIG_DIR, "sip_trunks.json")
+VALID_TRANSPORTS = ("udp", "tcp", "tls")
 
 
 class CallDirection(str, Enum):
@@ -134,6 +137,46 @@ def is_valid_phone_number(number: str) -> bool:
     return bool(E164_REGEX.match(norm))
 
 
+def _mask_secret(val: Optional[str]) -> Optional[str]:
+    if not val:
+        return None
+    return "••••••••"
+
+
+def validate_inbound_trunk_payload(trunk_id: str, name: str, numbers: List[str], allowed_addresses: List[str], transport: str = "udp") -> List[str]:
+    """Returns a list of human-readable validation errors (empty = valid)."""
+    errors: List[str] = []
+    if not trunk_id or not re.match(r"^[A-Za-z0-9_.-]{3,64}$", trunk_id):
+        errors.append("trunk_id must be 3-64 chars of letters, digits, '-', '_' or '.'")
+    if not name or not name.strip():
+        errors.append("name is required")
+    if not isinstance(numbers, list):
+        errors.append("numbers must be a list of E.164 phone numbers")
+    else:
+        bad = [n for n in numbers if not is_valid_phone_number(str(n))]
+        if bad:
+            errors.append(f"invalid phone number(s): {', '.join(str(b) for b in bad)}")
+    for addr in (allowed_addresses or []):
+        try:
+            ipaddress.ip_network(str(addr), strict=False)
+        except ValueError:
+            errors.append(f"allowed_addresses entry '{addr}' is not an IP address or CIDR block")
+    if transport and transport.lower() not in VALID_TRANSPORTS:
+        errors.append(f"transport must be one of {', '.join(VALID_TRANSPORTS)}")
+    return errors
+
+
+def validate_outbound_trunk_payload(trunk_id: str, name: str, address: str, numbers: List[str], transport: str) -> List[str]:
+    errors = validate_inbound_trunk_payload(trunk_id, name, numbers, [], transport)
+    if not address or not address.strip():
+        errors.append("address (carrier SIP host, e.g. sip.telnyx.com:5060) is required")
+    elif not re.match(r"^(sip:)?[A-Za-z0-9.-]+(:\d{1,5})?$", address.strip()):
+        errors.append(f"address '{address}' is not a valid SIP host[:port]")
+    if isinstance(numbers, list) and not numbers:
+        errors.append("outbound trunk needs at least one caller-ID number")
+    return errors
+
+
 AVAILABLE_NUMBERS_CATALOG = [
     {"phone_number": "+14158000129", "friendly_name": "+1 (415) 800-0129", "country": "US", "region": "San Francisco, CA", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
     {"phone_number": "+12125003491", "friendly_name": "+1 (212) 500-3491", "country": "US", "region": "New York, NY", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
@@ -171,8 +214,85 @@ class TelephonyManager:
         self._calls: Dict[str, TelephonyCallRecord] = {}
         self._owned_numbers: Dict[str, PhoneNumberRecord] = {}
 
-        self._init_default_demo_trunks()
+        if not self._load_trunks():
+            self._init_default_demo_trunks()
         self._load_phone_numbers()
+        self._rebind_numbers_to_trunks()
+
+    # ── Trunk persistence ────────────────────────────────────────────────────
+    def _load_trunks(self) -> bool:
+        """Load inbound/outbound trunks and dispatch rules from config/sip_trunks.json."""
+        if not os.path.isfile(SIP_TRUNKS_FILE):
+            return False
+        try:
+            with open(SIP_TRUNKS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for item in data.get("inbound", []):
+                t = SIPInboundTrunk(**item)
+                self._inbound_trunks[t.trunk_id] = t
+            for item in data.get("outbound", []):
+                t = SIPOutboundTrunk(**item)
+                self._outbound_trunks[t.trunk_id] = t
+            for item in data.get("rules", []):
+                r = SIPDispatchRule(**item)
+                self._dispatch_rules[r.rule_id] = r
+            return bool(self._inbound_trunks or self._outbound_trunks)
+        except Exception as e:
+            log.warning("Failed to load SIP trunks from disk: %s", e)
+            return False
+
+    def _save_trunks(self) -> None:
+        try:
+            os.makedirs(os.path.dirname(SIP_TRUNKS_FILE), exist_ok=True)
+            with open(SIP_TRUNKS_FILE, "w", encoding="utf-8") as f:
+                json.dump({
+                    "inbound": [asdict(t) for t in self._inbound_trunks.values()],
+                    "outbound": [asdict(t) for t in self._outbound_trunks.values()],
+                    "rules": [asdict(r) for r in self._dispatch_rules.values()],
+                    "updated_at": time.time(),
+                }, f, indent=2)
+        except Exception as e:
+            log.warning("Failed to save SIP trunks: %s", e)
+
+    def _number_rule_id(self, norm_number: str) -> str:
+        return f"rule-{norm_number.replace('+', '')}"
+
+    def _ensure_number_rule(self, rec: "PhoneNumberRecord") -> SIPDispatchRule:
+        """Each owned number gets its own dispatch rule so re-routing one DID never affects another."""
+        rule_id = self._number_rule_id(rec.phone_number)
+        rule = self._dispatch_rules.get(rule_id)
+        if rule is None:
+            rule = SIPDispatchRule(
+                rule_id=rule_id,
+                name=f"DID Routing for {rec.friendly_name or rec.phone_number}",
+                trunk_ids=[rec.assigned_trunk_id],
+                room_prefix="call-",
+                agent_name=rec.assigned_agent,
+            )
+            self._dispatch_rules[rule_id] = rule
+        else:
+            rule.trunk_ids = [rec.assigned_trunk_id]
+            rule.agent_name = rec.assigned_agent
+        return rule
+
+    def _rebind_numbers_to_trunks(self) -> None:
+        """After a restart, make sure every active owned DID is on its trunk and has a rule."""
+        changed = False
+        for rec in self._owned_numbers.values():
+            if rec.status != "active":
+                continue
+            trunk = self._inbound_trunks.get(rec.assigned_trunk_id)
+            if trunk is None:
+                log.warning("Owned number %s references unknown trunk %s; keeping record, routing falls back to default rule",
+                            rec.phone_number, rec.assigned_trunk_id)
+            elif rec.phone_number not in trunk.numbers:
+                trunk.numbers.append(rec.phone_number)
+                changed = True
+            if self._number_rule_id(rec.phone_number) not in self._dispatch_rules:
+                self._ensure_number_rule(rec)
+                changed = True
+        if changed:
+            self._save_trunks()
 
     def _init_default_demo_trunks(self):
         """Pre-populate reference carrier trunks and dispatch rules."""
@@ -253,23 +373,42 @@ class TelephonyManager:
         except Exception as e:
             log.warning("Failed to save phone numbers: %s", e)
 
-    def register_inbound_trunk(self, trunk: SIPInboundTrunk) -> None:
+    def has_trunk(self, trunk_id: str) -> bool:
+        return trunk_id in self._inbound_trunks or trunk_id in self._outbound_trunks
+
+    def register_inbound_trunk(self, trunk: SIPInboundTrunk, persist: bool = True) -> None:
+        trunk.numbers = [normalize_phone_number(n) for n in trunk.numbers]
         self._inbound_trunks[trunk.trunk_id] = trunk
         log.info("Registered Inbound SIP Trunk: %s (%s numbers)", trunk.trunk_id, len(trunk.numbers))
+        if persist:
+            self._save_trunks()
 
-    def register_outbound_trunk(self, trunk: SIPOutboundTrunk) -> None:
+    def register_outbound_trunk(self, trunk: SIPOutboundTrunk, persist: bool = True) -> None:
+        trunk.numbers = [normalize_phone_number(n) for n in trunk.numbers]
+        trunk.transport = (trunk.transport or "udp").lower()
         self._outbound_trunks[trunk.trunk_id] = trunk
-        log.info("Registered Outbound SIP Trunk: %s (gateway=%s)", trunk.trunk_id, trunk.address)
+        log.info("Registered Outbound SIP Trunk: %s -> %s", trunk.trunk_id, trunk.address)
+        if persist:
+            self._save_trunks()
 
-    def register_dispatch_rule(self, rule: SIPDispatchRule) -> None:
+    def register_dispatch_rule(self, rule: SIPDispatchRule, persist: bool = True) -> None:
         self._dispatch_rules[rule.rule_id] = rule
-        log.info("Registered SIP Dispatch Rule: %s (room_prefix=%s)", rule.rule_id, rule.room_prefix)
+        log.info("Registered Dispatch Rule: %s -> agent %s", rule.rule_id, rule.agent_name)
+        if persist:
+            self._save_trunks()
+
+    @staticmethod
+    def _public_trunk(trunk) -> dict:
+        d = asdict(trunk)
+        d["has_auth"] = bool(trunk.auth_username or trunk.auth_password)
+        d["auth_password"] = _mask_secret(trunk.auth_password)
+        return d
 
     def list_inbound_trunks(self) -> List[dict]:
-        return [asdict(t) for t in self._inbound_trunks.values()]
+        return [self._public_trunk(t) for t in self._inbound_trunks.values()]
 
     def list_outbound_trunks(self) -> List[dict]:
-        return [asdict(t) for t in self._outbound_trunks.values()]
+        return [self._public_trunk(t) for t in self._outbound_trunks.values()]
 
     def list_dispatch_rules(self) -> List[dict]:
         return [asdict(r) for r in self._dispatch_rules.values()]
@@ -329,6 +468,11 @@ class TelephonyManager:
         norm = normalize_phone_number(phone_number)
         if not is_valid_phone_number(norm):
             raise ValueError(f"Invalid phone number '{phone_number}'")
+        existing = self._owned_numbers.get(norm)
+        if existing and existing.status == "active":
+            raise ValueError(f"{norm} is already provisioned and assigned to {existing.assigned_agent}. Use re-route instead.")
+        if assigned_trunk_id not in self._inbound_trunks:
+            raise ValueError(f"Unknown inbound trunk '{assigned_trunk_id}'. Create the trunk first.")
 
         catalog_entry = next((item for item in AVAILABLE_NUMBERS_CATALOG if item["phone_number"] == norm), None)
         country = catalog_entry["country"] if catalog_entry else "US"
@@ -356,16 +500,9 @@ class TelephonyManager:
         if trunk and norm not in trunk.numbers:
             trunk.numbers.append(norm)
 
-        # Update or create dispatch rule
-        rule_id = f"rule-{norm.replace('+', '')}"
-        rule = SIPDispatchRule(
-            rule_id=rule_id,
-            name=f"DID Routing for {fname}",
-            trunk_ids=[assigned_trunk_id],
-            room_prefix="call-",
-            agent_name=assigned_agent,
-        )
-        self.register_dispatch_rule(rule)
+        # One dispatch rule per DID
+        self._ensure_number_rule(record)
+        self._save_trunks()
         self._save_phone_numbers()
 
         log.info("Purchased phone number %s -> assigned to %s on %s", norm, assigned_agent, assigned_trunk_id)
@@ -374,15 +511,17 @@ class TelephonyManager:
     def release_number(self, phone_number: str) -> bool:
         norm = normalize_phone_number(phone_number)
         rec = self._owned_numbers.get(norm)
-        if not rec:
+        if not rec or rec.status != "active":
             return False
 
         rec.status = "released"
-        # Unbind from trunk
+        # Unbind from trunk and drop its dispatch rule
         trunk = self._inbound_trunks.get(rec.assigned_trunk_id)
         if trunk and norm in trunk.numbers:
             trunk.numbers.remove(norm)
+        self._dispatch_rules.pop(self._number_rule_id(norm), None)
 
+        self._save_trunks()
         self._save_phone_numbers()
         log.info("Released phone number %s", norm)
         return True
@@ -390,10 +529,14 @@ class TelephonyManager:
     def update_number_routing(self, phone_number: str, agent_name: str, trunk_id: Optional[str] = None) -> Optional[dict]:
         norm = normalize_phone_number(phone_number)
         rec = self._owned_numbers.get(norm)
-        if not rec:
+        if not rec or rec.status != "active":
             return None
+        if not agent_name or not agent_name.strip():
+            raise ValueError("agent_name is required")
+        if trunk_id and trunk_id not in self._inbound_trunks:
+            raise ValueError(f"Unknown inbound trunk '{trunk_id}'")
 
-        rec.assigned_agent = agent_name
+        rec.assigned_agent = agent_name.strip()
         if trunk_id and trunk_id in self._inbound_trunks:
             if trunk_id != rec.assigned_trunk_id:
                 old_trunk = self._inbound_trunks.get(rec.assigned_trunk_id)
@@ -404,11 +547,9 @@ class TelephonyManager:
                     new_trunk.numbers.append(norm)
                 rec.assigned_trunk_id = trunk_id
 
-        # Update matching dispatch rule
-        for rule in self._dispatch_rules.values():
-            if rec.assigned_trunk_id in rule.trunk_ids:
-                rule.agent_name = agent_name
-
+        # Update only this DID's own dispatch rule
+        self._ensure_number_rule(rec)
+        self._save_trunks()
         self._save_phone_numbers()
         log.info("Updated routing for %s -> agent=%s trunk=%s", norm, agent_name, rec.assigned_trunk_id)
         return asdict(rec)
@@ -426,8 +567,9 @@ class TelephonyManager:
         matched_rule = None
         # Check if number has explicit assigned agent
         owned = self._owned_numbers.get(norm_dialed)
-        if owned:
+        if owned and owned.status == "active":
             agent_name = owned.assigned_agent
+            matched_rule = self._dispatch_rules.get(self._number_rule_id(norm_dialed))
         elif matched_trunk:
             for rule in self._dispatch_rules.values():
                 if matched_trunk.trunk_id in rule.trunk_ids:
@@ -490,6 +632,8 @@ class TelephonyManager:
         if not trunk:
             raise RuntimeError("No outbound SIP trunk configured")
 
+        if not caller_id and not trunk.numbers:
+            raise ValueError(f"Outbound trunk '{trunk.trunk_id}' has no caller-ID numbers configured")
         selected_caller_id = normalize_phone_number(caller_id or trunk.numbers[0])
         target_room = room_name or f"outbound-{int(time.time())}-{norm_dest[-4:]}"
         call_id = f"sip-out-{int(time.time())}-{norm_dest[-4:]}"
