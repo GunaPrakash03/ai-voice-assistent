@@ -6,7 +6,7 @@
       "numbers": [
         "+18005550199",
         "+18885550142",
-        "+14158000129"
+        "+12064129983"
       ],
       "allowed_addresses": [
         "192.0.2.0/24",
@@ -17,6 +17,25 @@
       "metadata": {
         "carrier": "telnyx",
         "region": "us-east"
+      }
+    },
+    {
+      "trunk_id": "TKe24d3f7f61a7b668634faa71a18096a3",
+      "name": "Twilio Elastic SIP Trunk (voice-agent)",
+      "numbers": [
+        "+19517177889"
+      ],
+      "allowed_addresses": [
+        "54.172.60.0/30",
+        "54.244.51.0/30",
+        "49.204.233.227/32"
+      ],
+      "auth_username": null,
+      "auth_password": null,
+      "metadata": {
+        "carrier": "twilio",
+        "trunk_sid": "TKe24d3f7f61a7b668634faa71a18096a3",
+        "domain": "voice-agent-sys0041.pstn.twilio.com"
       }
     }
   ],
@@ -34,6 +53,21 @@
       "metadata": {
         "carrier": "telnyx"
       }
+    },
+    {
+      "trunk_id": "trunk-outbound-twilio",
+      "name": "Twilio Outbound SIP Trunk",
+      "address": "voice-agent-sys0041.pstn.twilio.com:5060",
+      "numbers": [
+        "+19517177889"
+      ],
+      "auth_username": "twilio_outbound_user",
+      "auth_password": "twilio_outbound_password",
+      "transport": "udp",
+      "metadata": {
+        "carrier": "twilio",
+        "trunk_sid": "TKe24d3f7f61a7b668634faa71a18096a3"
+      }
     }
   ],
   "rules": [
@@ -49,38 +83,40 @@
       "metadata": {}
     },
     {
-      "rule_id": "rule-18005550199",
-      "name": "DID Routing for +1 (800) 555-0199 (Toll-Free)",
+      "rule_id": "rule-twilio-maya",
+      "name": "Twilio Inbound Routing to Maya",
       "trunk_ids": [
-        "trunk-inbound-primary"
+        "TKe24d3f7f61a7b668634faa71a18096a3"
+      ],
+      "room_prefix": "sip-inbound-",
+      "agent_name": "Maya - Bottini & Bottini",
+      "pin": null,
+      "metadata": {
+        "carrier": "twilio"
+      }
+    },
+    {
+      "rule_id": "rule-19517177889",
+      "name": "DID Routing for +1 (951) 717-7889 (Twilio Live)",
+      "trunk_ids": [
+        "TKe24d3f7f61a7b668634faa71a18096a3"
       ],
       "room_prefix": "call-",
-      "agent_name": "Intake Agent",
+      "agent_name": "Maya - Bottini & Bottini",
       "pin": null,
       "metadata": {}
     },
     {
-      "rule_id": "rule-18885550142",
-      "name": "DID Routing for +1 (888) 555-0142 (Toll-Free)",
+      "rule_id": "rule-12064129983",
+      "name": "DID Routing for +1 (206) 412-9983",
       "trunk_ids": [
         "trunk-inbound-primary"
       ],
       "room_prefix": "call-",
-      "agent_name": "Support Agent",
-      "pin": null,
-      "metadata": {}
-    },
-    {
-      "rule_id": "rule-14158000129",
-      "name": "DID Routing for +1 (415) 800-0129",
-      "trunk_ids": [
-        "trunk-inbound-primary"
-      ],
-      "room_prefix": "call-",
-      "agent_name": "Apex Legal Assistant",
+      "agent_name": "Maya - Bottini & Bottini",
       "pin": null,
       "metadata": {}
     }
   ],
-  "updated_at": 1789356936.405226
+  "updated_at": 1789377181.4118772
 }

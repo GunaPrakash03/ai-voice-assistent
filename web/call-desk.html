@@ -242,14 +242,15 @@
       <button role="tab" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls">…</span></button>
       <button role="tab" aria-selected="false" data-v="detail">Call detail</button>
       <button role="tab" aria-selected="false" data-v="telephony">SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></button>
+      <button role="tab" aria-selected="false" data-v="market" style="color:var(--accent);font-weight:600">🛒 Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></button>
       <button role="tab" aria-selected="false" data-v="agents">Agents<span class="ct" id="ctAgents">…</span></button>
-      <a href="/api-keys.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers<span class="ct">🔑</span></a>
+      <a href="/api-keys.html" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers<span class="ct">🔑</span></a>
+      <a href="/webhooks.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Webhooks &amp; Data<span class="ct">⚡</span></a>
+      <a href="/profile.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">My Profile<span class="ct">👤</span></a>
+      <a href="/user-guide.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">How to use<span class="ct">📘</span></a>
     </div>
     <div class="rail-foot">
-      <div>WORKSPACE</div>
-      <div style="color:var(--rail-on)">Voice Agent Service</div>
-      <div><a href="/live-console.html">Live console</a> · <a href="/agent-builder.html">Builder</a></div>
-      <div><a href="/api-keys.html">API Keys</a> · <a href="/softphone.html">Softphone</a></div>
+      <!-- profile card is injected here by /profile.js -->
     </div>
   </nav>
 
@@ -489,7 +490,10 @@
         <div class="card">
           <div class="card-h">
             <h2>Configured agents</h2>
-            <span class="meta"><a href="/agent-builder.html" style="color:var(--accent)">Open Agent Builder →</a></span>
+            <span class="meta" style="display:flex;gap:10px;align-items:center">
+              <a class="btn sm" href="/agent-builder.html?new=1" style="text-decoration:none">＋ New agent</a>
+              <a href="/agent-builder.html" style="color:var(--accent)">Open Agent Builder →</a>
+            </span>
           </div>
           <div class="card-b" id="agentList"><div class="empty">Loading…</div></div>
         </div>
@@ -540,30 +544,44 @@
   </div>
 </div>
 
-<!-- Re-Route Number Modal -->
-<div class="modal-overlay" id="modalRoute">
+<!-- Edit Phone Number & Routing Modal -->
+<div class="modal-overlay" id="modalEditNumber">
   <div class="modal-card">
     <div class="modal-h">
-      <h3>Update Inbound Call Routing</h3>
-      <button class="btn ghost sm" id="btnCloseRouteModal">✕</button>
+      <h3>✏️ Edit Phone Number &amp; SIP Routing</h3>
+      <button class="btn ghost sm" id="btnCloseEditNumberModal">✕</button>
     </div>
     <div class="modal-b">
       <div class="form-group">
         <label>Phone Number</label>
-        <input type="text" id="modalRouteNumber" readonly style="font-family:var(--f-mono);font-weight:700">
+        <input type="text" id="modalEditNumVal" readonly style="font-family:var(--f-mono);font-weight:700">
       </div>
       <div class="form-group">
-        <label>Route Inbound Calls To</label>
-        <select id="modalRouteAgent"></select>
+        <label>Friendly Name / Label</label>
+        <input type="text" id="modalEditFriendly" placeholder="e.g. Legal Intake Primary Line">
       </div>
       <div class="form-group">
-        <label>Inbound SIP Trunk</label>
-        <select id="modalRouteTrunk"></select>
+        <label>Carrier</label>
+        <select id="modalEditCarrier">
+          <option value="twilio">Twilio</option>
+          <option value="telnyx">Telnyx</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Route Inbound Calls To (AI Voice Agent)</label>
+        <select id="modalEditAgent"></select>
+      </div>
+      <div class="form-group">
+        <label>Bind to Inbound SIP Trunk</label>
+        <select id="modalEditTrunk"></select>
       </div>
     </div>
-    <div class="modal-f">
-      <button class="btn ghost" id="btnCancelRoute">Cancel</button>
-      <button class="btn" id="btnConfirmRoute">Save Routing</button>
+    <div class="modal-f" style="display:flex;justify-content:space-between;align-items:center">
+      <button class="btn ghost sm" id="btnDeleteNumberFromModal" style="color:var(--neg);border-color:rgba(163,47,38,.3)">🗑️ Remove Number</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn ghost" id="btnCancelEditNumber">Cancel</button>
+        <button class="btn" id="btnConfirmEditNumber">💾 Save Changes</button>
+      </div>
     </div>
   </div>
 </div>
@@ -674,6 +692,7 @@
     calls: ["Calls", "Call log"],
     detail: ["Calls / detail", "Call inspector"],
     telephony: ["Telephony", "SIP Trunks & Phone Numbers"],
+    market: ["Marketplace", "Direct Carrier Phone Numbers & Provisioning"],
     agents: ["Agents", "Configured agents"]
   };
 
@@ -700,6 +719,23 @@
 
   // ── Navigation ────────────────────────────────────────────────────────────
   function show(view) {
+    if (view === "market") {
+      Array.prototype.forEach.call(document.querySelectorAll(".nav button"), function (b) {
+        b.setAttribute("aria-selected", String(b.dataset.v === "market"));
+      });
+      Array.prototype.forEach.call(document.querySelectorAll(".view"), function (v) {
+        v.classList.toggle("on", v.id === "v-telephony");
+      });
+      $("#crumb").textContent = (TITLES[view] || [view, view])[0];
+      $("#title").textContent = (TITLES[view] || [view, view])[1];
+      window.scrollTo(0, 0);
+      loadTelephony().then(function () {
+        var mBtn = document.querySelector("#telNav button[data-tv='market']");
+        if (mBtn) { mBtn.click(); }
+      });
+      return;
+    }
+
     Array.prototype.forEach.call(document.querySelectorAll(".nav button"), function (b) {
       b.setAttribute("aria-selected", String(b.dataset.v === view));
     });
@@ -970,9 +1006,9 @@
           '<td>' + agentSelector + '</td>' +
           '<td><code style="font-size:11px">' + CI.escapeHtml(n.assigned_trunk_id || "trunk-inbound-primary") + '</code></td>' +
           '<td><span class="pill pos">active</span></td>' +
-          '<td>' +
-            '<button class="btn sm ghost btn-reroute" data-num="' + CI.escapeHtml(n.phone_number) + '" data-agent="' + CI.escapeHtml(n.assigned_agent || "") + '">⚙️ Route</button> ' +
-            '<button class="btn sm ghost btn-release" style="color:var(--neg)" data-num="' + CI.escapeHtml(n.phone_number) + '">Release</button>' +
+          '<td style="white-space:nowrap">' +
+            '<button class="btn sm ghost btn-edit-num" data-num="' + CI.escapeHtml(n.phone_number) + '" data-name="' + CI.escapeHtml(n.friendly_name || "") + '" data-agent="' + CI.escapeHtml(n.assigned_agent || "") + '" data-trunk="' + CI.escapeHtml(n.assigned_trunk_id || "trunk-inbound-primary") + '" data-carrier="' + CI.escapeHtml(n.carrier || "twilio") + '">✏️ Edit</button> ' +
+            '<button class="btn sm ghost btn-remove-num" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-num="' + CI.escapeHtml(n.phone_number) + '">🗑️ Remove</button>' +
           '</td>' +
           '</tr>';
       }).join("");
@@ -1002,12 +1038,16 @@
         });
       });
 
-      // Bind re-route and release buttons
-      Array.prototype.forEach.call(document.querySelectorAll(".btn-reroute"), function (b) {
-        b.addEventListener("click", function () { openRouteModal(b.dataset.num, b.dataset.agent); });
+      // Bind edit and remove buttons
+      Array.prototype.forEach.call(document.querySelectorAll(".btn-edit-num"), function (b) {
+        b.addEventListener("click", function () {
+          openEditNumberModal(b.dataset.num, b.dataset.name, b.dataset.agent, b.dataset.trunk, b.dataset.carrier);
+        });
       });
-      Array.prototype.forEach.call(document.querySelectorAll(".btn-release"), function (b) {
-        b.addEventListener("click", function () { releaseNumber(b.dataset.num); });
+      Array.prototype.forEach.call(document.querySelectorAll(".btn-remove-num"), function (b) {
+        b.addEventListener("click", function () {
+          removeNumber(b.dataset.num);
+        });
       });
     }).catch(function (e) {
       $("#ownedNumbersRows").innerHTML = '<tr><td colspan="8" class="empty">Error loading numbers: ' + CI.escapeHtml(e.message) + '</td></tr>';
@@ -1075,19 +1115,50 @@
       $("#telStatTrunks").innerHTML = (inTrunks.length + outTrunks.length) + '<span class="delta" style="color:var(--pos)">trunks online</span>';
 
       $("#inboundTrunksList").innerHTML = inTrunks.length ? inTrunks.map(function (t) {
-        return '<div class="agent-card"><div><strong>' + CI.escapeHtml(t.name) + '</strong> <span class="pill pos">connected</span><br>' +
-          '<code style="font-size:11px">id: ' + CI.escapeHtml(t.trunk_id) + ' · ' + (t.numbers ? t.numbers.length : 0) + ' DIDs mapped</code></div></div>';
+        return '<div class="agent-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><strong>' + CI.escapeHtml(t.name) + '</strong> <span class="pill pos">connected</span><br>' +
+          '<code style="font-size:11px">id: ' + CI.escapeHtml(t.trunk_id) + ' · ' + (t.numbers ? t.numbers.length : 0) + ' DIDs mapped</code></div>' +
+          '<button class="btn sm ghost btn-del-trunk" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-id="' + CI.escapeHtml(t.trunk_id) + '" data-name="' + CI.escapeHtml(t.name) + '">🗑️ Delete</button>' +
+          '</div>';
       }).join("") : '<div class="empty">No inbound trunks configured.</div>';
 
       $("#outboundTrunksList").innerHTML = outTrunks.length ? outTrunks.map(function (t) {
-        return '<div class="agent-card"><div><strong>' + CI.escapeHtml(t.name) + '</strong> <span class="pill pos">active</span><br>' +
-          '<code style="font-size:11px">gateway: ' + CI.escapeHtml(t.address) + ' · transport: ' + CI.escapeHtml(t.transport || "udp") + '</code></div></div>';
+        return '<div class="agent-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><strong>' + CI.escapeHtml(t.name) + '</strong> <span class="pill pos">active</span><br>' +
+          '<code style="font-size:11px">gateway: ' + CI.escapeHtml(t.address) + ' · transport: ' + CI.escapeHtml(t.transport || "udp") + '</code></div>' +
+          '<button class="btn sm ghost btn-del-trunk" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-id="' + CI.escapeHtml(t.trunk_id) + '" data-name="' + CI.escapeHtml(t.name) + '">🗑️ Delete</button>' +
+          '</div>';
       }).join("") : '<div class="empty">No outbound trunks configured.</div>';
 
       $("#dispatchRulesList").innerHTML = rules.length ? rules.map(function (r) {
         return '<div class="agent-card"><div><strong>' + CI.escapeHtml(r.name) + '</strong><br>' +
           '<code style="font-size:11px">Trunk: ' + (r.trunk_ids ? r.trunk_ids.join(", ") : "primary") + ' → Agent: <b style="color:var(--accent)">' + CI.escapeHtml(r.agent_name) + '</b> (prefix: ' + CI.escapeHtml(r.room_prefix) + ')</code></div></div>';
       }).join("") : '<div class="empty">No dispatch rules defined.</div>';
+
+      // Bind delete trunk buttons
+      Array.prototype.forEach.call(document.querySelectorAll(".btn-del-trunk"), function (btn) {
+        btn.addEventListener("click", function () {
+          var tid = btn.dataset.id;
+          var tname = btn.dataset.name || tid;
+          if (!confirm("Are you sure you want to delete the SIP Trunk '" + tname + "'?")) {
+            return;
+          }
+          btn.disabled = true;
+          fetch("/api/telephony/trunks/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trunk_id: tid })
+          }).then(function (r) { return r.json(); }).then(function (res) {
+            if (res && res.status === "ok") {
+              showToast("🗑️ Trunk '" + tname + "' deleted.");
+              loadTrunksAndRules();
+              loadOwnedNumbers();
+            } else {
+              showToast("❌ Delete failed: " + ((res && res.error) || "unknown error"));
+            }
+          }).catch(function (e) {
+            showToast("❌ Delete error: " + e.message);
+          });
+        });
+      });
     }).catch(function () {});
   }
 
@@ -1183,57 +1254,91 @@
     });
   });
 
-  // ── Re-Route Modal Logic ──────────────────────────────────────────────────
-  function openRouteModal(num, currentAgent) {
-    $("#modalRouteNumber").value = num;
-    var sel = $("#modalRouteAgent");
+  // ── Edit Number & Remove Modal Logic ──────────────────────────────────────
+  function openEditNumberModal(num, currentName, currentAgent, currentTrunk, currentCarrier) {
+    $("#modalEditNumVal").value = num;
+    $("#modalEditFriendly").value = currentName || num;
+    if ($("#modalEditCarrier")) {
+      $("#modalEditCarrier").value = (currentCarrier || "twilio").toLowerCase();
+    }
+
+    var sel = $("#modalEditAgent");
     sel.innerHTML = cachedAgents.length ? cachedAgents.map(function (a) {
       return '<option value="' + CI.escapeHtml(a.name) + '" ' + (a.name === currentAgent ? 'selected' : '') + '>' + CI.escapeHtml(a.name) + '</option>';
     }).join("") : '<option value="Intake Agent">Intake Agent</option><option value="Support Agent">Support Agent</option>';
 
-    var trunkSel = $("#modalRouteTrunk");
+    var trunkSel = $("#modalEditTrunk");
     trunkSel.innerHTML = cachedTrunks.length ? cachedTrunks.map(function (t) {
-      return '<option value="' + CI.escapeHtml(t.trunk_id) + '">' + CI.escapeHtml(t.name) + '</option>';
+      return '<option value="' + CI.escapeHtml(t.trunk_id) + '" ' + (t.trunk_id === currentTrunk ? 'selected' : '') + '>' + CI.escapeHtml(t.name) + '</option>';
     }).join("") : '<option value="trunk-inbound-primary">Primary Inbound Trunk</option>';
 
-    $("#modalRoute").classList.add("open");
+    $("#modalEditNumber").classList.add("open");
   }
 
-  function closeRouteModal() {
-    $("#modalRoute").classList.remove("open");
+  function closeEditNumberModal() {
+    $("#modalEditNumber").classList.remove("open");
   }
 
-  $("#btnCloseRouteModal").addEventListener("click", closeRouteModal);
-  $("#btnCancelRoute").addEventListener("click", closeRouteModal);
+  $("#btnCloseEditNumberModal").addEventListener("click", closeEditNumberModal);
+  $("#btnCancelEditNumber").addEventListener("click", closeEditNumberModal);
 
-  $("#btnConfirmRoute").addEventListener("click", function () {
+  $("#btnConfirmEditNumber").addEventListener("click", function () {
     var btn = this;
     btn.disabled = true;
-    btn.textContent = "Saving Routing…";
+    btn.textContent = "Saving Changes…";
 
     var payload = {
-      phone_number: $("#modalRouteNumber").value,
-      agent_name: $("#modalRouteAgent").value,
-      trunk_id: $("#modalRouteTrunk").value
+      phone_number: $("#modalEditNumVal").value,
+      friendly_name: $("#modalEditFriendly").value.trim(),
+      agent_name: $("#modalEditAgent").value,
+      trunk_id: $("#modalEditTrunk").value,
+      carrier: $("#modalEditCarrier") ? $("#modalEditCarrier").value : "twilio"
     };
 
-    fetch("/api/telephony/numbers/route", {
+    fetch("/api/telephony/numbers/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     }).then(function (r) { return r.json(); }).then(function (res) {
       btn.disabled = false;
-      btn.textContent = "Save Routing";
-      if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Routing update failed")); return; }
-      closeRouteModal();
-      showToast("✅ Inbound calls on " + payload.phone_number + " now route to " + payload.agent_name);
+      btn.textContent = "💾 Save Changes";
+      if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Update failed")); return; }
+      closeEditNumberModal();
+      showToast("✅ Number " + payload.phone_number + " updated successfully!");
       loadOwnedNumbers();
     }).catch(function (e) {
       btn.disabled = false;
-      btn.textContent = "Save Routing";
-      showToast("❌ Routing error: " + e.message);
+      btn.textContent = "💾 Save Changes";
+      showToast("❌ Update error: " + e.message);
     });
   });
+
+  $("#btnDeleteNumberFromModal").addEventListener("click", function () {
+    var num = $("#modalEditNumVal").value;
+    closeEditNumberModal();
+    removeNumber(num);
+  });
+
+  function removeNumber(num) {
+    if (!confirm("Are you sure you want to remove/release phone number " + num + "?")) {
+      return;
+    }
+    fetch("/api/telephony/numbers/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone_number: num, purge: true })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      if (res && res.status === "ok") {
+        showToast("🗑️ Phone number " + num + " removed.");
+        loadOwnedNumbers();
+        loadAvailableNumbers();
+      } else {
+        showToast("❌ Remove failed: " + ((res && res.error) || "unknown error"));
+      }
+    }).catch(function (e) {
+      showToast("❌ Error: " + e.message);
+    });
+  }
 
   // ── Inbound Trunk Modal Logic ─────────────────────────────────────────────
   function openInboundTrunkModal() {
@@ -1393,8 +1498,18 @@
           (a.active ? ' <span class="pill pos">live</span>' : "") + "<br>" +
           "<code>rev " + a.revision + " · " + CI.escapeHtml(a.llm_model) + " · " +
           (a.tools ? a.tools.length : 0) + " tools</code></span>" +
-          '<a class="btn ghost" style="padding:6px 12px" href="/agent-builder.html">Edit</a></div>';
+          '<span style="display:flex;gap:6px">' +
+          (a.active ? '' : '<button class="btn ghost btn-set-live" style="padding:6px 12px" data-id="' + CI.escapeHtml(a.agent_id) + '" title="Make this agent answer live calls">📞 Set live</button>') +
+          '<a class="btn ghost" style="padding:6px 12px" href="/agent-builder.html?agent=' + encodeURIComponent(a.agent_id) + '">Edit</a></span></div>';
       }).join("") : '<div class="empty">No agents configured.</div>';
+      Array.prototype.forEach.call(document.querySelectorAll("#agentList .btn-set-live"), function (b) {
+        b.addEventListener("click", function () {
+          fetch("/api/agents/activate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agent_id: b.dataset.id }) })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { if (d.status !== "ok") { throw new Error(d.error || "activate failed"); } return loadAgents(); })
+            .catch(function (e) { $("#agentList").insertAdjacentHTML("afterbegin", '<div class="empty" style="color:var(--neg)">Could not set live: ' + CI.escapeHtml(String(e.message || e)) + '</div>'); });
+        });
+      });
     }).catch(function () {
       $("#agentList").innerHTML = '<div class="empty">Agent API unavailable.</div>';
     });
@@ -1536,8 +1651,16 @@
   loadAgents();
   loadTelephony();
   startPolling();
+
+  if (window.location.hash) {
+    var h = window.location.hash.replace("#", "");
+    if (h === "market" || h === "telephony" || h === "calls" || h === "agents") {
+      show(h);
+    }
+  }
 })();
 </script>
 
+<script src="/profile.js"></script>
 </body>
 </html>

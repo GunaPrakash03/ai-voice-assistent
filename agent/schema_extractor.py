@@ -144,6 +144,116 @@ def list_schemas() -> List[str]:
 
 
 # ---------------------------------------------------------------------------
+# AI (Gemini) helpers — used when GEMINI_API_KEY is set; regex extraction remains the fallback
+# ---------------------------------------------------------------------------
+import os
+import urllib.error
+import urllib.request
+
+FIELD_TYPES = ("string", "number", "boolean", "date", "phone", "email", "enum")
+
+
+def _gemini_key() -> str:
+    return (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
+
+
+def gemini_json(system_text: str, user_text: str, max_tokens: int = 1200, timeout: float = 25.0) -> Any:
+    """One Gemini call that must answer with JSON. Raises RuntimeError on any failure."""
+    key = _gemini_key()
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY not configured")
+    from agent.agent_builder import resolve_gemini_model, gemini_generation_config
+    model = resolve_gemini_model(os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"))
+    cfg = gemini_generation_config(model, 0.2, max_tokens)
+    cfg["responseMimeType"] = "application/json"
+    payload = {
+        "system_instruction": {"parts": [{"text": system_text}]},
+        "contents": [{"role": "user", "parts": [{"text": user_text}]}],
+        "generationConfig": cfg,
+    }
+    req = urllib.request.Request(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "x-goog-api-key": key},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = json.loads(e.read().decode("utf-8", "replace")).get("error", {}).get("message", "")
+        except Exception:
+            pass
+        raise RuntimeError(f"Gemini HTTP {e.code}: {detail or e.reason}")
+    except Exception as e:
+        raise RuntimeError(f"Gemini request failed: {e}")
+    try:
+        text = data["candidates"][0]["content"]["parts"][-1]["text"]
+    except Exception:
+        raise RuntimeError(f"Gemini returned no text: {json.dumps(data)[:200]}")
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
+    try:
+        return json.loads(text)
+    except Exception:
+        raise RuntimeError(f"Gemini did not return valid JSON: {text[:200]}")
+
+
+def fields_to_schema(fields: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Agent Builder field list -> JSON-schema subset the extractor understands."""
+    props: Dict[str, Any] = {}
+    required: List[str] = []
+    for f in fields or []:
+        name = re.sub(r"[^a-z0-9_]+", "_", str(f.get("name", "")).strip().lower()).strip("_")
+        if not name:
+            continue
+        ftype = str(f.get("type", "string")).lower()
+        if ftype not in FIELD_TYPES:
+            ftype = "string"
+        prop: Dict[str, Any] = {"type": ftype, "description": str(f.get("description", "")).strip()}
+        if ftype == "enum":
+            prop["enum"] = [str(v).strip() for v in (f.get("options") or f.get("enum") or []) if str(v).strip()]
+            if not prop["enum"]:
+                prop["type"] = "string"
+        if f.get("keywords"):
+            prop["keywords"] = list(f["keywords"])
+        props[name] = prop
+        if f.get("required"):
+            required.append(name)
+    return {"type": "object", "properties": props, "required": required}
+
+
+def suggest_fields_from_prompt(system_prompt: str, first_message: str = "", max_fields: int = 12) -> List[Dict[str, Any]]:
+    """Asks Gemini which data points an agent with this prompt collects. Returns a field list."""
+    sys_text = (
+        "You design CRM intake schemas for AI phone agents. Given an agent's system prompt, list the "
+        "concrete data points the agent is instructed to collect from the caller. Reply with JSON only: "
+        '{"fields":[{"name":"snake_case","type":"string|number|boolean|date|phone|email|enum",'
+        '"description":"what it is, in one short line","required":true|false,"options":["only for enum"],'
+        '"question":"how the agent should ask for it, one sentence"}]}. '
+        f"At most {max_fields} fields, most important first. Do not invent fields the prompt never mentions."
+    )
+    user = f"AGENT FIRST MESSAGE:\n{first_message}\n\nSYSTEM PROMPT:\n{system_prompt[:40000]}"
+    data = gemini_json(sys_text, user, max_tokens=1500)
+    fields = data.get("fields") if isinstance(data, dict) else data
+    out: List[Dict[str, Any]] = []
+    for f in fields or []:
+        if not isinstance(f, dict) or not f.get("name"):
+            continue
+        out.append({
+            "name": re.sub(r"[^a-z0-9_]+", "_", str(f.get("name")).strip().lower()).strip("_"),
+            "type": str(f.get("type", "string")).lower() if str(f.get("type", "string")).lower() in FIELD_TYPES else "string",
+            "description": str(f.get("description", "")).strip()[:200],
+            "required": bool(f.get("required")),
+            "options": [str(o) for o in (f.get("options") or [])][:12],
+            "question": str(f.get("question", "")).strip()[:200],
+        })
+    return out[:max_fields]
+
+
+# ---------------------------------------------------------------------------
 # Core Extractor
 # ---------------------------------------------------------------------------
 
@@ -379,6 +489,87 @@ class SchemaExtractor:
             coverage * 100, overall_conf,
         )
         return result
+
+    def extract_with_ai(
+        self,
+        schema_id: str,
+        call_id: str,
+        transcript_turns: List[Dict[str, Any]],
+        metadata: Optional[Dict[str, Any]] = None,
+        schema: Optional[Dict[str, Any]] = None,
+    ) -> ExtractionResult:
+        """Gemini reads the transcript and fills the schema; regex results fill anything it leaves empty.
+
+        Falls back to the regex extractor entirely when no key is configured or the call fails, so the
+        pipeline never breaks because of the model.
+        """
+        schema = schema or get_schema(schema_id)
+        if not schema:
+            raise KeyError(f"Schema '{schema_id}' not registered")
+        if schema_id not in _SCHEMA_REGISTRY:
+            _SCHEMA_REGISTRY[schema_id] = schema
+        base = self.extract(schema_id, call_id, transcript_turns, metadata)
+        if not _gemini_key():
+            return base
+        props: Dict[str, Any] = schema.get("properties", {})
+        lines = []
+        for t in transcript_turns or []:
+            who = "Caller" if str(t.get("role", t.get("speaker", ""))).lower() in ("user", "caller", "customer") else "Agent"
+            lines.append(f"{who}: {t.get('text', '')}")
+        transcript = "\n".join(lines)[:60000]
+        spec = {name: {"type": p.get("type", "string"), "description": p.get("description", ""),
+                       **({"options": p["enum"]} if p.get("enum") else {})} for name, p in props.items()}
+        sys_text = (
+            "You extract structured data from phone call transcripts for a CRM. Use only what the caller "
+            "actually said or confirmed; never guess. For each field return the value in the requested type "
+            "(phone in E.164 if possible, dates as YYYY-MM-DD when the year is known, booleans as true/false, "
+            "enum as one of the options) or null when the transcript does not contain it. Reply with JSON only: "
+            '{"values": {"field_name": value, ...}, "confidence": {"field_name": 0.0-1.0, ...}}'
+        )
+        user = f"FIELDS:\n{json.dumps(spec, indent=1)}\n\nTRANSCRIPT:\n{transcript}"
+        try:
+            data = gemini_json(sys_text, user, max_tokens=1500)
+        except Exception as e:
+            log.warning("AI extraction fell back to regex for %s: %s", call_id, e)
+            base.fields.append(FieldResult("_ai_note", "string", None, str(e)[:160], 0.0, "ai_unavailable"))
+            return base
+        values = (data.get("values") or {}) if isinstance(data, dict) else {}
+        confs = (data.get("confidence") or {}) if isinstance(data, dict) else {}
+        by_name = {f.field_name: f for f in base.fields}
+        for name, prop in props.items():
+            val = values.get(name)
+            if val is None or val == "":
+                continue
+            ftype = prop.get("type", "string")
+            try:
+                if ftype == "number":
+                    val = float(re.sub(r"[^0-9.\-]", "", str(val))) if not isinstance(val, (int, float)) else val
+                elif ftype == "boolean":
+                    val = bool(val) if isinstance(val, bool) else str(val).strip().lower() in ("true", "yes", "1")
+                elif ftype == "enum" and prop.get("enum") and str(val) not in prop["enum"]:
+                    match = next((o for o in prop["enum"] if o.lower() == str(val).lower()), None)
+                    if not match:
+                        continue
+                    val = match
+                else:
+                    val = str(val).strip()
+            except Exception:
+                continue
+            conf = confs.get(name)
+            try:
+                conf = max(0.0, min(1.0, float(conf))) if conf is not None else 0.85
+            except Exception:
+                conf = 0.85
+            fr = by_name.get(name)
+            if fr is None:
+                fr = FieldResult(name, ftype, None, "", 0.0, "missing"); base.fields.append(fr); by_name[name] = fr
+            fr.value, fr.raw_match, fr.confidence, fr.source = val, "gemini", round(conf, 3), "ai"
+        extracted = [f for f in base.fields if f.value is not None and not f.field_name.startswith("_")]
+        real = [f for f in base.fields if not f.field_name.startswith("_")]
+        base.missing_required = [r for r in schema.get("required", []) if not any(f.field_name == r and f.value is not None for f in real)]
+        base.overall_confidence = round(sum(f.confidence for f in real) / max(1, len(real)), 3)
+        base.extraction_coverage = round(len(extracted) / max(1, len(real)), 3)
+        return base
 
     def extract_multi(
         self,

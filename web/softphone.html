@@ -670,9 +670,23 @@
             log("🤖 Agent: " + msg.text);
           } else if (topic === "recording_event") {
             log("🎙️ Recording status: " + msg.event);
+          } else if (topic === "agent_config_event" && msg.event === "voice_engine") {
+            log("🎙️ Agent voice: " + (msg.voice_name || msg.voice_id) + " via " + msg.engine + (msg.fallback_reason ? " (fallback: " + msg.fallback_reason + ")" : ""));
+          } else if (topic === "agent_state" && msg.type === "call_end") {
+            log("📞 Agent ended the call");
+            setTimeout(hangup, 800);
           }
         } catch (e) {}
       });
+
+      room.on(LK.RoomEvent.Disconnected, function () {
+        if (isCallActive) { log("🔌 Media session closed"); hangup(); }
+      });
+
+      // Join the LiveKit room. This was missing, so the microphone had nothing to publish to
+      // ("engine not connected within timeout") and no agent was ever dispatched to talk.
+      await room.connect(tokenData.url, tokenData.token);
+      log("🔗 Joined media room; waiting for the AI agent to pick up…");
 
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {

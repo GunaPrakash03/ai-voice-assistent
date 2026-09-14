@@ -192,6 +192,7 @@ class StreamingTTSManager:
         self._interrupted = False
         self._active_play_task: Optional[asyncio.Task] = None
         self.provider = "simulator"
+        self.voice_info: dict = {}
 
         deepgram_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
 
@@ -230,6 +231,122 @@ class StreamingTTSManager:
             log.info("No cloud TTS keys available — using local acoustic formant simulator")
             self._tts = SimulatedStreamingTTS(sample_rate=self.sample_rate)
             self.provider = "simulator"
+
+    # ── Voice-aware engine selection ─────────────────────────────────────────
+    # Deepgram Aura models used when the picked voice has no streaming engine here
+    # (Studio / Neural / Retell sample voices) or its engine refused the request.
+    _AURA_FALLBACK = {"female": "aura-asteria-en", "male": "aura-orion-en", "unisex": "aura-asteria-en"}
+
+    @staticmethod
+    def _elevenlabs_preflight(voice_id: str, api_key: str) -> str:
+        """Returns "" if ElevenLabs will synthesize this voice, else the reason it will not.
+
+        Free / Starter plans refuse Voice Library and professional voices with HTTP 402. Finding
+        that out here costs ~1 s once per session instead of a silent agent on the first turn.
+        """
+        import json as _json
+        import urllib.error
+        import urllib.request
+        try:
+            req = urllib.request.Request(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format=mp3_22050_32",
+                data=_json.dumps({"text": "Hi", "model_id": "eleven_turbo_v2_5"}).encode("utf-8"),
+                headers={"xi-api-key": api_key, "Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=8.0) as resp:
+                resp.read(64)
+            return ""
+        except urllib.error.HTTPError as e:
+            detail = ""
+            try:
+                detail = _json.loads(e.read().decode("utf-8", "replace")).get("detail", {}).get("message", "")
+            except Exception:
+                pass
+            return f"ElevenLabs HTTP {e.code}: {detail or e.reason}"
+        except Exception as e:
+            return f"ElevenLabs unreachable: {e}"
+
+    def apply_voice(self, voice_id: str, provider: str = "", gender: str = "female", voice_name: str = "") -> dict:
+        """Rebuilds the streaming engine for the voice the agent builder picked.
+
+        Returns {"requested": ..., "engine": ..., "model": ..., "fallback_reason": ""|str}.
+        The caller must hand ``self.tts`` to the live Agent again (``agent.update_options(tts=...)``)
+        because the session holds the previous engine object.
+        """
+        provider = (provider or "").lower()
+        voice_id = (voice_id or "").strip()
+        info = {"requested": voice_id, "requested_provider": provider, "voice_name": voice_name,
+                "engine": "", "model": "", "fallback_reason": ""}
+        deepgram_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
+        new_tts = None
+
+        if provider == "elevenlabs" or voice_id.startswith("eleven-"):
+            raw_id = voice_id.replace("eleven-", "")
+            xi_key = (os.getenv("ELEVEN_API_KEY") or os.getenv("ELEVENLABS_API_KEY") or os.getenv("XI_API_KEY") or "").strip()
+            if not xi_key:
+                info["fallback_reason"] = "ELEVEN_API_KEY is not set for the worker"
+            else:
+                try:
+                    from livekit.plugins import elevenlabs
+                except ImportError:
+                    info["fallback_reason"] = "livekit-plugins-elevenlabs is not installed in the worker image"
+                else:
+                    reason = self._elevenlabs_preflight(raw_id, xi_key)
+                    if reason:
+                        info["fallback_reason"] = reason
+                    else:
+                        new_tts = elevenlabs.TTS(voice_id=raw_id, model="eleven_turbo_v2_5", api_key=xi_key)
+                        info.update(engine="elevenlabs", model="eleven_turbo_v2_5")
+
+        elif provider == "deepgram" or voice_id.startswith("aura-"):
+            if deepgram_key:
+                from livekit.plugins import deepgram
+                new_tts = deepgram.TTS(api_key=deepgram_key, model=voice_id, sample_rate=self.sample_rate)
+                info.update(engine="deepgram-aura", model=voice_id)
+            else:
+                info["fallback_reason"] = "DEEPGRAM_API_KEY is not set"
+
+        elif provider == "openai" or voice_id.startswith("openai-"):
+            oa_key = os.getenv("OPENAI_API_KEY", "").strip()
+            if oa_key:
+                from livekit.plugins import openai
+                new_tts = openai.TTS(voice=voice_id.replace("openai-", ""), api_key=oa_key)
+                info.update(engine="openai", model=voice_id.replace("openai-", ""))
+            else:
+                info["fallback_reason"] = "OPENAI_API_KEY is not set for the worker"
+
+        elif provider == "cartesia":
+            if self.api_key:
+                from livekit.plugins import cartesia
+                new_tts = cartesia.TTS(api_key=self.api_key, model=self.model, voice=voice_id, sample_rate=self.sample_rate)
+                info.update(engine="cartesia", model=self.model)
+            else:
+                info["fallback_reason"] = "CARTESIA_API_KEY is not set for the worker"
+
+        else:
+            info["fallback_reason"] = f"'{provider or 'sample'}' voices have no streaming engine for live calls"
+
+        if new_tts is None:
+            if deepgram_key:
+                from livekit.plugins import deepgram
+                model = self._AURA_FALLBACK.get((gender or "female").lower(), "aura-asteria-en")
+                new_tts = deepgram.TTS(api_key=deepgram_key, model=model, sample_rate=self.sample_rate)
+                info.update(engine="deepgram-aura", model=model)
+            else:
+                new_tts = SimulatedStreamingTTS(sample_rate=self.sample_rate)
+                info.update(engine="simulator", model="formant")
+
+        self._tts = new_tts
+        self._is_mock = info["engine"] == "simulator"
+        self.provider = info["engine"]
+        self.voice = voice_id
+        self.voice_info = info
+        if info["fallback_reason"]:
+            log.warning("Voice %s (%s) unavailable for live calls: %s — using %s %s",
+                        voice_name or voice_id, provider, info["fallback_reason"], info["engine"], info["model"])
+        else:
+            log.info("Live TTS engine: %s %s for voice %s", info["engine"], info["model"], voice_name or voice_id)
+        return info
 
     @property
     def is_mock(self) -> bool:

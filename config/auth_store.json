@@ -2,7 +2,7 @@
   "workspaces": [
     {
       "workspace_id": "ws-default",
-      "name": "Primary Workspace",
+      "name": "Young Globes",
       "slug": "default",
       "created_at": 1788944691.025206,
       "rate_limit_rpm": 120,
@@ -125,16 +125,76 @@
       "rate_limit_rpm": 150,
       "metadata": {},
       "active": true
+    },
+    {
+      "workspace_id": "ws-cb25398a",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1789382575.9608684,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
+    },
+    {
+      "workspace_id": "ws-af449900",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1789383208.9749794,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
+    },
+    {
+      "workspace_id": "ws-956bfdcd",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1789383630.4393306,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
+    },
+    {
+      "workspace_id": "ws-adc236c7",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1789384670.395371,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
+    },
+    {
+      "workspace_id": "ws-525bf7fc",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1789385794.3969944,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
+    },
+    {
+      "workspace_id": "ws-60a8787e",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1789389702.6272154,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
     }
   ],
   "users": [
     {
       "user_id": "usr-admin-01",
       "workspace_id": "ws-default",
-      "email": "admin@voiceagent.local",
+      "email": "guna05026@gmail.com",
       "role": "admin",
       "created_at": 1788944691.0252137,
-      "active": true
+      "active": true,
+      "name": "guna",
+      "title": "Owner",
+      "phone": "",
+      "password_hash": "5506afb216928aaccfea739591abd2d5b761ef8fa845fe3e1416327ab5eebf0c",
+      "password_salt": "4263481ad082a7cb8fa20c47d1fb1f45",
+      "last_login_at": 1789389698.6304493
     },
     {
       "user_id": "usr-632668d1",
@@ -142,7 +202,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1788944694.6099067,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-42d04681",
@@ -150,7 +216,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1788944731.9230726,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-4893c7a5",
@@ -158,7 +230,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1788944772.0361211,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-58a29e92",
@@ -166,7 +244,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1788944794.3913898,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-78ae09c7",
@@ -174,7 +258,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1788944985.194766,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-6f25d849",
@@ -182,7 +272,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1788945083.824647,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-fc5a87f9",
@@ -190,7 +286,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1788945604.1684535,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-891b2aff",
@@ -198,7 +300,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1788945920.9628487,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-5c85a956",
@@ -206,7 +314,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1788951918.7249928,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-854c632b",
@@ -214,7 +328,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1789100351.0903394,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-9ce14fe9",
@@ -222,7 +342,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1789123379.8810146,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-b70850d3",
@@ -230,7 +356,13 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1789123575.004639,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     },
     {
       "user_id": "usr-72fdb518",
@@ -238,7 +370,139 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1789357043.7888432,
-      "active": true
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
+    },
+    {
+      "user_id": "usr-a4ab39ba",
+      "workspace_id": "ws-cb25398a",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1789382576.1597855,
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
+    },
+    {
+      "user_id": "usr-d47c3023",
+      "workspace_id": "ws-af449900",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1789383209.2103312,
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
+    },
+    {
+      "user_id": "usr-b0a2f0a8",
+      "workspace_id": "ws-956bfdcd",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1789383630.6450021,
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
+    },
+    {
+      "user_id": "usr-bc895699",
+      "workspace_id": "ws-adc236c7",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1789384670.653957,
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
+    },
+    {
+      "user_id": "usr-9f19783a",
+      "workspace_id": "ws-default",
+      "email": "priya@example.com",
+      "role": "operator",
+      "created_at": 1789385738.6114805,
+      "active": false,
+      "name": "Priya Ops",
+      "title": "",
+      "phone": "",
+      "password_hash": "2be250e1e745255fa22caff8ae390ee3f1dc2c725093609672a6c251c5d5fe18",
+      "password_salt": "517dd7f4d36b593c740f6e8580a232a5",
+      "last_login_at": 1789385739.0007322
+    },
+    {
+      "user_id": "usr-9c6372c7",
+      "workspace_id": "ws-525bf7fc",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1789385794.626172,
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
+    },
+    {
+      "user_id": "usr-f4336345",
+      "workspace_id": "ws-default",
+      "email": "priya@youngglobes.com",
+      "role": "operator",
+      "created_at": 1789386776.6204927,
+      "active": true,
+      "name": "Priya Sharma",
+      "title": "",
+      "phone": "",
+      "password_hash": "1f9a28f4cf7db28d0ebf780b56d38c272dce6088765cf5bd542a0020b348b379",
+      "password_salt": "caa76acc6dbd5e3fb90360c8235772b1",
+      "last_login_at": 1789387147.6559744
+    },
+    {
+      "user_id": "usr-3ac6667e",
+      "workspace_id": "ws-default",
+      "email": "ravi@youngglobes.com",
+      "role": "operator",
+      "created_at": 1789386776.995809,
+      "active": true,
+      "name": "Ravi Kumar",
+      "title": "",
+      "phone": "",
+      "password_hash": "8e81ce1bd0d667be76e75d9b7daf233a2f8d5177ca028a11dcd81d8d3e6a685a",
+      "password_salt": "07939d714807a36a6e31a6b549459396",
+      "last_login_at": 1789389352.1312413
+    },
+    {
+      "user_id": "usr-357f009d",
+      "workspace_id": "ws-60a8787e",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1789389702.8852236,
+      "active": true,
+      "name": "",
+      "title": "",
+      "phone": "",
+      "password_hash": "",
+      "password_salt": "",
+      "last_login_at": null
     }
   ],
   "api_keys": [
@@ -839,7 +1103,475 @@
       "expires_at": null,
       "last_used_at": null,
       "revoked": false
+    },
+    {
+      "key_id": "key-313456a29349",
+      "workspace_id": "ws-cb25398a",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_5pdP...",
+      "key_hash": "410b5946c4e29f52b346a7a764e4e6d2eaa93a970921b3bb12c053b3339552d3",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789382576.0410903,
+      "expires_at": null,
+      "last_used_at": 1789382576.135734,
+      "revoked": true
+    },
+    {
+      "key_id": "key-77b7c75f2300",
+      "workspace_id": "ws-cb25398a",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live_6Igw...",
+      "key_hash": "99ab115d5c1cc5e337c00759367dde355f4f466a9a23f3ab8b7cfb13f17f54cc",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789382576.3396866,
+      "expires_at": null,
+      "last_used_at": 1789382576.429069,
+      "revoked": false
+    },
+    {
+      "key_id": "key-c0fcb580177f",
+      "workspace_id": "ws-cb25398a",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_aelz...",
+      "key_hash": "702abd5afda0b8e52f7e574adfd117f9a5de24dd9bef307ba50471432dd32e85",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1789382576.4839592,
+      "expires_at": null,
+      "last_used_at": null,
+      "revoked": false
+    },
+    {
+      "key_id": "key-d83c5ade6975",
+      "workspace_id": "ws-af449900",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_KRXT...",
+      "key_hash": "035c4afaac1d4139eb5b8e89e11b9f4099162fc17d48ef8f35a0cd1e3c024da6",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789383209.0925875,
+      "expires_at": null,
+      "last_used_at": 1789383209.1878333,
+      "revoked": true
+    },
+    {
+      "key_id": "key-d44f29e07ae9",
+      "workspace_id": "ws-af449900",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live_Nwdj...",
+      "key_hash": "bacbbc776b0cd83009ed1194a7151573d712debffe707b299d4faceac0ddbc7d",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789383209.3919234,
+      "expires_at": null,
+      "last_used_at": 1789383209.478475,
+      "revoked": false
+    },
+    {
+      "key_id": "key-91ad85ae0e6a",
+      "workspace_id": "ws-af449900",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_TjGz...",
+      "key_hash": "c394d307b6f49943a68b07fc5fd9f4c6467aa015d3a8cf28ad96c03514e1a021",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1789383209.5329566,
+      "expires_at": null,
+      "last_used_at": null,
+      "revoked": false
+    },
+    {
+      "key_id": "key-78466c112eba",
+      "workspace_id": "ws-956bfdcd",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_bKr2...",
+      "key_hash": "72e7e0392b135404a45d0110599411c57158fbef922010280b8150d204e5f58b",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789383630.534196,
+      "expires_at": null,
+      "last_used_at": 1789383630.621409,
+      "revoked": true
+    },
+    {
+      "key_id": "key-4f1f6d38fc46",
+      "workspace_id": "ws-956bfdcd",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live_TPO_...",
+      "key_hash": "4acf1a71172e5dd63223a7a46163f1493e04433f5eee8cb2f04a22ff28657052",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789383630.8288183,
+      "expires_at": null,
+      "last_used_at": 1789383630.9201424,
+      "revoked": false
+    },
+    {
+      "key_id": "key-ba5baec8b6c7",
+      "workspace_id": "ws-956bfdcd",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_kJ9N...",
+      "key_hash": "42f219875a126f298672f31b99887e11a417f2a430417a9aedafcff406fa02a0",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1789383630.9744327,
+      "expires_at": null,
+      "last_used_at": 1789383631.070837,
+      "revoked": false
+    },
+    {
+      "key_id": "key-2d5b7674d257",
+      "workspace_id": "ws-adc236c7",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_gIFw...",
+      "key_hash": "324f912e329e08c125887900d607d58e689eab1252e5b0a45ac1a2e444bbd3ee",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789384670.510248,
+      "expires_at": null,
+      "last_used_at": 1789384670.628246,
+      "revoked": true
+    },
+    {
+      "key_id": "key-962e147dbb77",
+      "workspace_id": "ws-adc236c7",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live_jPjZ...",
+      "key_hash": "1535f2a5edb7b64c243a30c257f0f6402a6e851354345ce46c5b50c4fa5420bb",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789384670.888079,
+      "expires_at": null,
+      "last_used_at": 1789384670.994453,
+      "revoked": false
+    },
+    {
+      "key_id": "key-7c6232ce0f9d",
+      "workspace_id": "ws-adc236c7",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_rakD...",
+      "key_hash": "595e84deee416a3d501393a159b32bbacc74e753570d434e0d22663de57ffd54",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1789384671.048354,
+      "expires_at": null,
+      "last_used_at": 1789384671.1468537,
+      "revoked": false
+    },
+    {
+      "key_id": "key-e4a9d66c35e3",
+      "workspace_id": "ws-525bf7fc",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_Y3Bi...",
+      "key_hash": "eec3d746859fe3b98c6154cf7a1b342efbe33c9b82825a563a2bd5caa5874807",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789385794.5120823,
+      "expires_at": null,
+      "last_used_at": 1789385794.6218965,
+      "revoked": true
+    },
+    {
+      "key_id": "key-ee627c08b6f4",
+      "workspace_id": "ws-525bf7fc",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live_6Os3...",
+      "key_hash": "61c588079f141baa8d80b522ff39fb14f0ec429bf1dd96783695786a52942586",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789385794.8616014,
+      "expires_at": null,
+      "last_used_at": 1789385794.97382,
+      "revoked": false
+    },
+    {
+      "key_id": "key-c86e5bb9a545",
+      "workspace_id": "ws-525bf7fc",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_1zq8...",
+      "key_hash": "f8076af515f1359c3df5c0e2760bc527e8dfe57575f181a7a8285c36b7d2a3c9",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1789385795.0288115,
+      "expires_at": null,
+      "last_used_at": 1789385795.1493726,
+      "revoked": false
+    },
+    {
+      "key_id": "key-a412c2939e5b",
+      "workspace_id": "ws-60a8787e",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_2amI...",
+      "key_hash": "ac6e0ca41948c69c2881c8e73a4ef53315f4f33feb244b9d56dc8fcfe2d3b96b",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789389702.765317,
+      "expires_at": null,
+      "last_used_at": 1789389702.882805,
+      "revoked": true
+    },
+    {
+      "key_id": "key-61810867819c",
+      "workspace_id": "ws-60a8787e",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live_ad6e...",
+      "key_hash": "cfd0bc31e2f033879be68166214cd486ab814d220134bf4095a12cfda912b1c5",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789389703.0804856,
+      "expires_at": null,
+      "last_used_at": 1789389703.1816137,
+      "revoked": false
+    },
+    {
+      "key_id": "key-0ceaf382cc2d",
+      "workspace_id": "ws-60a8787e",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_OnB8...",
+      "key_hash": "721f72a354faaf82de2d092ff8fa71d36d63265d39be739c38dadcd725d33a82",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1789389703.23521,
+      "expires_at": null,
+      "last_used_at": null,
+      "revoked": false
     }
   ],
-  "updated_at": 1789357043.8475935
+  "sessions": [
+    {
+      "token_hash": "8281fb2791dd8ea0a191accf6a80efafb6fc8f6befa25474d7b0fd86ce13e5e2",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789384559.280259,
+      "expires_at": 1789427759.2802594,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
+    },
+    {
+      "token_hash": "ca3a4cfcc3f9f0c25316074da534b69393a8b883741f544d4edc1136fcee0210",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789384602.127923,
+      "expires_at": 1789427802.1279237,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
+    },
+    {
+      "token_hash": "ce8889d1442ab83ae32f5041fbdfc2c4f2c4bc77efdb0fcd878d50764f877069",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789385738.481456,
+      "expires_at": 1789428938.4814572,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
+    },
+    {
+      "token_hash": "798b0a7f6d6973b6c987ef5850a893370a5600341ef8e5b3f199b90c6238817e",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789385812.8825364,
+      "expires_at": 1789429012.8825374,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
+    },
+    {
+      "token_hash": "e0b72ef73eb36bf5855aff27b20856d461444f25ceeb463c459e639b0c29e644",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789386317.0688856,
+      "expires_at": 1789429517.068886,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
+    },
+    {
+      "token_hash": "573c4f5d61a8e0dfb7b5e47c384bcedccc09466544284b700ca6d7443b1d693a",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789386503.3653417,
+      "expires_at": 1789429703.365343,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
+    },
+    {
+      "token_hash": "55e9c568f72cf310b43b2a5be83cabfec3dd76117227b1eecb99d0e0a5db778e",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789386634.7408743,
+      "expires_at": 1789429834.7408752,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
+    },
+    {
+      "token_hash": "c4e1ae63ce2babe71016036675e68c977f90bbdc9a28ad0e996022ee640c581c",
+      "user_id": "usr-f4336345",
+      "workspace_id": "ws-default",
+      "created_at": 1789386777.4019504,
+      "expires_at": 1789429977.401951,
+      "remember": false,
+      "user_agent": "curl/8.5.0",
+      "method": "password"
+    },
+    {
+      "token_hash": "93d0a55ffbac14cd65a2a3c3ff474156da69e1d9b105b6084b6d1c355b71f3db",
+      "user_id": "usr-3ac6667e",
+      "workspace_id": "ws-default",
+      "created_at": 1789386777.6327918,
+      "expires_at": 1789429977.6327922,
+      "remember": false,
+      "user_agent": "curl/8.5.0",
+      "method": "password"
+    },
+    {
+      "token_hash": "6817f95673ee280d6c1d6c2fd53cd0d84aec38a95fd7f2c97a06165e093273be",
+      "user_id": "usr-f4336345",
+      "workspace_id": "ws-default",
+      "created_at": 1789386826.6841807,
+      "expires_at": 1789430026.6841815,
+      "remember": false,
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+      "method": "password"
+    },
+    {
+      "token_hash": "c4593239be60f1820362cf26a14bbb532660ae3dc354c32b7987a0d3344ffb77",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789386866.2879171,
+      "expires_at": 1789430066.2879183,
+      "remember": false,
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+      "method": "password"
+    },
+    {
+      "token_hash": "72f79ea62eb550f4b90d217688a218582aaf74df492670fac913e48df669ebfc",
+      "user_id": "usr-f4336345",
+      "workspace_id": "ws-default",
+      "created_at": 1789387038.715282,
+      "expires_at": 1789430238.715283,
+      "remember": false,
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+      "method": "password"
+    },
+    {
+      "token_hash": "8e5f86708c5e810ce7a8611a8a1d227d7489c43dc4ae5eab10702f46174138f4",
+      "user_id": "usr-3ac6667e",
+      "workspace_id": "ws-default",
+      "created_at": 1789387038.9446242,
+      "expires_at": 1789430238.944625,
+      "remember": false,
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+      "method": "password"
+    },
+    {
+      "token_hash": "a2969cc1c4dd9a9fa11effc23a775afe789510baf18edcb167845c6a8d4aeebc",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789387039.0694964,
+      "expires_at": 1789430239.0694973,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
+    },
+    {
+      "token_hash": "cd24c6c8269326775de75c1395813c9af15ff8665306c438233242983cdc22bd",
+      "user_id": "usr-f4336345",
+      "workspace_id": "ws-default",
+      "created_at": 1789387147.6559634,
+      "expires_at": 1789430347.6559644,
+      "remember": false,
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+      "method": "password"
+    },
+    {
+      "token_hash": "72be376ac641b1adf160df9978cd98ab5044bb5e3ddfe68c6752e440a83732f3",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789389168.056397,
+      "expires_at": 1789432368.056398,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
+    },
+    {
+      "token_hash": "c9fec4e0c875dc478d311ad45892a426a78db4435b0591b73ee6ead22955b829",
+      "user_id": "usr-3ac6667e",
+      "workspace_id": "ws-default",
+      "created_at": 1789389352.1312292,
+      "expires_at": 1789432552.1312304,
+      "remember": false,
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+      "method": "password"
+    },
+    {
+      "token_hash": "e0f154f24e6999562b7585d981dccb46862b6ba2e4541869f90da899042ad7f9",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789389357.5413268,
+      "expires_at": 1789432557.5413282,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
+    },
+    {
+      "token_hash": "7315acf2cb9cae180d0cedf9414d1ddfe5d91923e046b4c860011e1d0927a988",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789389698.6304414,
+      "expires_at": 1789432898.6304424,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
+    }
+  ],
+  "updated_at": 1789389703.2369633
 }

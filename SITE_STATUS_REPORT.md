@@ -11,15 +11,15 @@ suite run against the local dev stack (serve.py on :8091 + docker compose LiveKi
 | API routes (81) | All respond as designed (GET routes 200, POST-only routes 404 on GET, tenant routes 401 without token) |
 | Verification suites (19 + Playwright) | 18 of 19 pass; 1 needs a human to speak (`verify_stt.py`) |
 | Playwright voice flows | 44 / 44 checks pass |
-| Uncommitted work | None — Carrier split committed in `0de49f3`, live Twilio credentials & DID configured |
+| Uncommitted work | Voice-engine truthfulness + intake transcript fixes (section 7), ready to commit |
 | Pending task from last session | `web/flow-testing.html` (flows + testing doc) — **not started** |
 
 ## 2. Pending tasks & Carrier Setup
 
 ### 2.1 Current Progress & Changes
 1. **Carrier Split Committed** — Telnyx and Twilio carrier split committed in `0de49f3`.
-2. **Live Twilio Account Connected** — Account SID `AC87faa60d...` & Auth Token authenticated (`retell`, active).
-3. **Twilio DID Configured** — Live inbound number `+1 (515) 585-9366` added to `config/phone_numbers.json` and assigned to *Maya - Bottini & Bottini*.
+2. **Live Twilio Account Connected** — Account SID `AC••••••••••••••••••••••••••••••••` & Auth Token authenticated (`My first Twilio account`, active).
+3. **Twilio DID Configured** — Live inbound number `+1 (951) 717-7889` added to `config/phone_numbers.json` and assigned to *Maya - Bottini & Bottini*.
 4. **Flow & testing HTML doc** — `web/flow-testing.html` in the dark palette of `code-walkthrough.html` (pending).
 
 ### 2.3 Newly found — worth fixing
@@ -61,7 +61,7 @@ same size and behave identically (kept in sync).
 
 ### 3.3 Providers
 - **ElevenLabs**: Configured (masked `sk_8d8••••a3c9`, 24 voices).
-- **Twilio**: Configured & Authenticated (Account: `retell`, SID: `AC87faa••••01651a`, 1 active DID: `+1 515 585 9366`).
+- **Twilio**: Configured & Authenticated (Account: `My first Twilio account`, SID: `AC2cd40••••400b059`, 1 active DID: `+1 951 717 7889`).
 - **Cartesia**: Not configured (uses simulator / Deepgram fallback).
 - **Voices**: 93 voices across ElevenLabs 24, Retell 18, Studio 18, Neural 11, Cartesia 9, Deepgram 7, OpenAI 6.
 - **Agents**: Configured with live dynamic agent ("Maya - Bottini & Bottini").
@@ -111,3 +111,318 @@ regression.
 2. Write `web/flow-testing.html` (the pending doc) and link it from the nav.
 3. Tighten inbound-trunk validation (require ≥1 number, reject blank name) and add a trunk delete route.
 4. Optionally make the carrier chip counts respect the country filter.
+
+## 7. Test-call review & fixes (2026-09-14, afternoon)
+
+Reviewed the "Maya" sandbox transcript the user pasted (Test AI Voice on the Agent Builder page).
+
+### 7.1 Why the picked voice was not the voice you heard
+- **Root cause:** the ElevenLabs key on file is a **free-plan** key. Fiona, Anika and "Adam (Workspace
+  Cloned)" are *professional / Voice Library* voices, and ElevenLabs refuses them via the API with
+  `HTTP 402 paid_plan_required`. The synthesizer silently fell back to a free neural voice (Ava) and the
+  UI kept labelling every reply "Fiona". The other 21 ElevenLabs voices (Sarah, Roger, Laura, …) are
+  `premade` and work.
+- **Live calls had a second, separate cause:** the worker built one Deepgram engine at start-up with a
+  hard-coded voice, never loaded the active agent, and the container had a stale private copy of
+  `config/agents.json` (still pointing at Aurora). The picker's choice never reached a real call.
+
+### 7.2 Code fixes applied
+| Area | Change |
+|---|---|
+| `agent/voice_synthesizer.py` | Records which engine really produced each clip; remembers 402-locked voices so they are not retried on every reply; exposes `get_voice_engine_status()` / `plan_locked_voices()`. |
+| `scripts/serve.py` | `voice-audio` now returns `X-Voice-Engine`, `X-Voice-Requested-Provider`, `X-Voice-Fallback-Reason`; `/api/agents/voices` marks locked voices `api_ready:false` with the reason. |
+| `web/agent-builder.html` | Clips are fetched so headers can be read. When a fallback speaks: a toast explains why, the call badge shows "Fiona → fallback: Neural HD (Ava)", each transcript reply is labelled with the real engine, and the voice card gets a "🔒 plan locked" chip. |
+| `agent/tts_manager.py` | New `apply_voice()` picks the streaming engine from the voice's provider (ElevenLabs Turbo v2.5 / Deepgram Aura / OpenAI / Cartesia), pre-flights ElevenLabs once per session to catch 402, and falls back to a gender-matched Aura voice with a logged reason. |
+| `agent/worker.py` | Loads the **active agent** at session start (prompt, temperature, voice), swaps the live TTS engine on `apply_agent_config` via `agent.update_options(tts=…)`, and publishes a `voice_engine` event with the engine and any fallback reason. |
+| `docker-compose.yml`, `requirements.txt` | `livekit-plugins-elevenlabs` added to the worker image; `ELEVEN_API_KEY` passed to the worker; `./config` bind-mounted so the worker sees the same `agents.json` as the dashboard. Image rebuilt. |
+
+Verified live: with the agent temporarily set to Sarah (premade), a real LiveKit session streamed
+**ElevenLabs eleven_turbo_v2_5, TTFA 417 ms**. With Fiona the worker logs the 402 reason and speaks
+Deepgram `aura-asteria-en`. Agent restored to Fiona afterwards.
+
+### 7.3 Transcript logic fixes (`agent/agent_builder.py`)
+| Problem in the transcript | Fix |
+|---|---|
+| Caller said "the number I call is the best call back number" and Maya answered **"Connecting you with a specialist…"** (a transfer). The tool matcher counted any 4-letter word from a tool description, so "call" + "number" scored as `transfer_call`. | Tool matching now needs an explicit intent ("speak to a person", "transfer me", "book an appointment", "track my order"…); generic words are ignored and description matches need two distinct hits. |
+| "guna" was accepted as a spelled full name and the flow moved on. | Name is read back letter by letter ("I have Guna, spelled G-U-N-A. Is that your first name? And could you spell your last name?"), then the last name is confirmed the same way. |
+| Callback answer was not acknowledged. | "This number / the number I'm calling from" → "I'll use the number you're calling from"; spoken or typed digits are read back; anything else is re-asked. |
+| Mailing-address question was silently skipped for every caller (the "email address" question satisfied its `"address"` check). | Checks for "mailing address" only. |
+| No acknowledgement after the caller described their matter. | "Thank you for sharing that." precedes the name question. |
+
+Replayed the pasted transcript: the call now runs intake → name readback → callback → email →
+mailing address → representation → prior contact → referral → affiliation → retention consent → close,
+with no spurious transfer. `verify_agent_builder.py` 117/117, Playwright voices 44/44, live suites
+1.5 / 1.6 / 1.7 / 2.2 all pass after the change.
+
+### 7.4 What still needs a decision from you
+1. **Voice for Maya.** Either upgrade the ElevenLabs plan (Fiona / Anika / cloned Adam need Starter or
+   higher for API use) or pick a premade ElevenLabs voice such as Sarah, Laura or Jessica. Until then
+   both the sandbox and live calls will say so and use the fallback.
+2. **Live-call dialogue.** The worker has no `OPENAI_API_KEY`, so real calls use the mock dialogue
+   manager, whose canned replies are about a medical clinic, not the Bottini intake script. The sandbox
+   flow above only runs in the Agent Builder test call. Add an LLM key (or port the scripted intake into
+   the worker) before putting Maya on the Twilio number.
+
+### 7.5 Second test call (Cimo) — what was wrong and what changed
+- **Replies were cut to two sentences** by `clean_spoken_speech_text` (server) and its JS twin, so the
+  name readback lost its question and the greeting lost "Is now an okay time to talk?". Cap raised to
+  five sentences and a trailing question is never dropped.
+- "the number I have call to us is my number" now counts as caller ID; a filler answer ("then", "what")
+  to the last-name question re-asks instead of being spelled back.
+- **Which model writes the sentences: none.** With no `GEMINI_API_KEY` the sandbox uses the rule-based
+  script in `agent_builder._preview_reply`; the LLM dropdown only takes effect for `gemini-*` models
+  once that key exists (`OPENAI_API_KEY` is read but not used by the sandbox). Live calls use the mock
+  dialogue manager unless `OPENAI_API_KEY` is set for the worker.
+- **Which engine speaks:** "Cimo (Retell AI)" is a sample-clip voice with no `RETELL_API_KEY`, and
+  Fiona is plan-locked, so *both* fall to the same free Microsoft neural voice (Ava). That is why
+  switching Cimo → Fiona sounds identical. Voices that actually change today: any ElevenLabs
+  **premade** voice (Sarah, Laura, Jessica, Roger…) and every **Deepgram Aura** voice (Asteria, Luna,
+  Stella, Orion…). The UI now warns for Retell voices too.
+
+### 7.6 Two agents editing "the same page" — fixed
+- Every dashboard **Edit** button opened `/agent-builder.html` with no agent id, and the builder always
+  loaded the *live* agent. Saving also made the saved agent live, and a save without an id fell back to
+  updating the live agent. Net effect: editing agent 2 overwrote agent 1.
+- Now: Edit links carry `?agent=<id>`; the builder has an **Editing** switcher in the header, a
+  **＋ New agent…** entry (`new: true` on the API, never falls back), and a **📞 Set live** button.
+  Saving never changes which agent answers calls; only Set live (`/api/agents/activate`) does.
+- Verified in a browser: created a second agent, edited and saved it, switched back — Maya's prompt was
+  untouched and she stayed live. `verify_agent_builder.py` 117/117.
+
+### 7.7 Why the wording still does not follow the prompt
+There is **no language model connected**. The builder now shows an amber notice saying so. The
+sandbox's words come from a rule script (`agent_builder._preview_reply`); the prompt is only used to
+detect *which* script (legal intake vs clinic) to run. Add `GEMINI_API_KEY` (free tier) and choose a
+Gemini model to make the sandbox follow the prompt; add `OPENAI_API_KEY` to the worker for live calls.
+
+### 7.8 Confirm instead of moving on
+The script now checks each answer once before advancing: an unclear "what happened" gets "Take your
+time…"; a non-email gets re-asked with an example; a non-address gets re-asked; yes/no questions get
+"just to confirm, yes or no: …"; "skip / don't have" is honoured; the retention-agreement answer is
+confirmed ("nothing will be sent" / "I'll note you're happy to receive it"). One retry per question,
+so the call never loops.
+
+### 7.9 Gemini as the dialogue brain (wired, waiting for the key)
+- **Status:** no Gemini key is present (`/api/providers/keys` → google: not configured; nothing in `.env`).
+  Selecting "gemini-2.0-flash" in the builder only names the model. Add the key on the API Keys page
+  (Google Gemini card) or as `GEMINI_API_KEY=` in `.env`, then `docker compose up -d agent`.
+- **Sandbox:** Gemini call timeout raised 3 s → 20 s (needed for the 51k-char prompt); failures now log a
+  warning and the transcript shows "🧠 gemini" or "📜 rule script" on every reply.
+- **Live worker:** `StreamingDialogueManager` gained a Gemini backend (SSE streaming via aiohttp),
+  chosen automatically when the agent's model is `gemini-*` and the key exists; `GEMINI_API_KEY` is
+  passed into the container. STT stays Deepgram, TTS stays ElevenLabs / Deepgram Aura; only the words
+  come from the model. A model error now speaks a short recovery line instead of going silent.
+- Verified with an invalid key: both paths report "API key not valid" clearly; suites 4.1, 1.4, 1.6, 1.5 pass.
+
+### 7.10 Gemini is live (key added 2026-09-14)
+- Key saved via `/api/providers/keys` → `.env` `GEMINI_API_KEY`; worker restarted with it.
+- `gemini-2.0-flash` / `1.5-*` are **retired** (HTTP 404). Catalog now: `gemini-3.5-flash-lite` (default,
+  free tier ≥8 req/min), `gemini-3.6-flash` (smarter, free tier **5 req/min** — too low for a call),
+  `gemini-flash-latest`, `gemini-2.5-pro`. Old ids in saved agents are remapped automatically.
+- Gemini 3.x thinking tokens ate the output budget ("Thanks for calling" and nothing else). Now
+  `thinkingLevel: minimal` (3.x) / `thinkingBudget: 0` (2.5) with a 300-token reply budget.
+- Maya's first message had drifted to "Hi, I'm Maya…"; the prompt mandates a specific opening, so
+  Gemini re-said it. Restored to the mandated greeting. **Keep First Message equal to the prompt's opening.**
+- Sandbox transcript now runs on Gemini (shows "🧠 gemini"); live worker logs `Dialogue backend: gemini`
+  and completed a real WebRTC turn (TTFT 1.24 s). Suites 4.1, 1.4, 1.6 pass; 8 pages clean.
+- Free-tier caveat: a busy call can hit 429 on Flash Lite too; the sandbox then falls back to the script for
+  that turn and a live call speaks the recovery line.
+
+### 7.11 Tool calling on real calls (Gemini function calling)
+- Mid-call tools (`transfer_call`, `book_appointment`, `lookup_order`, …) were only wired into the
+  simulator; with a real model driving, they never fired. `StreamingDialogueManager` now declares the
+  agent's **enabled** tools to Gemini as function declarations, dispatches the call (same
+  filler → run → result callbacks the worker already handles), echoes Gemini 3's thought signature back,
+  and lets the model phrase the result. Verified in the container ("check availability for dental
+  cleaning tomorrow" → tool call → "We have slots at 9:30 AM, 11:00 AM…") and over live WebRTC (5/5).
+- `verify_tools.py` accepts a real model staying in character (a law-firm agent will not look up a
+  retail order) as long as the data-channel round-trip completes.
+
+### 7.12 Adding more than one agent
+Agent Builder → **Editing** dropdown (top right) → **＋ New agent…**. It creates a separate agent, opens
+it, and you can rename it, paste its own prompt, pick its voice and model, then **Save changes**. It is
+not answering calls until you press **📞 Set live**; only one agent is live at a time. The dashboard's
+Agents tab lists them all with their own Edit buttons.
+
+### 7.13 Repeated questions, slow replies, and test-call recordings (third transcript)
+- **Root cause of both repeats and slowness:** every message in the test call re-sent the whole
+  conversation and the server regenerated *every* earlier reply (`test_run` replays all utterances), so
+  a 20-turn call fired 20 Gemini requests per message. That blew the free-tier limit; failed turns fell
+  to the rule script, whose own question order collided with Gemini's (email asked twice, name asked
+  again). Fix: the page now sends the transcript it shows plus the new line and the server generates
+  **one** reply (`reply_once`). Measured: 1.2–1.4 s per reply, one request each.
+- When Gemini is configured but a turn fails (429/5xx/timeout) the server retries once after the
+  advertised delay, then says a short holding line. The rule script is used only when no model key exists.
+- Each test message also wrote a new agent revision to disk even when nothing changed
+  (`config/agents.json` had reached 1.4 MB). Now only real changes are saved.
+- **Test calls now appear in the dashboard.** On hang-up the browser mixes the exact agent clips it
+  played (right channel) and the mic when it was used (left channel) into the recorder's 16 kHz
+  dual-channel WAV, uploads it with the transcript to `/api/agents/test-call/save`, and the post-call
+  pipeline runs (sentiment, summary, waveform). Listed as direction "sandbox", from "Agent Builder test
+  call", with a playable recording in Call Desk → Calls / Call detail.
+- Transcript meta now shows the real round-trip time ("⏱ 1.3s reply") instead of a catalog estimate.
+- Suites: agent builder 117/117, call history 126/126, Playwright voices 44/44; 8 pages clean.
+  (Duration shown for a typed sandbox call is the pipeline's spoken-word estimate, which can exceed
+  the WAV length since typing is faster than talking.)
+
+### 7.14 Fourth transcript: "guna@our website", call not ending, voice "not changing"
+- **Email corrupted to "guna@our website"**: the spoken-text cleaner rewrote any bare `something.com`
+  as "our website" (meant for links). It mangled the transcript *and* the history sent back to
+  Gemini, which then kept confirming the wrong address. Now only real links (http/www or domain+path)
+  are rewritten; emails and bare domains stay intact (server and page cleaners).
+- **Call did not end after the sign-off**: the server now flags a closing line (`end_call`, via
+  `looks_like_closing`), the page lets the audio finish, hangs up and saves the recording; the live
+  worker publishes `call_end` and deletes the LiveKit room (which drops a SIP leg) after a sign-off.
+  Verified: hang-up + save ~7 s after the closing line.
+- **"I change the voice and nothing changes"**: the picker works (Sarah → real ElevenLabs audio,
+  verified), but 12 catalog voices (Cimo, Fiona, Anika…) all fell back to the *same* neural voice
+  "Ava", so switching between them was inaudible. Now: (1) fallback voices are spread across 23
+  distinct neural voices; (2) `/api/agents/voices` reports `api_ready`/`engine`/`api_note` for every
+  voice up front (ElevenLabs categories fetched once, 402 probed once for the 3 professional voices);
+  (3) the picker shows a green "✅ ElevenLabs Turbo / Deepgram Aura / Neural HD" chip or an amber
+  "⚠️ Neural HD fallback (…)" chip on every card, has a "Real voices only" toggle, and warns the moment
+  you pick a fallback voice. 57 of 93 voices are real today. **Maya is now set to Sarah** (ElevenLabs
+  premade); the live worker confirms "Live TTS engine: elevenlabs eleven_turbo_v2_5 for voice Sarah".
+- Model-quality items in that transcript (asking to spell the company name, T-E-S-L-L-A loop,
+  accepting "January 2002") are Gemini 3.5 Flash Lite behaviour, not code. gemini-3.6-flash is
+  noticeably better but the free tier allows 5 requests/min for it; a paid Gemini tier removes that.
+
+### 7.15 Agent management moved to the dashboard; one agent per phone number
+- Per request, the Editing dropdown / ＋ New agent / Set live controls were removed from the Agent
+  Builder header. The builder edits the agent in its URL and shows a green "this agent answers live
+  calls" chip plus an "☰ All agents" link. Call Desk → Agents now has **＋ New agent**, and every
+  card has **Edit** (opens that agent) and **📞 Set live** (non-live agents).
+- **Several agents on several numbers:** `worker.resolve_agent_for_call()` reads the dialled DID from
+  the SIP participant (`sip.trunkPhoneNumber`) and uses the agent assigned to that number on the
+  SIP Trunks & DIDs tab (the per-number agent dropdown). Unassigned numbers and web/test rooms fall
+  back to the live agent. Verified in the container: with the Twilio DID assigned to a temporary
+  "Support Line Agent", calls to it resolve to that agent while Maya stays the live default.
+
+### 7.16 Test call "typing by itself"
+- Cause: the microphone starts with the call and kept listening while the agent's audio played
+  through the speakers, so Web Speech transcribed *her* words and auto-submitted them as the caller.
+- Fix (half-duplex): recognition is stopped while the agent speaks, results arriving during playback
+  (and 700 ms after) are discarded, a transcript that is mostly the agent's last line is dropped as
+  echo, and the input placeholder shows "🔇 Mic paused while the agent speaks…" → "🎙️ Listening…".
+  Verified: paused for the whole greeting, listening again the moment it ended.
+- Also this round: Retell warning reworded (Retell is a call platform with no TTS API; entries are
+  demo clips), ElevenLabs list now syncs from the account (+ "↻ Sync accounts" button), and the
+  `s3://voice-archive/...` archive URL is confirmed to be a local placeholder
+  (`recordings/archive/…`), not real cloud storage.
+
+### 7.17 Text arrives, then the voice: latency work
+- Reply text costs ~1.3 s (Gemini). The voice then needed a *second* wait: the whole clip was
+  synthesized before anything played (Neerja neural: 0.9 s short / 3 s long; ElevenLabs ~1 s).
+- Now: (1) the reply is split into speech chunks (first ~40+ chars, then the rest) and all chunks are
+  pre-warmed on the server the instant Gemini's text exists; (2) `voice-audio?stream=1` streams
+  bytes as the engine produces them and the page plays progressively (ElevenLabs `/stream` with
+  `optimize_streaming_latency=3`, Deepgram, edge-tts); (3) concurrent requests for the same clip
+  share one in-flight synthesis (`_LiveStream`) instead of running it twice; (4) each reply shows
+  "🔊 0.5s voice" = text→first audio.
+- Measured in a browser: ElevenLabs Sarah 0.5–0.9 s text→voice (was ~1.0–1.3 s); Neerja neural
+  1.2–1.5 s, bounded by that free engine's own ~1.1 s first-chunk latency. For the fastest voice use
+  an ElevenLabs premade voice; Deepgram Aura is ~1 s.
+
+### 7.18 Softphone: "Microphone permission failed… engine not connected" and no agent voice
+- Cause: `web/softphone.html` created the LiveKit `Room` and wired its events but **never called
+  `room.connect()`**. The mic therefore had no session to publish to (that exact error), no agent was
+  dispatched, and "Call connected successfully" was printed regardless.
+- Fix: the softphone now joins the room with the token's URL, logs the agent joining, the voice
+  engine in use (with any fallback reason), subscribes the agent audio, and hangs up when the agent
+  signs off. The worker now **greets on join** (Agent Builder "Who speaks first" = AI) for real and
+  dashboard rooms; `verify-*` test rooms are excluded. Verified headless: agent joins in ~2 s, greeting
+  audio streams (TTFA 275 ms). Suites 2.6 / 1.4 / 1.6 pass.
+- Still true: there is **no LiveKit SIP service** in the stack (`docker-compose.yml` has redis,
+  livekit, agent only), so "Dialing … via LiveKit SIP Gateway" is simulated — no phone rings and the
+  Twilio number cannot deliver inbound calls yet. What works today is talking to Maya in the browser
+  (softphone / dashboard tester / Agent Builder). Wiring real calls needs the `livekit/sip` container,
+  a public address, and the Twilio trunk pointed at it.
+- Live-call voices: the worker can stream ElevenLabs premade and Deepgram Aura only; neural/Retell/
+  locked voices fall back to Deepgram Aura on live calls (the browser sandbox can still play neural).
+
+### 7.19 Durable storage: PostgreSQL for everything
+- New `postgres` service in `docker-compose.yml` (postgres:17-alpine, container `voice-postgres`,
+  host port **127.0.0.1:5433**, named volume `voice_pgdata`). The pre-existing `db` container on 5432
+  belongs to another project and is not touched.
+- New `agent/storage.py`: write-through + restore. Every manager save (agents, phone numbers, SIP
+  trunks/rules, workspaces/users/API keys, post-call jobs) also upserts one row per document into
+  `app_documents` (JSONB); every recording written to disk (telephony recorder and sandbox test
+  calls) is also stored as bytes in `recordings`. At start-up `bootstrap()` rebuilds any JSON file
+  that is missing or older than the database and writes back any recording missing from the folder.
+  The JSON files/WAVs stay as the working copy the rest of the code reads.
+- Config: `DATABASE_URL` in `.env` (added), `psycopg[binary]` in requirements (worker image rebuilt,
+  host installed). Without `DATABASE_URL` everything runs file-only, as before.
+- `GET /api/storage/status` shows connection state, row counts per collection, recordings count/bytes.
+- Verified: initial push stored 127 recordings (135 MB) and all documents; deleting a recording and
+  `config/phone_numbers.json` then restarting restored both byte-for-byte; a new sandbox call added a
+  recording row and a call_jobs row. Suites 4.1, 4.2, 4.3, 2.1, 2.5, 3.1 pass.
+- Note: the pipeline's "archive" copy still lands in `recordings/archive/` with the placeholder
+  `s3://voice-archive/...` URL; the primary recording is what the database keeps.
+
+### 7.20 Profile: sidebar card + dedicated page
+- `GET/POST /api/v1/auth/profile` (name, title, email, phone, workspace name; plus members, API keys,
+  workspace details). The dashboard has no sign-in, so the profile is the workspace admin the server
+  runs as (`usr-admin-01`); the values live in the auth store and are mirrored to Postgres.
+- `web/profile.js` injects a compact profile card into the WORKSPACE block of every page (click →
+  `/profile.html`). `web/profile.html` is the full page: editable profile, workspace card, members,
+  API keys summary and data/storage status. "My Profile" added to the rail navigation.
+- The Overview "Live AI Voice Assistant Testing" card and the "Test AI Voice" tab were removed from
+  the Call Desk at the user's request (voice testing lives in the Agent Builder and the softphone).
+
+### 7.21 Login: password, then SMS code
+- **Auth** (`agent/auth_manager.py`): PBKDF2-SHA256 passwords on users, server-side sessions (token
+  hash stored; 12 h, or 30 days with "keep me signed in"), first-run `setup_admin`, `check_password`
+  → `begin_two_step` (pending ticket + 6-digit code, 5 min, 5 attempts, resend after 30 s) →
+  `complete_two_step` → session. Accounts without a phone sign in with password alone.
+- **SMS** (`agent/sms.py`): Twilio Messages API with the telephony credentials and the workspace's
+  SMS-capable Twilio number (+19517177889). `SMS_DRY_RUN=1` logs the code instead of sending (tests).
+- **Server**: `/login.html` + `/api/v1/auth/{session,setup,login,otp/verify,otp/resend,logout}`;
+  HttpOnly `va_session` cookie; every page redirects to login when signed out; JSON APIs return 401
+  unless the caller is localhost (`AUTH_TRUST_LOOPBACK=1` default, so the verify suites and the worker
+  keep working) — set it to `0` to require a session everywhere. `/api/v1/auth/dev-session`
+  (localhost only) mints a session for automated browser tests.
+- **UI**: `web/login.html` (first-run setup → password → code, resend countdown, wrong-code handling);
+  Sign out on the sidebar card and profile page; "Security" card on the profile page (change
+  password); phone field labelled as the SMS sign-in number.
+- Verified headless with dry-run SMS: redirect → setup → sign out → wrong password → code step (masked
+  +91•••••••508) → wrong code → correct code → dashboard. Suites 4.1 / 4.3 / 4.2 / Playwright pass;
+  10 pages clean. Admin was reset to first-run afterwards (no password, no phone, no sessions).
+- **Twilio is a Trial account.** Trial accounts can only text numbers verified in the Twilio console,
+  so add your phone under Verified Caller IDs (or upgrade) before enabling the SMS step.
+
+### 7.22 Permissions: admin-only pages, per-user agents and calls
+*(Updated later the same day per user: signed-in members now have the whole dashboard — telephony,
+webhooks, set-live for their own agents — except the API Keys & Providers page and member management.
+Data scoping to their own agents/calls is unchanged.)*
+- Roles: `admin` sees everything; `operator` / `analyst` see only their own agents and the calls those
+  agents handled. Agents carry `owner_id`; `list_agents(owner_id)`, `can_access()`, and
+  `visible_agent_names()` scope the API; `call_history.list_calls/stats/export` take `visible_agents`
+  and `can_view()` guards detail/audio/waveform. Server: `_viewer()`, `_enforce_role()` (403 on
+  `/api/providers`, `/api/telephony`, `/api/webhooks`, `/api/pipeline`, `/api/storage`, `/api/v1/users`,
+  `/api/v1/api-keys`, `/api/agents/activate`; `/api-keys.html` and `/webhooks.html` redirect), and
+  `_agent_allowed()` (404 for other users' agents). Members cannot set an agent live or change owners.
+- UI: `data-admin-only` elements are hidden for members (SIP tab, Buy Numbers, Simulate, Set live,
+  API Keys / Webhooks links). Profile page: admins add/remove members (name, email, phone, role,
+  temporary password); members see only themselves.
+- Verified with a real operator account: no agents until they create one, Maya → 404, keys → 403,
+  api-keys page → redirect, set live → 403, calls list shows only their agent's calls, admin still sees all.
+
+### 7.23 Webhook & AI data extraction (optional per agent)
+- Agent Builder gained a **Webhook & data extraction** card with an **Enable** toggle. When on:
+  ✨ *Suggest from prompt* (Gemini reads the agent's prompt and proposes fields: name, type,
+  description, required, the question to ask), editable field table, ▶ *Preview on latest call*, saved
+  with the agent (`extraction_fields`, `webhook_enabled`). When off, nothing is extracted or posted for
+  that agent's calls (pipeline + webhook bridge both check the flag).
+- `schema_extractor.extract_with_ai()` — Gemini fills the agent's schema from the transcript
+  (regex fallback when no key / error); spoken digits → E.164, "guna at gmail dot com" → email, yes/no
+  → booleans. Registered as schema `agent:<id>`; results in `job.metadata.agent_extraction`.
+- Webhook payload now carries `call{}`, `extracted{}` (flat values), `extraction{}`, `summary`,
+  `sentiment`, `transcript[]`, signed `X-Signature-256`. Fixed a real bug: deliveries scheduled during
+  a pipeline run were dropped because the loop closed first (`run_pipeline_job()` drains them).
+- New admin page **Webhooks & Data** (`/webhooks.html`): endpoints (add / **Test connection** with
+  HTTP code + latency / delete, health pill from last delivery), recent deliveries with replay, per-agent
+  fields with suggest/preview, payload example. Endpoints are workspace-level; the toggle is per agent.
+- Verified end to end with a local catcher: test ping → 200; a saved sandbox call produced
+  `call.extracted` + `call.completed` with 8 of 10 fields filled by Gemini (coverage 80%); toggle off →
+  0 deliveries, toggle on → 2. Suites 3.4 / 3.3 / 3.1 / 4.1 pass; 10 pages clean.
+- Maya currently has the toggle **on** with 10 AI-suggested fields; the local test endpoint was removed.

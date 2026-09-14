@@ -1,29 +1,30 @@
 {
   "numbers": [
     {
+      "region": "Toll-Free North America",
+      "status": "released",
+      "carrier": "telnyx",
+      "country": "US",
+      "metadata": {},
+      "capabilities": [
+        "voice",
+        "sip",
+        "sms",
+        "toll_free"
+      ],
+      "monthly_cost": 2.0,
       "phone_number": "+18005550199",
-      "friendly_name": "+1 (800) 555-0199 (Toll-Free)",
-      "country": "US",
-      "region": "Toll-Free North America",
-      "capabilities": [
-        "voice",
-        "sip",
-        "sms",
-        "toll_free"
-      ],
-      "monthly_cost": 2.0,
-      "status": "active",
-      "carrier": "telnyx",
-      "assigned_trunk_id": "trunk-inbound-primary",
-      "assigned_agent": "Intake Agent",
       "purchased_at": 1789123705.1966922,
-      "metadata": {}
+      "friendly_name": "+1 (800) 555-0199 (Toll-Free)",
+      "assigned_agent": "Intake Agent",
+      "assigned_trunk_id": "trunk-inbound-primary"
     },
     {
-      "phone_number": "+18885550142",
-      "friendly_name": "+1 (888) 555-0142 (Toll-Free)",
-      "country": "US",
       "region": "Toll-Free North America",
+      "status": "released",
+      "carrier": "telnyx",
+      "country": "US",
+      "metadata": {},
       "capabilities": [
         "voice",
         "sip",
@@ -31,37 +32,21 @@
         "toll_free"
       ],
       "monthly_cost": 2.0,
-      "status": "active",
-      "carrier": "telnyx",
-      "assigned_trunk_id": "trunk-inbound-primary",
-      "assigned_agent": "Support Agent",
+      "phone_number": "+18885550142",
       "purchased_at": 1788951734.4027483,
-      "metadata": {}
+      "friendly_name": "+1 (888) 555-0142 (Toll-Free)",
+      "assigned_agent": "Support Agent",
+      "assigned_trunk_id": "trunk-inbound-primary"
     },
     {
-      "phone_number": "+14158000129",
-      "friendly_name": "+1 (415) 800-0129",
-      "country": "US",
-      "region": "San Francisco, CA",
-      "capabilities": [
-        "voice",
-        "sip",
-        "sms",
-        "dual_channel"
-      ],
-      "monthly_cost": 1.5,
+      "region": "Riverside / Moreno Valley, CA",
       "status": "active",
-      "carrier": "telnyx",
-      "assigned_trunk_id": "trunk-inbound-primary",
-      "assigned_agent": "Apex Legal Assistant",
-      "purchased_at": 1788951742.9044557,
-      "metadata": {}
-    },
-    {
-      "phone_number": "+15155859366",
-      "friendly_name": "+1 (515) 585-9366 (Twilio Live)",
+      "carrier": "twilio",
       "country": "US",
-      "region": "Iowa, United States",
+      "metadata": {
+        "trunk_sid": "TKe24d3f7f61a7b668634faa71a18096a3",
+        "twilio_sid": "PNde9f11a8500ee01f292a89b28f40a0f6"
+      },
       "capabilities": [
         "voice",
         "sip",
@@ -69,15 +54,12 @@
         "mms"
       ],
       "monthly_cost": 1.15,
-      "status": "active",
-      "carrier": "twilio",
-      "assigned_trunk_id": "trunk-inbound-primary",
+      "phone_number": "+19517177889",
+      "purchased_at": 1789361500.0,
+      "friendly_name": "+1 (951) 717-7889 (Twilio Primary)",
       "assigned_agent": "Maya - Bottini & Bottini",
-      "purchased_at": 1789357500.0,
-      "metadata": {
-        "twilio_sid": "PN6732627cdac3794bd93936a0e2b2386b"
-      }
+      "assigned_trunk_id": "TKe24d3f7f61a7b668634faa71a18096a3"
     }
   ],
-  "updated_at": 1789357500.0
+  "updated_at": 1789377181.4124434
 }

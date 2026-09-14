@@ -56,7 +56,7 @@
     color:var(--ink);background:var(--panel)}
 
   /* Layout */
-  .app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:calc(100vh - 44px)}
+  .app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:100vh}
 
   /* Rail */
   .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
@@ -286,23 +286,6 @@
 <body>
 
 <!-- Topmost Thin App Header -->
-<header class="top-app-bar">
-  <div class="app-dropdown" id="appDropdown">
-    <span>Call Desk</span>
-    <svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4z"/></svg>
-  </div>
-  <div class="top-actions">
-    <div class="avatar-badge" title="User">Y</div>
-    <button class="icon-btn" title="Feedback">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-    </button>
-    <button class="btn-share" id="btnShare">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-      Share
-    </button>
-  </div>
-</header>
-
 <div class="app">
   <!-- Left Navigation Rail -->
   <nav class="rail">
@@ -315,10 +298,7 @@
       <a href="/api-keys.html">API Keys &amp; Providers<span class="ct">🔑</span></a>
     </div>
     <div class="rail-foot">
-      <div>WORKSPACE</div>
-      <div style="color:var(--rail-on)">Voice Agent Service</div>
-      <div><a href="/live-console.html">Live console</a> · <a href="/agent-builder.html">Builder</a></div>
-      <div><a href="/task-plan.html">Task plan</a> · <a href="/softphone.html">Softphone</a></div>
+      <!-- profile card is injected here by /profile.js -->
     </div>
   </nav>
 
@@ -331,8 +311,18 @@
           <div class="crumb">AGENTS</div>
           <h1 id="pageTitle">Intake Agent</h1>
         </div>
-        <span class="livechip"><span class="pulse"></span><span id="callStatus">0 calls in progress</span></span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <!-- Agents are switched, created and set live from the Call Desk → Agents tab; the builder
+               edits the agent named in the URL (?agent=…), so no picker clutters this header. -->
+          <select id="agentSwitch" hidden></select>
+          <button id="btnNewAgent" type="button" hidden></button>
+          <button id="btnSetLive" type="button" hidden></button>
+          <span id="liveStateChip" class="livechip" hidden style="background:#DCFCE7;color:#166534;border-color:#22C55E"><span class="pulse"></span><span>this agent answers live calls</span></span>
+          <a class="btn ghost" href="/index.html#agents" title="All agents: switch, create, set live" style="text-decoration:none">☰ All agents</a>
+          <span class="livechip"><span class="pulse"></span><span id="callStatus">0 calls in progress</span></span>
+        </div>
       </div>
+      <div id="llmNotice" hidden style="margin:-6px 0 14px;padding:10px 14px;border-radius:8px;background:#FEF3C7;color:#92400E;border:1px solid #F59E0B;font-size:13px;line-height:1.5"></div>
 
       <!-- 2-Column Grid -->
       <div class="grid2">
@@ -448,6 +438,37 @@
             </div>
           </div>
 
+          <!-- Webhook & data extraction (optional per agent) -->
+          <div class="card">
+            <div class="card-h" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+              <div>
+                <h2>Webhook &amp; data extraction</h2>
+                <span class="meta" id="whMeta">Off — nothing is sent for this agent's calls</span>
+              </div>
+              <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;font-weight:600">
+                <input type="checkbox" id="webhookEnabled" style="width:18px;height:18px;accent-color:var(--accent)"> Enable
+              </label>
+            </div>
+            <div class="card-b" id="whBody" hidden>
+              <p style="margin:0 0 10px;font-size:12.5px;color:var(--ink-soft)">After each call the AI reads the transcript, fills these fields and posts them (signed) to your workspace webhook endpoints as <code>extracted</code>. Endpoints are managed by an admin on <a href="/webhooks.html" style="color:var(--accent)">Webhooks &amp; Data</a>.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+                <button class="btn ghost sm" id="btnSuggestFields" type="button" style="color:var(--accent);border-color:var(--accent-border)">✨ Suggest from prompt (AI)</button>
+                <button class="btn ghost sm" id="btnAddField" type="button">＋ Add field</button>
+                <button class="btn ghost sm" id="btnPreviewFields" type="button">▶ Preview on latest call</button>
+                <span id="fieldsMsg" style="font-size:12px;color:var(--ink-faint)"></span>
+              </div>
+              <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse;font-size:12.5px" id="fieldsTable">
+                  <thead><tr style="text-align:left;color:var(--ink-faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em"><th style="padding:6px 6px;width:28%">Field</th><th style="padding:6px;width:15%">Type</th><th style="padding:6px">Description · question to ask</th><th style="padding:6px;width:7%">Req.</th><th></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+                <div id="fieldsEmpty" style="color:var(--ink-faint);font-size:12.5px;padding:8px 6px">No fields yet. Click <b>Suggest from prompt</b> and the AI proposes them from this agent's instructions.</div>
+              </div>
+              <div id="fieldsPreview" hidden style="margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--sunk)"></div>
+              <div style="font-size:11.5px;color:var(--ink-faint);margin-top:8px">Fields are saved with <b>Save changes</b>.</div>
+            </div>
+          </div>
+
           <!-- Tools Card -->
           <div class="card">
             <div class="card-h" style="display:flex;justify-content:space-between;align-items:center">
@@ -487,6 +508,10 @@
           <option value="female">♀ Female Only</option>
           <option value="male">♂ Male Only</option>
         </select>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;white-space:nowrap;cursor:pointer" title="Hide voices that would play a neural fallback instead of the voice itself">
+          <input type="checkbox" id="voiceReadyOnly"> ✅ Real voices only
+        </label>
+        <button type="button" id="btnSyncVoices" class="btn ghost" style="padding:6px 10px;font-size:12.5px;white-space:nowrap" title="Re-read the voices in your ElevenLabs and Retell accounts">↻ Sync accounts</button>
       </div>
 
       <!-- Expressive Human Emotion & Tone Studio Lab -->
@@ -769,11 +794,13 @@
   "use strict";
   var $ = function (s) { return document.querySelector(s); };
 
-  function showToast(msg) {
+  var toastTimer = null;
+  function showToast(msg, ms) {
     var toast = $("#toast");
     toast.textContent = msg;
     toast.classList.add("show");
-    setTimeout(function () { toast.classList.remove("show"); }, 3000);
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast.classList.remove("show"); }, ms || 3000);
   }
 
   // ── Voice Picker Modal & Catalogue Logic ──────────────────────────────────
@@ -801,6 +828,60 @@
     openai: "OpenAI TTS",
     elevenlabs: "ElevenLabs Turbo"
   };
+
+  // ── Engine truthfulness ────────────────────────────────────────────────────
+  // The server may fall back to another engine (e.g. ElevenLabs refuses a Voice Library voice
+  // on the free plan with HTTP 402). Fetch the clip ourselves so we can read the X-Voice-Engine
+  // header and tell the user what they are actually hearing instead of pretending.
+  var engineWarnedFor = {};
+  var lastEngineByVoice = {};
+  function describeEngine(engine) {
+    if (!engine) return "unknown engine";
+    if (engine.indexOf("neural:") === 0) return "Neural HD (" + engine.slice(7).replace(/^en-[A-Z]{2}-/, "").replace("Neural", "") + ")";
+    if (engine === "elevenlabs-cdn-sample") return "ElevenLabs portal sample";
+    if (engine === "tone-simulator") return "tone simulator (no speech engine)";
+    return PROVIDER_NAMES[engine] || engine;
+  }
+  function fetchVoiceClip(url) {
+    return fetch(url).then(function (r) {
+      if (!r.ok) { throw new Error("voice-audio HTTP " + r.status); }
+      var meta = {
+        engine: r.headers.get("X-Voice-Engine") || "",
+        requestedProvider: r.headers.get("X-Voice-Requested-Provider") || "",
+        fallbackReason: r.headers.get("X-Voice-Fallback-Reason") || ""
+      };
+      return r.blob().then(function (b) { meta.blob = b; meta.blobUrl = URL.createObjectURL(b); return meta; });
+    });
+  }
+  function reportVoiceEngine(voiceId, meta) {
+    lastEngineByVoice[voiceId] = meta;
+    var v = voiceMap[voiceId];
+    var badge = $("#testCallVoiceBadge");
+    if (meta.fallbackReason) {
+      var vName = v ? v.name : voiceId;
+      if (badge) { badge.textContent = "⚠️ " + vName + " → fallback: " + describeEngine(meta.engine); badge.style.color = "var(--warn, #b45309)"; }
+      if (!engineWarnedFor[voiceId]) {
+        engineWarnedFor[voiceId] = true;
+        showToast("⚠️ " + vName + " is not available: " + meta.fallbackReason + " — playing " + describeEngine(meta.engine) + " instead.", 7000);
+        markVoiceUnavailable(voiceId, meta.fallbackReason);
+      }
+    } else if (badge && v && badge.textContent.indexOf(v.name) !== -1) {
+      badge.style.color = "";
+    }
+  }
+  function markVoiceUnavailable(voiceId, note) {
+    if (voiceMap[voiceId]) { voiceMap[voiceId].api_ready = false; voiceMap[voiceId].api_note = note; }
+    Array.prototype.forEach.call(document.querySelectorAll('.voice-card[data-id="' + voiceId + '"]'), function (card) {
+      if (card.querySelector(".vc-chip.locked")) return;
+      var chip = document.createElement("span");
+      chip.className = "vc-chip locked";
+      chip.style.cssText = "background:#FEF3C7;color:#92400E;border:1px solid #F59E0B";
+      chip.title = note;
+      chip.textContent = "🔒 plan locked";
+      var host = card.querySelector(".vc-chips, .vc-meta") || card;
+      host.appendChild(chip);
+    });
+  }
 
   var currentAudio = null;
   var currentPlayingVoiceId = null;
@@ -872,7 +953,7 @@
     }
     audioUrl += "&t=" + Date.now();
 
-    var audio = new Audio(audioUrl);
+    var audio = new Audio();
     currentAudio = audio;
 
     audio.onended = function () {
@@ -890,7 +971,12 @@
       }
     };
 
-    audio.play().catch(function (err) {
+    fetchVoiceClip(audioUrl).then(function (meta) {
+      if (currentAudio !== audio) { return; }          // superseded by another pick
+      reportVoiceEngine(voiceId, meta);
+      audio.src = meta.blobUrl;
+      return audio.play();
+    }).catch(function (err) {
       // pause() on a not-yet-started element rejects play() with AbortError; that is a
       // deliberate stop (user picked another voice), not a playback failure.
       if (err && err.name === "AbortError") { return; }
@@ -1040,8 +1126,8 @@
 
   var currentTargetVoiceId = null;
 
-  function loadVoices(selectedVoiceId) {
-    return fetch("/api/agents/voices")
+  function loadVoices(selectedVoiceId, refresh) {
+    return fetch("/api/agents/voices" + (refresh ? "?refresh=1" : ""))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         allVoicesList = data.voices || [];
@@ -1113,6 +1199,7 @@
     var filtered = allVoicesList.filter(function (v) {
       if (activeFilterProvider !== "all" && v.provider !== activeFilterProvider) { return false; }
       if (g !== "all" && v.gender !== g) { return false; }
+      if ($("#voiceReadyOnly") && $("#voiceReadyOnly").checked && v.api_ready === false) { return false; }
       if (q) {
         var str = (v.name + " " + v.style + " " + v.provider + " " + (v.gender || "")).toLowerCase();
         if (str.indexOf(q) === -1) { return false; }
@@ -1150,6 +1237,9 @@
           '<div class="vc-meta">' +
             '<span class="vc-chip latency">⚡ ' + v.first_audio_ms + 'ms TTFA</span>' +
             '<span class="vc-chip" style="background:var(--accent-soft);color:var(--accent);font-weight:600">' + (v.cost_per_1k_chars === 0 ? '✨ 100% Free' : '⚡ Studio Audio') + '</span>' +
+            (v.api_ready === false
+              ? '<span class="vc-chip locked" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B" title="' + (v.api_note || '').replace(/"/g, '&quot;') + '">⚠️ ' + (v.engine || 'fallback') + '</span>'
+              : '<span class="vc-chip" style="background:#DCFCE7;color:#166534;border:1px solid #22C55E" title="This exact voice speaks in the test call and on live calls">✅ ' + (v.engine || 'live') + '</span>') +
           '</div>' +
           '<div class="vc-actions">' +
             '<button class="vc-btn-preview' + (isPlaying ? ' playing' : '') + '" data-id="' + v.voice_id + '" title="Listen to voice acoustic sample">' +
@@ -1173,7 +1263,11 @@
         }
         if (e.target.closest(".vc-btn-select")) {
           setChosenVoice(vid);
-          showToast("🎙️ Voice changed to " + (v ? v.name : vid));
+          if (v && v.api_ready === false) {
+            showToast("⚠️ " + v.name + " cannot be synthesized here (" + (v.api_note || "no engine") + "). You will hear " + (v.engine || "a fallback voice") + " instead.", 7000);
+          } else {
+            showToast("🎙️ Voice changed to " + (v ? v.name : vid));
+          }
           saveCurrentAgentForm(true);
           closeVoiceModal();
           return;
@@ -1241,6 +1335,18 @@
 
   $("#voiceSearchInput").addEventListener("input", renderVoiceGrid);
   $("#voiceGenderFilter").addEventListener("change", renderVoiceGrid);
+  if ($("#voiceReadyOnly")) { $("#voiceReadyOnly").addEventListener("change", renderVoiceGrid); }
+  if ($("#btnSyncVoices")) {
+    $("#btnSyncVoices").addEventListener("click", function () {
+      var before = allVoicesList.length;
+      showToast("↻ Syncing voices from your ElevenLabs / Retell accounts…");
+      loadVoices($("#voiceSelect").value, true).then(function () {
+        renderVoiceGrid();
+        var added = allVoicesList.length - before;
+        showToast(added > 0 ? "✅ " + added + " new voice(s) added from your accounts" : "✅ Voice list is up to date (" + allVoicesList.length + " voices)", 5000);
+      });
+    });
+  }
 
   $("#btnPreviewVoice").addEventListener("click", function () {
     var vid = $("#voiceSelect").value;
@@ -1732,7 +1838,9 @@
       speak_first: $("#speakFirstSelect") ? $("#speakFirstSelect").value : "ai",
       voice_id: $("#voiceSelect").value,
       llm_model: selectedModel,
-      tools: selectedToolsArray
+      tools: selectedToolsArray,
+      webhook_enabled: $("#webhookEnabled") ? $("#webhookEnabled").checked : false,
+      extraction_fields: (typeof readExtractionFields === "function") ? readExtractionFields() : []
     };
 
     try {
@@ -1748,7 +1856,14 @@
     }).then(function (r) { return r.json(); }).then(function (data) {
       if (data.status === "ok") {
         if (data.agent && data.agent.agent_id) {
+          var wasNew = !currentLoadedAgentId;
           currentLoadedAgentId = data.agent.agent_id;
+          if (wasNew) {
+            try { history.replaceState(null, "", "?agent=" + encodeURIComponent(currentLoadedAgentId)); } catch (e) {}
+            knownAgents.push({ agent_id: data.agent.agent_id, name: data.agent.name });
+            renderAgentSwitch();
+            $("#editMeta").textContent = "created just now";
+          }
         }
         if (!isAuto) {
           showToast("✅ Agent saved (" + selectedModel + " · " + selectedToolsArray.length + " tools)");
@@ -1756,6 +1871,8 @@
         $("#editMeta").textContent = "edited just now";
         $("#agentCardTitle").textContent = payload.name;
         $("#pageTitle").textContent = payload.name;
+        knownAgents.forEach(function (a) { if (a.agent_id === currentLoadedAgentId) { a.name = payload.name; } });
+        renderAgentSwitch();
       } else {
         if (!isAuto) {
           showToast("❌ " + (data.error || "Could not save agent"));
@@ -1820,7 +1937,8 @@
 
     // 4. Remove or normalize URLs: https://www.example.com/page -> "our website"
     t = t.replace(/https?:\/\/(?:www\.)?[^\s/$.?#].[^\s]*/gi, "our website")
-         .replace(/www\.[^\s/$.?#].[^\s]*/gi, "our website");
+         .replace(/www\.[^\s/$.?#].[^\s]*/gi, "our website")
+         .replace(/(^|[^\w@.])\b[a-zA-Z0-9\-]+\.(?:com|org|net|gov|edu|io|ai)\/[^\s]+/gi, "$1our website");
 
     // 5. Remove Markdown links: [Title](url) -> Title
     t = t.replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1");
@@ -1836,12 +1954,17 @@
     // 8. Clean redundant special symbols and whitespace
     t = t.replace(/[\\/{}\[\]<>]/g, " ").replace(/\s+/g, " ").trim();
 
-    // 9. Extract first 1-2 clean sentences for crisp conversational speech
+    // 9. Keep spoken turns short, but never cut the question off the end of a turn
+    //    (mirrors clean_spoken_speech_text in agent/voice_synthesizer.py).
+    var MAX_SPOKEN_SENTENCES = 5;
     var sentences = t.split(/(?<=[.!?])\s+/);
     if (sentences && sentences.length > 0) {
       var cleanSentences = sentences.filter(function(s) { return s.trim().length > 3; });
-      if (cleanSentences.length > 2) {
-        t = cleanSentences.slice(0, 2).join(" ");
+      if (cleanSentences.length > MAX_SPOKEN_SENTENCES) {
+        var kept = cleanSentences.slice(0, MAX_SPOKEN_SENTENCES);
+        var last = cleanSentences[cleanSentences.length - 1];
+        if (/\?$/.test(last) && kept.indexOf(last) === -1) { kept[kept.length - 1] = last; }
+        t = kept.join(" ");
       } else if (cleanSentences.length > 0) {
         t = cleanSentences.join(" ");
       }
@@ -1849,12 +1972,143 @@
     return t.trim();
   }
 
+  // ── Sandbox call recorder ──────────────────────────────────────────────────
+  // The browser already decodes every clip it plays, so it can assemble the same dual-channel
+  // WAV the telephony recorder writes (left = caller, right = agent, 16 kHz) and hand it to the
+  // dashboard when the test call ends. No server-side MP3 decoder needed.
+  var callRec = { clips: [], micRecorder: null, micChunks: [], micStartedAt: 0, micStream: null, startedAt: 0 };
+  function recStart() {
+    recStopMic();
+    callRec = { clips: [], micRecorder: null, micChunks: [], micStartedAt: 0, micStream: null, startedAt: Date.now() };
+  }
+  function recAddAgentClip(blob, atMs) {
+    if (callRec.startedAt && blob) { callRec.clips.push({ blob: blob, at: atMs }); }
+  }
+  function recStartMic(stream) {
+    if (!callRec.startedAt || callRec.micRecorder || typeof MediaRecorder === "undefined") return;
+    try {
+      var mr = new MediaRecorder(stream);
+      callRec.micChunks = [];
+      mr.ondataavailable = function (e) { if (e.data && e.data.size) callRec.micChunks.push(e.data); };
+      mr.start(1000);
+      callRec.micRecorder = mr; callRec.micStream = stream; callRec.micStartedAt = Date.now();
+    } catch (e) { console.warn("Mic recording unavailable:", e); }
+  }
+  function recStopMic() {
+    return new Promise(function (resolve) {
+      var mr = callRec.micRecorder;
+      if (!mr) { resolve(null); return; }
+      var done = function () {
+        var blob = callRec.micChunks.length ? new Blob(callRec.micChunks, { type: mr.mimeType || "audio/webm" }) : null;
+        try { (callRec.micStream.getTracks() || []).forEach(function (t) { t.stop(); }); } catch (e) {}
+        callRec.micRecorder = null;
+        resolve(blob ? { blob: blob, at: callRec.micStartedAt } : null);
+      };
+      mr.onstop = done;
+      try { mr.state !== "inactive" ? mr.stop() : done(); } catch (e) { done(); }
+    });
+  }
+  function recEncodeWav(buffer) {
+    var ch = buffer.numberOfChannels, len = buffer.length, rate = buffer.sampleRate;
+    var out = new ArrayBuffer(44 + len * ch * 2), v = new DataView(out);
+    function str(o, t) { for (var i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); }
+    str(0, "RIFF"); v.setUint32(4, 36 + len * ch * 2, true); str(8, "WAVE"); str(12, "fmt ");
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, ch, true); v.setUint32(24, rate, true);
+    v.setUint32(28, rate * ch * 2, true); v.setUint16(32, ch * 2, true); v.setUint16(34, 16, true);
+    str(36, "data"); v.setUint32(40, len * ch * 2, true);
+    var chans = []; for (var c = 0; c < ch; c++) chans.push(buffer.getChannelData(c));
+    var o = 44;
+    for (var i = 0; i < len; i++) for (var c2 = 0; c2 < ch; c2++) {
+      var x = Math.max(-1, Math.min(1, chans[c2][i])); v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7FFF, true); o += 2;
+    }
+    return out;
+  }
+  function recBuildWav(endedAt, mic) {
+    var secs = Math.min(Math.max((endedAt - callRec.startedAt) / 1000, 1), 900);
+    var RATE = 16000;
+    var offline = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, Math.ceil(secs * RATE), RATE);
+    var merger = offline.createChannelMerger(2);
+    merger.connect(offline.destination);
+    var decoder = new (window.AudioContext || window.webkitAudioContext)();
+    function place(entry, channel) {
+      return entry.blob.arrayBuffer().then(function (ab) { return decoder.decodeAudioData(ab); }).then(function (decoded) {
+        var src = offline.createBufferSource(); src.buffer = decoded;
+        var mono = offline.createGain(); src.connect(mono); mono.connect(merger, 0, channel);
+        src.start(Math.max(0, (entry.at - callRec.startedAt) / 1000));
+      }).catch(function (e) { console.warn("clip skipped in recording:", e); });
+    }
+    var jobs = callRec.clips.map(function (c) { return place(c, 1); });
+    if (mic) jobs.push(place(mic, 0));
+    return Promise.all(jobs).then(function () { return offline.startRendering(); }).then(function (rendered) {
+      try { decoder.close(); } catch (e) {}
+      return recEncodeWav(rendered);
+    });
+  }
+  function bytesToBase64(ab) {
+    var bytes = new Uint8Array(ab), bin = "", CH = 0x8000;
+    for (var i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+    return btoa(bin);
+  }
+  function saveSandboxCall(endedAt) {
+    var turns = testCallTranscriptTurns.slice();
+    if (turns.length < 2) return Promise.resolve();
+    var backend = (turns.filter(function (t) { return t.backend; }).pop() || {}).backend || "";
+    return recStopMic().then(function (mic) { return recBuildWav(endedAt, mic); }).catch(function (e) {
+      console.warn("Recording build failed, saving transcript only:", e); return null;
+    }).then(function (wav) {
+      return fetch("/api/agents/test-call/save", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent_id: currentLoadedAgentId, voice_id: $("#voiceSelect").value, backend: backend,
+          turns: turns, started_at: callRec.startedAt / 1000, ended_at: endedAt / 1000,
+          wav_base64: wav ? bytesToBase64(wav) : ""
+        })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.status === "ok") {
+          showToast("💾 Saved to Call History as " + d.call_id + (d.has_audio ? " with recording" : " (transcript only)") + " — open Call Desk → Calls", 6000);
+        } else { showToast("❌ Could not save test call: " + (d.error || "unknown error")); }
+      });
+    }).catch(function (e) { console.warn("save test call failed", e); });
+  }
+
+  // Half-duplex mic: while the agent's audio plays (and briefly after), the microphone must not
+  // listen, otherwise it hears the agent through the speakers and submits her words as the caller.
+  var agentSpeaking = false;
+  var agentSpeakingUntil = 0;
+  var lastAgentLine = "";
+  function normForEcho(t) { return (t || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim(); }
+  function looksLikeEcho(text) {
+    var a = normForEcho(lastAgentLine), b = normForEcho(text);
+    if (!a || !b || b.length < 12) return false;
+    if (a.indexOf(b) !== -1) return true;                       // a fragment of the agent's line
+    var bw = b.split(" "), hits = 0; var aw = {}; a.split(" ").forEach(function (w) { aw[w] = 1; });
+    bw.forEach(function (w) { if (aw[w]) hits++; });
+    return bw.length >= 4 && hits / bw.length >= 0.8;           // mostly the agent's own words
+  }
+  function setAgentSpeaking(on) {
+    agentSpeaking = on;
+    if (on) {
+      if (micSilenceTimer) { clearTimeout(micSilenceTimer); micSilenceTimer = null; }
+      if ($("#testCallInput")) { $("#testCallInput").value = ""; $("#testCallInput").placeholder = "🔇 Mic paused while the agent speaks…"; }
+      try { if (testCallRecognition && isMicListening) testCallRecognition.stop(); } catch (e) {}
+    } else {
+      agentSpeakingUntil = Date.now() + 700;                    // let room echo die down
+      if ($("#testCallInput")) { $("#testCallInput").placeholder = isMicListening ? "🎙️ Listening to you... (speak now or type)" : "Speak into mic or type a message to your agent…"; }
+      setTimeout(function () {
+        if (isMicListening && testCallActive && testCallRecognition && !agentSpeaking) { try { testCallRecognition.start(); } catch (e) {} }
+      }, 700);
+    }
+  }
+
+  var testCallTranscriptTurns = [];
   function appendTestCallMessage(speaker, text, meta) {
     var container = $("#testCallTranscript");
     if (!container) return;
 
     var cleanDisplay = (speaker === "agent") ? cleanSpokenSpeechText(text) : (text || "").trim();
     if (!cleanDisplay) cleanDisplay = text;
+    testCallTranscriptTurns.push({ speaker: speaker, text: cleanDisplay, tool: meta && meta.tool ? meta.tool : null,
+                                   backend: meta && meta.backend ? meta.backend : null, at: Date.now() });
 
     var msgDiv = document.createElement("div");
     msgDiv.className = "test-msg " + speaker;
@@ -1878,8 +2132,17 @@
     var metaEl = document.createElement("div");
     metaEl.className = "test-msg-meta";
     if (speaker === "agent") {
-      var lat = meta && meta.first_audio_ms ? meta.first_audio_ms + "ms TTFA" : "120ms TTFA";
-      metaEl.innerHTML = '<span>🎙️ ' + vName + '</span><span>•</span><span>⚡ ' + lat + '</span>';
+      var lat = (meta && meta.round_trip_ms) ? ("⏱ " + (meta.round_trip_ms / 1000).toFixed(1) + "s reply")
+              : (meta && meta.first_audio_ms ? meta.first_audio_ms + "ms TTFA" : "120ms TTFA");
+      var spoken = lastEngineByVoice[vId];
+      var label = (spoken && spoken.fallbackReason) ? '⚠️ ' + vName + ' → ' + describeEngine(spoken.engine) : '🎙️ ' + vName;
+      var brain = "";
+      if (meta && meta.backend) {
+        var isModel = meta.backend.indexOf("gemini") === 0 || meta.backend.indexOf("openai") === 0;
+        brain = '<span>•</span><span title="' + meta.backend.replace(/"/g, '&quot;') + '"' + (isModel ? '' : ' style="color:#b45309"') + '>' +
+                (isModel ? '🧠 ' + meta.backend.split(":")[0] : '📜 rule script') + '</span>';
+      }
+      metaEl.innerHTML = '<span' + ((spoken && spoken.fallbackReason) ? ' title="' + spoken.fallbackReason.replace(/"/g, '&quot;') + '" style="color:#b45309"' : '') + '>' + label + '</span><span>•</span><span>⚡ ' + lat + '</span>' + brain;
     } else {
       metaEl.innerHTML = '<span>👤 Caller</span><span>•</span><span>🎙️ Voice Input</span>';
     }
@@ -1889,7 +2152,8 @@
     container.scrollTop = container.scrollHeight;
   }
 
-  function playAgentVoiceResponse(text, onComplete) {
+  var currentPlayToken = null;
+  function playAgentVoiceResponse(text, onComplete, chunks) {
     if (testCallAudio) {
       try { testCallAudio.pause(); } catch (e) {}
       testCallAudio = null;
@@ -1903,33 +2167,74 @@
     var vId = ($("#voiceSelect") && $("#voiceSelect").value) ? $("#voiceSelect").value : "studio-maya";
     var vObj = voiceMap[vId] || { name: "Maya", gender: "female", provider: "studio", style: "conversational" };
     var style = $("#toneStyleSelect") ? $("#toneStyleSelect").value : "customerservice";
-    var url = "/api/agents/voice-audio?voice_id=" + encodeURIComponent(vId) +
-              "&text=" + encodeURIComponent(cleanText) +
-              "&style=" + encodeURIComponent(style) +
-              "&_t=" + Date.now();
+    // Pipelined playback: the first chunk (one or two sentences) is fetched and played while the
+    // remaining chunks synthesize in parallel, so the voice starts ~1 s after the text instead of
+    // after the whole paragraph has rendered.
+    var parts = (chunks && chunks.length > 1) ? chunks.slice() : [cleanText];
+    var urls = parts.map(function (part) {
+      return "/api/agents/voice-audio?voice_id=" + encodeURIComponent(vId) +
+             "&text=" + encodeURIComponent(part) + "&style=" + encodeURIComponent(style);
+    });
+    // Warm every chunk on the server right away (they synthesize in parallel); playback below
+    // streams each one progressively and a later follower shares the same synthesis.
+    urls.slice(1).forEach(function (u) { fetch(u + "&stream=1&_t=" + Date.now(), { method: "GET" }).then(function (r) { return r.arrayBuffer(); }).catch(function () {}); });
 
     setOrbState("speaking", "Speaking response…");
-    testCallAudio = new Audio(url);
+    lastAgentLine = cleanText;
+    setAgentSpeaking(true);
+    var token = {}; currentPlayToken = token;
+    var tStart = Date.now(); var firstAudioAt = 0; var idx = 0;
 
-    testCallAudio.onended = function () {
+    function finish() {
+      if (currentPlayToken !== token) { return; }
+      setAgentSpeaking(false);
       setOrbState("listening", "Listening to caller…");
       if (onComplete) onComplete();
-    };
-
-    testCallAudio.onerror = function () {
-      console.warn("Audio element failed, falling back to Web Speech synthesis");
-      fallbackWebSpeech(vObj.name, vObj.gender, vObj.provider, style || vObj.style, cleanText);
+    }
+    function fail(err) {
+      if (err && err.name === "AbortError") { return; }     // superseded by a newer response
+      if (currentPlayToken !== token) { return; }
+      console.warn("Audio playback failed, falling back to Web Speech:", err);
+      setAgentSpeaking(false);
+      fallbackWebSpeech(vObj.name, vObj.gender, vObj.provider, style || vObj.style, parts.slice(idx).join(" "));
       if (onComplete) onComplete();
-    };
+    }
+    function playNext() {
+      if (currentPlayToken !== token) { return; }
+      if (idx >= parts.length) { finish(); return; }
+      var i = idx;
+      if (i === 0) {
+        // Engine truth comes from the catalog's readiness check (headers are not readable on <audio>).
+        reportVoiceEngine(vId, { engine: vObj.engine || "", fallbackReason: (vObj.api_ready === false ? (vObj.api_note || "fallback voice") : "") });
+      }
+      var a = new Audio();
+      testCallAudio = a;
+      var startedAt = 0;
+      a.preload = "auto";
+      a.src = urls[i] + "&stream=1&_t=" + Date.now();
+      a.onplaying = function () {
+        if (!startedAt) { startedAt = Date.now(); }
+        if (!firstAudioAt) { firstAudioAt = startedAt; noteVoiceLatency(firstAudioAt - tStart); }
+      };
+      a.onended = function () {
+        // The finished clip is now cached server-side; fetch it once for the call recording.
+        var at = startedAt || Date.now();
+        fetch(urls[i] + "&_t=" + Date.now()).then(function (r) { return r.blob(); }).then(function (blob) { recAddAgentClip(blob, at); }).catch(function () {});
+        idx++; playNext();
+      };
+      a.onerror = function () { fail(new Error("audio element error")); };
+      a.play().catch(fail);
+    }
+    playNext();
+  }
 
-    var thisAudio = testCallAudio;
-    testCallAudio.play().catch(function (err) {
-      if (err && err.name === "AbortError") { return; }   // superseded by a newer response
-      if (testCallAudio !== thisAudio) { return; }
-      console.warn("Audio play rejected, falling back to Web Speech:", err);
-      fallbackWebSpeech(vObj.name, vObj.gender, vObj.provider, style || vObj.style, cleanText);
-      if (onComplete) onComplete();
-    });
+  // Appends "🔊 0.9s voice" to the newest agent bubble so text→voice delay is visible.
+  function noteVoiceLatency(ms) {
+    var metas = document.querySelectorAll("#testCallTranscript .test-msg.agent .test-msg-meta");
+    var el = metas[metas.length - 1];
+    if (el && !el.querySelector(".voice-lat")) {
+      el.insertAdjacentHTML("beforeend", '<span>•</span><span class="voice-lat" title="time from text to first audio">🔊 ' + (ms / 1000).toFixed(1) + 's voice</span>');
+    }
   }
 
   function sendCallerUtterance(text) {
@@ -1945,17 +2250,23 @@
     var promptVal = $("#systemPrompt").value.trim();
     var firstMsgVal = $("#firstMessage").value.trim() || deriveFirstMessageFromPrompt(promptVal, $("#agentName").value.trim());
 
+    // Send the transcript as shown plus the one new line; the server generates only the next
+    // reply (one model request), instead of replaying the whole call every time.
+    var history = testCallTranscriptTurns.slice(0, -1);   // everything before the line just added
     var payload = {
       agent_id: currentLoadedAgentId || "test-agent",
       system_prompt: promptVal,
       first_message: firstMsgVal,
       voice_id: $("#voiceSelect").value,
-      llm_model: $("#llmModelSelect") ? $("#llmModelSelect").value : "gemini-2.0-flash",
+      llm_model: $("#llmModelSelect") ? $("#llmModelSelect").value : "gemini-3.5-flash-lite",
       tools: Array.from(activeTools),
       speak_first: $("#speakFirstSelect") ? $("#speakFirstSelect").value : "ai",
-      utterances: testCallUtterances
+      history: history,
+      utterance: text,
+      style: $("#toneStyleSelect") ? $("#toneStyleSelect").value : "customerservice"
     };
 
+    var tSent = Date.now();
     fetch("/api/agents/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1963,17 +2274,26 @@
     })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (data.status === "ok" && data.result && data.result.turns) {
-          var turns = data.result.turns;
-          var lastTurn = turns[turns.length - 1];
-          if (lastTurn && lastTurn.speaker === "agent" && lastTurn.text) {
-            appendTestCallMessage("agent", lastTurn.text, {
-              tool: lastTurn.tool,
-              first_audio_ms: lastTurn.first_audio_ms
-            });
-            playAgentVoiceResponse(lastTurn.text);
-            return;
+        var lastTurn = data.turn || (data.result && data.result.turns ? data.result.turns[data.result.turns.length - 1] : null);
+        if (data.status === "ok" && lastTurn && lastTurn.speaker === "agent" && lastTurn.text) {
+          appendTestCallMessage("agent", lastTurn.text, {
+            tool: lastTurn.tool,
+            first_audio_ms: lastTurn.first_audio_ms,
+            backend: lastTurn.backend || data.backend,
+            round_trip_ms: Date.now() - tSent
+          });
+          if (lastTurn.end_call) {
+            // The agent signed off: let the line finish playing, then hang up like a real call.
+            setOrbState("speaking", "Agent is wrapping up…");
+            playAgentVoiceResponse(lastTurn.text, function () {
+              setTimeout(function () {
+                if (testCallActive) { showToast("📞 Agent ended the call"); endInPageTestCall(); }
+              }, 1200);
+            }, lastTurn.speech_chunks);
+          } else {
+            playAgentVoiceResponse(lastTurn.text, null, lastTurn.speech_chunks);
           }
+          return;
         }
         // Fallback response
         var fallback = "I received your request regarding: " + text + ". Let me help you with that.";
@@ -1988,9 +2308,16 @@
   }
 
   function startInPageTestCall() {
+    if (!currentLoadedAgentId) {
+      // First save creates the agent; the sandbox needs its id.
+      saveCurrentAgentForm(true).then(function () { if (currentLoadedAgentId) { startInPageTestCall(); } else { showToast("Give the agent a name and prompt first, then Save."); } });
+      return;
+    }
     saveCurrentAgentForm(true);
     testCallActive = true;
     testCallUtterances = [];
+    testCallTranscriptTurns = [];
+    recStart();
 
     var agentName = $("#agentName").value.trim() || "Intake Agent";
     var vId = ($("#voiceSelect") && $("#voiceSelect").value) ? $("#voiceSelect").value : "studio-calvin";
@@ -2039,6 +2366,8 @@
 
   function endInPageTestCall() {
     testCallActive = false;
+    currentPlayToken = null;            // stop any queued speech chunks
+    var endedAt = Date.now();
     if (testCallTimerInterval) clearInterval(testCallTimerInterval);
     if (testCallAudio) {
       try { testCallAudio.pause(); } catch (e) {}
@@ -2046,7 +2375,8 @@
     }
     stopSpeechRecognition();
     $("#modalTestCall").classList.remove("open");
-    showToast("⏹️ Call ended");
+    showToast("⏹️ Call ended — saving to Call History…");
+    saveSandboxCall(endedAt);
   }
 
   var micSilenceTimer = null;
@@ -2068,8 +2398,16 @@
 
     isMicListening = true;
     window.isMicListening = true;
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !callRec.micRecorder) {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(recStartMic).catch(function () {});
+    }
     var btn = $("#btnTestCallMic");
     if (btn) btn.classList.add("active");
+    if (agentSpeaking) {
+      // The agent is talking right now; setAgentSpeaking(false) starts listening when she stops.
+      if ($("#testCallInput")) $("#testCallInput").placeholder = "🔇 Mic paused while the agent speaks…";
+      return;
+    }
     if ($("#testCallInput")) $("#testCallInput").placeholder = "🎙️ Listening to you... (speak now or type)";
 
     try {
@@ -2101,6 +2439,7 @@
 
       testCallRecognition.onresult = function (e) {
         if (!testCallActive) return;
+        if (agentSpeaking || Date.now() < agentSpeakingUntil) { return; }   // that was the agent, not the caller
         var interimTranscript = "";
         var finalTranscript = "";
 
@@ -2120,10 +2459,15 @@
         }
 
         if (finalTranscript.trim()) {
+          if (looksLikeEcho(finalTranscript)) {
+            console.info("Ignored mic echo of the agent's line:", finalTranscript);
+            if (inputEl) inputEl.value = "";
+            return;
+          }
           if (inputEl) inputEl.value = finalTranscript.trim();
           if (micSilenceTimer) clearTimeout(micSilenceTimer);
           micSilenceTimer = setTimeout(function () {
-            if (testCallActive && finalTranscript.trim()) {
+            if (testCallActive && !agentSpeaking && finalTranscript.trim()) {
               sendCallerUtterance(finalTranscript.trim());
             }
           }, 600);
@@ -2146,7 +2490,7 @@
       };
 
       testCallRecognition.onend = function () {
-        if (isMicListening && testCallActive && !testCallAudio) {
+        if (isMicListening && testCallActive && !agentSpeaking) {
           try { testCallRecognition.start(); } catch (e) {}
         }
       };
@@ -2225,27 +2569,51 @@
     });
   }
 
-  $("#btnShare").addEventListener("click", function () {
-    showToast("🔗 Agent configuration link copied to clipboard");
-  });
+  if ($("#btnShare")) { $("#btnShare").addEventListener("click", function () { showToast("🔗 Agent configuration link copied to clipboard"); }); }
 
   // Dynamic Live Data Loading
   var hasLoadedInitialAgent = false;
   var currentLoadedAgentId = null;
 
-  function loadInitialAgent() {
+  var knownAgents = [];
+  var liveAgentId = null;
+
+  function renderAgentSwitch() {
+    var sel = $("#agentSwitch");
+    if (!sel) return;
+    sel.innerHTML = knownAgents.map(function (a) {
+      return '<option value="' + a.agent_id + '"' + (a.agent_id === currentLoadedAgentId ? ' selected' : '') + '>' +
+        a.name.replace(/</g, "&lt;") + (a.agent_id === liveAgentId ? ' · live' : '') + '</option>';
+    }).join("") + '<option value="__new__">＋ New agent…</option>';
+    var chip = $("#liveStateChip");
+    if (chip) { chip.hidden = !(currentLoadedAgentId && currentLoadedAgentId === liveAgentId); }
+  }
+
+  var wantsNewAgent = false;
+  try { wantsNewAgent = new URLSearchParams(window.location.search).get("new") === "1"; } catch (e) {}
+  function loadInitialAgent(requestedId) {
+    if (requestedId === undefined) {
+      try { requestedId = new URLSearchParams(window.location.search).get("agent"); } catch (e) { requestedId = null; }
+    }
     return fetch("/api/agents")
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var agents = data.agents || [];
+        knownAgents = agents;
+        liveAgentId = data.active_agent || (agents.find(function (a) { return a.active; }) || {}).agent_id || null;
         if ($("#navCtAgents")) { $("#navCtAgents").textContent = agents.length || 1; }
+        showLlmNotice(data);
         if (agents.length > 0) {
-          var activeId = data.active_agent;
-          var targetAgent = (activeId ? agents.find(function(a) { return a.agent_id === activeId; }) : null) ||
-                            agents.find(function(a) { return a.active; }) ||
+          // The agent named in the URL (?agent=…) wins, so the dashboard's Edit buttons and the
+          // switcher open the agent you clicked, not always the live one.
+          var targetAgent = (requestedId ? agents.find(function(a) { return a.agent_id === requestedId; }) : null) ||
+                            (liveAgentId ? agents.find(function(a) { return a.agent_id === liveAgentId; }) : null) ||
                             agents[0];
           currentLoadedAgentId = targetAgent.agent_id || null;
+          try { history.replaceState(null, "", "?agent=" + encodeURIComponent(currentLoadedAgentId)); } catch (e) {}
+          renderAgentSwitch();
           hasLoadedInitialAgent = true;
+          if (wantsNewAgent) { wantsNewAgent = false; setTimeout(createNewAgent, 300); }
           $("#agentName").value = targetAgent.name || "Intake Agent";
           $("#systemPrompt").value = targetAgent.system_prompt || "";
           $("#firstMessage").value = targetAgent.first_message || deriveFirstMessageFromPrompt(targetAgent.system_prompt, targetAgent.name);
@@ -2261,16 +2629,88 @@
           if (targetAgent.voice_id) {
             setChosenVoice(targetAgent.voice_id);
           }
+          if (typeof setExtractionState === "function") { setExtractionState(!!targetAgent.webhook_enabled, targetAgent.extraction_fields || []); }
           if (Array.isArray(targetAgent.tools) && targetAgent.tools.length > 0) {
             activeTools = new Set(targetAgent.tools);
             renderTools();
           }
+        } else {
+          // No agents visible to this user yet: a fresh form that Save turns into their first agent.
+          currentLoadedAgentId = null;
+          hasLoadedInitialAgent = true;
+          $("#agentName").value = "";
+          $("#systemPrompt").value = "";
+          $("#firstMessage").value = "";
+          $("#agentCardTitle").textContent = "New agent";
+          $("#pageTitle").textContent = "Create your first agent";
+          $("#editMeta").textContent = "not saved yet";
+          if (typeof setExtractionState === "function") { setExtractionState(false, []); }
+          renderAgentSwitch();
+          showToast("You have no agents yet. Give it a name and a prompt, then press Save changes.", 6000);
         }
       })
       .catch(function (err) {
         console.error("Error loading agent config:", err);
       });
   }
+
+  function showLlmNotice(data) {
+    var box = $("#llmNotice");
+    if (!box) return;
+    var llm = data.llm || {};
+    if (llm.sandbox_backend && llm.sandbox_backend !== "script") { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = "<b>No language model is connected.</b> Test-call replies come from a built-in rule script, not from your prompt, " +
+      "so wording will not follow the prompt and the caller's answers are only lightly checked. " +
+      "Add <code>GEMINI_API_KEY</code> to <code>.env</code> (free tier at aistudio.google.com) and pick a Gemini model for the sandbox; " +
+      "add <code>OPENAI_API_KEY</code> for live calls. Then restart the server / worker.";
+  }
+
+  function createNewAgent() {
+    var n = knownAgents.length + 1;
+    return fetch("/api/agents", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new: true, name: "New Agent " + n, first_message: "Hello, thanks for calling. How can I help you today?",
+                             system_prompt: "You are a friendly, concise voice assistant. Ask one question at a time.", voice_id: $("#voiceSelect").value })
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data.status === "ok" && data.agent) {
+        showToast("✨ Created " + data.agent.name + " — rename it, paste its prompt, pick a voice, then Save. It is not live until you press Set live.", 7000);
+        return loadInitialAgent(data.agent.agent_id).then(function () { try { $("#agentName").focus(); $("#agentName").select(); } catch (e) {} });
+      }
+      showToast("❌ " + (data.error || "Could not create agent"));
+      renderAgentSwitch();
+    }).catch(function () { showToast("❌ Network error creating agent"); renderAgentSwitch(); });
+  }
+  $("#btnNewAgent").addEventListener("click", function () {
+    saveCurrentAgentForm(true).then(createNewAgent, createNewAgent);
+  });
+
+  $("#agentSwitch").addEventListener("change", function () {
+    var id = this.value;
+    if (id === "__new__") {
+      saveCurrentAgentForm(true).then(createNewAgent, createNewAgent);
+      return;
+    }
+    if (id && id !== currentLoadedAgentId) {
+      saveCurrentAgentForm(true).then(function () { return loadInitialAgent(id); });
+    }
+  });
+
+  $("#btnSetLive").addEventListener("click", function () {
+    if (!currentLoadedAgentId) return;
+    fetch("/api/agents/activate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agent_id: currentLoadedAgentId })
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data.status === "ok") {
+        liveAgentId = currentLoadedAgentId;
+        renderAgentSwitch();
+        showToast("📞 " + ($("#agentName").value || "Agent") + " now answers live calls");
+      } else {
+        showToast("❌ " + (data.error || "Could not activate agent"));
+      }
+    }).catch(function () { showToast("❌ Network error activating agent"); });
+  });
 
   function pollLiveStats() {
     fetch("/api/calls/stats")
@@ -2304,6 +2744,79 @@
       });
   }
 
+  // ── Webhook & data extraction (per agent, optional) ──────────────────────
+  var extractionFields = [];
+  var FIELD_TYPES = ["string", "number", "boolean", "date", "phone", "email", "enum"];
+  function CI_esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]; }); }
+  function setExtractionState(enabled, fields) {
+    if (!$("#webhookEnabled")) return;
+    $("#webhookEnabled").checked = !!enabled;
+    extractionFields = (fields || []).slice();
+    renderExtractionFields();
+    toggleWebhookBody();
+  }
+  function toggleWebhookBody() {
+    var on = $("#webhookEnabled").checked;
+    $("#whBody").hidden = !on;
+    $("#whMeta").textContent = on ? (extractionFields.length + " field(s) extracted after every call and posted to your webhook") : "Off — nothing is sent for this agent's calls";
+  }
+  function styleFieldInputs(tb) {
+    Array.prototype.forEach.call(tb.querySelectorAll("input,select"), function (el) {
+      if (el.type === "checkbox") { return; }
+      el.style.width = "100%"; el.style.padding = "5px 7px"; el.style.border = "1px solid var(--line)"; el.style.borderRadius = "5px";
+      el.style.background = "var(--panel)"; el.style.color = "var(--ink)"; el.style.fontSize = "12.5px"; el.style.boxSizing = "border-box";
+    });
+  }
+  function renderExtractionFields() {
+    var tb = $("#fieldsTable").querySelector("tbody");
+    $("#fieldsEmpty").hidden = extractionFields.length > 0;
+    tb.innerHTML = extractionFields.map(function (f, i) {
+      var opts = f.type === "enum" ? '<input class="f-options" style="margin-top:4px" value="' + CI_esc((f.options || []).join(", ")) + '" placeholder="options, comma separated">' : "";
+      return '<tr data-i="' + i + '"><td style="padding:5px 6px"><input class="f-name" style="font-family:var(--f-mono)" value="' + CI_esc(f.name || "") + '" placeholder="field_name">' + opts + '</td>' +
+        '<td style="padding:5px 6px"><select class="f-type">' + FIELD_TYPES.map(function (t) { return "<option" + (t === f.type ? " selected" : "") + ">" + t + "</option>"; }).join("") + '</select></td>' +
+        '<td style="padding:5px 6px"><input class="f-desc" value="' + CI_esc(f.description || "") + '" placeholder="what it is"><input class="f-q" style="margin-top:4px" value="' + CI_esc(f.question || "") + '" placeholder="how the agent asks for it (optional)"></td>' +
+        '<td style="padding:5px 6px;text-align:center"><input type="checkbox" class="f-req"' + (f.required ? " checked" : "") + '></td>' +
+        '<td style="padding:5px 6px"><button type="button" class="btn ghost sm f-del" style="padding:2px 8px">✕</button></td></tr>';
+    }).join("");
+    styleFieldInputs(tb);
+    Array.prototype.forEach.call(tb.querySelectorAll(".f-del"), function (b) { b.addEventListener("click", function () { readExtractionFields(); extractionFields.splice(parseInt(b.closest("tr").dataset.i, 10), 1); renderExtractionFields(); toggleWebhookBody(); }); });
+    Array.prototype.forEach.call(tb.querySelectorAll(".f-type"), function (s) { s.addEventListener("change", function () { readExtractionFields(); renderExtractionFields(); }); });
+  }
+  function readExtractionFields() {
+    if (!$("#fieldsTable")) return extractionFields;
+    extractionFields = Array.prototype.map.call($("#fieldsTable").querySelectorAll("tbody tr"), function (tr) {
+      var opts = tr.querySelector(".f-options");
+      return { name: tr.querySelector(".f-name").value.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, ""), type: tr.querySelector(".f-type").value,
+               description: tr.querySelector(".f-desc").value.trim(), question: tr.querySelector(".f-q").value.trim(), required: tr.querySelector(".f-req").checked,
+               options: opts ? opts.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean) : [] };
+    }).filter(function (f) { return f.name; });
+    return extractionFields;
+  }
+  if ($("#webhookEnabled")) {
+    $("#webhookEnabled").addEventListener("change", function () { toggleWebhookBody(); saveCurrentAgentForm(true); });
+    $("#btnAddField").addEventListener("click", function () { readExtractionFields(); extractionFields.push({ name: "", type: "string", description: "", required: false }); renderExtractionFields(); });
+    $("#btnSuggestFields").addEventListener("click", function () {
+      $("#btnSuggestFields").disabled = true; $("#fieldsMsg").textContent = "Reading the prompt…";
+      fetch("/api/agents/suggest-fields", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agent_id: currentLoadedAgentId, system_prompt: $("#systemPrompt").value, first_message: $("#firstMessage").value }) })
+        .then(function (r) { return r.json(); }).then(function (d) {
+          $("#btnSuggestFields").disabled = false;
+          if (d.status !== "ok") { $("#fieldsMsg").textContent = d.error || "Suggestion failed"; return; }
+          readExtractionFields(); var have = {}; extractionFields.forEach(function (f) { have[f.name] = true; });
+          var added = 0; (d.fields || []).forEach(function (f) { if (!have[f.name]) { extractionFields.push(f); added++; } });
+          renderExtractionFields(); toggleWebhookBody(); $("#fieldsMsg").textContent = added + " field(s) suggested — review, then Save changes"; showToast("✨ " + added + " field(s) suggested from the prompt");
+        }).catch(function () { $("#btnSuggestFields").disabled = false; $("#fieldsMsg").textContent = "Network error"; });
+    });
+    $("#btnPreviewFields").addEventListener("click", function () {
+      readExtractionFields(); var box = $("#fieldsPreview"); box.hidden = false; box.textContent = "Extracting from the latest call…";
+      fetch("/api/agents/extract-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agent_id: currentLoadedAgentId, fields: extractionFields }) })
+        .then(function (r) { return r.json(); }).then(function (d) {
+          if (d.status !== "ok") { box.innerHTML = '<span style="color:var(--neg)">' + CI_esc(d.error || "Preview failed") + "</span>"; return; }
+          box.innerHTML = '<div style="font-size:11px;color:var(--ink-faint);margin-bottom:6px">call ' + CI_esc(d.call_id) + " · " + CI_esc(d.engine) + " · coverage " + Math.round((d.coverage || 0) * 100) + "%</div>" +
+            (d.fields || []).map(function (f) { return '<div style="display:flex;gap:10px;font-size:12.5px;padding:3px 0;border-bottom:1px solid var(--line-soft)"><span style="font-family:var(--f-mono);min-width:160px">' + CI_esc(f.field_name) + "</span><b>" + (f.value == null ? '<span style="color:var(--ink-faint);font-weight:400">not found</span>' : CI_esc(String(f.value))) + "</b></div>"; }).join("");
+        }).catch(function () { box.textContent = "Network error"; });
+    });
+  }
+
   Promise.all([loadVoices(), loadTools()]).then(function () {
     return loadInitialAgent();
   }).then(function () {
@@ -2315,5 +2828,6 @@
 })();
 </script>
 
+<script src="/profile.js"></script>
 </body>
 </html>

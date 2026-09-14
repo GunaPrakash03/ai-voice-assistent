@@ -12,14 +12,20 @@ import os
 import re
 import sys
 import time
+import logging
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from typing import Any, Dict, List, Optional, Tuple
+import urllib.parse
 from urllib.parse import urlparse, parse_qs
 
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, ROOT)
 from agent.token import join_token  # noqa: E402
+from agent.provider_manager import provider_manager as _pm  # noqa: E402  (loads .env into os.environ)
+from agent import storage as _storage  # noqa: E402
+_storage.bootstrap("dashboard server")   # restores JSON/recordings from PostgreSQL before managers load them
+log = logging.getLogger("serve")
 
 # Default port is 8091; override with:
 #   python3 scripts/serve.py <port>
@@ -51,6 +57,23 @@ from agent.auth_manager import auth_manager, ApiScope, UserRole
 amd_manager = AMDManager()
 
 
+
+def run_pipeline_job(job_id: str):
+    """Executes a post-call job and lets the webhook deliveries it schedules finish before the loop closes.
+
+    Webhook dispatch is fire-and-forget on the running loop; closing the loop straight after
+    execute_job() silently dropped every call.completed delivery.
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        job = loop.run_until_complete(pipeline_worker.execute_job(job_id))
+        pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        if pending:
+            loop.run_until_complete(asyncio.wait(pending, timeout=45))
+        return job
+    finally:
+        loop.close()
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=WEB, **kw)
@@ -65,6 +88,97 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_header(k, str(v))
         self.end_headers()
         self.wfile.write(body)
+
+    # ── Browser sessions (login page) ───────────────────────────────────────
+    SESSION_COOKIE = "va_session"
+    PUBLIC_PATHS = ("/login.html", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/session",
+                    "/api/v1/auth/setup", "/api/v1/auth/otp/resend", "/api/v1/auth/otp/verify", "/api/v1/auth/dev-session",
+                    "/api/v1/health", "/favicon.ico")
+    STATIC_SUFFIXES = (".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".mp3", ".wav", ".map", ".d.ts")
+
+    def _session_token(self) -> str:
+        raw = self.headers.get("Cookie", "") or ""
+        for part in raw.split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == self.SESSION_COOKIE:
+                return v.strip()
+        return ""
+
+    def _session_user(self):
+        return auth_manager.session_user(self._session_token())
+
+    def _is_loopback(self) -> bool:
+        return (self.client_address[0] if self.client_address else "") in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+    def _require_session(self, parsed) -> bool:
+        """Login gate. Returns True when the request may proceed (a response was sent otherwise).
+
+        Pages redirect to /login.html; JSON routes get 401. Requests from this machine (verify
+        suites, curl) may use the API without a session unless AUTH_TRUST_LOOPBACK=0.
+        """
+        path = parsed.path
+        if path in self.PUBLIC_PATHS or path.endswith(self.STATIC_SUFFIXES) or path.startswith("/audio/"):
+            return True
+        if self._session_user():
+            return True
+        is_page = path == "/" or path.endswith(".html") or path.endswith("/")
+        if is_page:
+            nxt = self.path if self.path not in ("/", "/index.html") else ""
+            self.send_response(302)
+            self.send_header("Location", "/login.html" + (("?next=" + urllib.parse.quote(nxt, safe="")) if nxt else ""))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return False
+        if self._is_loopback() and os.getenv("AUTH_TRUST_LOOPBACK", "1") != "0":
+            return True
+        self._send_json({"status": "error", "error": "Sign in required", "login": "/login.html"}, 401)
+        return False
+
+    # Routes only workspace admins may use. Members get 403 and never see keys, numbers, trunks,
+    # users or storage internals.
+    # Signed-in users have the whole dashboard except provider API keys and member management.
+    ADMIN_GET_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces")
+    ADMIN_POST_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces", "/api/v1/auth/users")
+    ADMIN_PAGES = ("/api-keys.html",)
+
+    def _viewer(self) -> Dict[str, Any]:
+        """Who is looking. owner=None means unrestricted (admin, or a localhost tool without a session)."""
+        u = self._session_user()
+        if u is None:
+            return {"user": None, "is_admin": True, "owner": None, "agents": None}
+        is_admin = u.role == "admin"
+        owner = None if is_admin else u.user_id
+        return {"user": u, "is_admin": is_admin, "owner": owner, "agents": agent_builder.visible_agent_names(owner)}
+
+    def _enforce_role(self, parsed, method: str) -> bool:
+        """Admin-only routes/pages. Returns False after sending a response when access is denied."""
+        v = self._viewer()
+        if v["is_admin"]:
+            return True
+        path = parsed.path
+        if path in self.ADMIN_PAGES:
+            self.send_response(302)
+            self.send_header("Location", "/?denied=admin")
+            self.end_headers()
+            return False
+        prefixes = self.ADMIN_POST_PREFIXES if method == "POST" else self.ADMIN_GET_PREFIXES
+        if path.startswith(prefixes):
+            self._send_json({"status": "error", "error": "Admin access required"}, 403)
+            return False
+        return True
+
+    def _agent_allowed(self, agent_id: str) -> bool:
+        v = self._viewer()
+        if agent_builder.can_access(agent_id, v["owner"]):
+            return True
+        self._send_json({"status": "error", "error": "Agent not found"}, 404)   # do not reveal other users' agents
+        return False
+
+    def _set_session_cookie(self, token: str, max_age: int) -> Dict[str, str]:
+        attrs = f"{self.SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={int(max_age)}"
+        if self.headers.get("X-Forwarded-Proto", "") == "https":
+            attrs += "; Secure"
+        return {"Set-Cookie": attrs}
 
     def _extract_headers(self) -> Dict[str, str]:
         return {k: self.headers.get(k, "") for k in self.headers.keys()}
@@ -101,11 +215,19 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "audio/wav")
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(len(chunk)))
-        self.end_headers()
-        self.wfile.write(chunk)
+        try:
+            self.end_headers()
+            self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if not self._require_session(parsed) or not self._enforce_role(parsed, "GET"):
+            return
+        if parsed.path == "/api/v1/auth/session":
+            self._send_json({"status": "ok", **auth_manager.session_info(self._session_token())})
+            return
         if parsed.path == "/token":
             q = parse_qs(parsed.query)
             room = (q.get("room") or ["test-room"])[0]
@@ -289,15 +411,28 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         elif parsed.path == "/api/agents":
+            viewer = self._viewer()
             active = agent_builder.get_active_agent()
+            if active and not agent_builder.can_access(active.agent_id, viewer["owner"]):
+                active = None
+            gemini = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+            openai_key = bool(os.getenv("OPENAI_API_KEY"))
             self._send_json({
                 "status": "ok",
-                "agents": agent_builder.list_agents(),
+                "agents": agent_builder.list_agents(viewer["owner"]),
                 "active_agent": active.agent_id if active else None,
+                "viewer": {"role": viewer["user"].role if viewer["user"] else "admin", "is_admin": viewer["is_admin"]},
+                # What actually writes the words: the builder shows a notice when it is the rule script.
+                "llm": {
+                    "sandbox_backend": "gemini" if gemini else "script",
+                    "live_backend": "gemini" if gemini else ("openai" if openai_key else "mock"),
+                },
             })
             return
         elif parsed.path == "/api/agents/get":
             q = parse_qs(parsed.query)
+            if not self._agent_allowed((q.get("agent_id") or [""])[0]):
+                return
             cfg = agent_builder.get_agent((q.get("agent_id") or [""])[0])
             if not cfg:
                 self._send_json({"status": "error", "error": "Agent not found"}, 404)
@@ -312,9 +447,16 @@ class Handler(SimpleHTTPRequestHandler):
             vq = parse_qs(parsed.query)
             refresh = (vq.get("refresh") or ["0"])[0] in ("1", "true", "yes")
             from agent.retell_voices import get_retell_api_key
+            from agent.voice_synthesizer import voice_engine_readiness
+            voices = agent_builder.list_voices(refresh_retell=refresh)
+            for v in voices:
+                r = voice_engine_readiness(v.get("voice_id", ""), v.get("provider", ""), v.get("gender", "female"))
+                v["api_ready"] = bool(r["ready"])
+                v["engine"] = r["engine"]
+                v["api_note"] = r["note"]
             self._send_json({
                 "status": "ok",
-                "voices": agent_builder.list_voices(refresh_retell=refresh),
+                "voices": voices,
                 "models": agent_builder.list_models(),
                 "retell_configured": bool(get_retell_api_key()),
             })
@@ -327,6 +469,28 @@ class Handler(SimpleHTTPRequestHandler):
                 custom_text = ""
             custom_style = (q.get("style") or [""])[0]
             voice = agent_builder.get_voice(voice_id)
+            if (q.get("stream") or ["0"])[0] in ("1", "true") and voice:
+                # Progressive audio: bytes go out as the engine produces them, so the <audio>
+                # element starts playing after the first few KB instead of after the whole clip.
+                from agent.voice_synthesizer import stream_voice_audio, voice_engine_readiness
+                ready = voice_engine_readiness(voice.voice_id, voice.provider, voice.gender)
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/mpeg")
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self.send_header("X-Voice-Engine", str(ready.get("engine") or ""))
+                self.send_header("X-Voice-Requested-Provider", voice.provider)
+                if ready.get("note"):
+                    self.send_header("X-Voice-Fallback-Reason", str(ready["note"]).encode("ascii", "replace").decode("ascii"))
+                self.send_header("Access-Control-Expose-Headers", "X-Voice-Engine, X-Voice-Requested-Provider, X-Voice-Fallback-Reason")
+                self.end_headers()
+                try:
+                    for chunk in stream_voice_audio(voice_id=voice.voice_id, name=voice.name, gender=voice.gender,
+                                                    style=custom_style or voice.style, provider=voice.provider, text=custom_text):
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                return
             try:
                 from agent.voice_synthesizer import get_voice_audio
                 if voice:
@@ -354,8 +518,24 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Content-Length", str(len(audio_bytes)))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            # Tell the page which engine really spoke, so a silent fallback is never mistaken for the picked voice.
+            from agent.voice_synthesizer import get_voice_engine_status
+            eng = get_voice_engine_status(voice.voice_id if voice else (voice_id or "default"))
+            self.send_header("X-Voice-Engine", eng.get("engine") or "unknown")
+            self.send_header("X-Voice-Requested-Provider", (voice.provider if voice else "") or "")
+            if eng.get("fallback_reason"):
+                self.send_header("X-Voice-Fallback-Reason", eng["fallback_reason"].encode("ascii", "replace").decode("ascii"))
+            self.send_header("Access-Control-Expose-Headers", "X-Voice-Engine, X-Voice-Requested-Provider, X-Voice-Fallback-Reason")
             self.end_headers()
             self.wfile.write(audio_bytes)
+            return
+        elif parsed.path == "/api/v1/auth/profile":
+            su = self._session_user()
+            self._send_json({"status": "ok", "profile": auth_manager.get_profile(su.user_id if su else None)})
+            return
+        elif parsed.path == "/api/storage/status":
+            from agent import storage
+            self._send_json({"status": "ok", "storage": storage.status()})
             return
         elif parsed.path == "/api/agents/tools":
             self._send_json({"status": "ok", "tools": agent_builder.available_tools()})
@@ -366,6 +546,8 @@ class Handler(SimpleHTTPRequestHandler):
         elif parsed.path == "/api/agents/revisions":
             q = parse_qs(parsed.query)
             agent_id = (q.get("agent_id") or [""])[0]
+            if not self._agent_allowed(agent_id):
+                return
             if not agent_builder.get_agent(agent_id):
                 self._send_json({"status": "error", "error": "Agent not found"}, 404)
                 return
@@ -399,6 +581,7 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({
                 "status": "ok",
                 **call_history.list_calls(
+                    visible_agents=self._viewer()["agents"],
                     page=int((q.get("page") or ["1"])[0] or 1),
                     page_size=int((q.get("page_size") or ["25"])[0] or 25),
                     sentiment=_opt("sentiment"),
@@ -419,6 +602,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         elif parsed.path == "/api/calls/detail":
             q = parse_qs(parsed.query)
+            if not call_history.can_view((q.get("call_id") or [""])[0], self._viewer()["agents"]):
+                self._send_json({"status": "error", "error": "Call not found"}, 404)
+                return
             detail = call_history.get_call((q.get("call_id") or [""])[0])
             if not detail:
                 self._send_json({"status": "error", "error": "Call not found"}, 404)
@@ -427,6 +613,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         elif parsed.path == "/api/calls/waveform":
             q = parse_qs(parsed.query)
+            if not call_history.can_view((q.get("call_id") or [""])[0], self._viewer()["agents"]):
+                self._send_json({"status": "error", "error": "Call not found"}, 404)
+                return
             wave_data = call_history.waveform(
                 (q.get("call_id") or [""])[0],
                 buckets=int((q.get("buckets") or ["240"])[0] or 240))
@@ -437,14 +626,18 @@ class Handler(SimpleHTTPRequestHandler):
             return
         elif parsed.path == "/api/calls/audio":
             q = parse_qs(parsed.query)
+            if not call_history.can_view((q.get("call_id") or [""])[0], self._viewer()["agents"]):
+                self._send_json({"status": "error", "error": "Call not found"}, 404)
+                return
             self._send_audio((q.get("call_id") or [""])[0])
             return
         elif parsed.path == "/api/calls/stats":
-            self._send_json({"status": "ok", "stats": call_history.stats()})
+            self._send_json({"status": "ok", "stats": call_history.stats(visible_agents=self._viewer()["agents"])})
             return
         elif parsed.path == "/api/calls/export":
             q = parse_qs(parsed.query)
             csv_body = call_history.export_csv(
+                visible_agents=self._viewer()["agents"],
                 sentiment=(q.get("sentiment") or [""])[0] or None,
                 agent=(q.get("agent") or [""])[0] or None,
                 outcome=(q.get("outcome") or [""])[0] or None,
@@ -516,6 +709,112 @@ class Handler(SimpleHTTPRequestHandler):
             payload = json.loads(post_data.decode("utf-8")) if post_data else {}
         except Exception:
             self._send_json({"error": "Invalid JSON"}, 400)
+            return
+
+        if not self._require_session(parsed) or not self._enforce_role(parsed, "POST"):
+            return
+        if parsed.path == "/api/v1/auth/login":
+            # Step 1: password. If the account has a phone and SMS is configured, a code is sent and
+            # the session is only created after /api/v1/auth/otp/verify. Otherwise sign in directly.
+            from agent import sms
+            remember = bool(payload.get("remember"))
+            ua = self.headers.get("User-Agent", "")
+            try:
+                user = auth_manager.check_password(str(payload.get("email") or ""), str(payload.get("password") or ""))
+            except ValueError as e:
+                time.sleep(0.4)  # slow down guessing
+                self._send_json({"status": "error", "error": str(e)}, 401)
+                return
+            phone = auth_manager.normalize_phone(user.phone)
+            if phone and sms.configured().get("ready"):
+                try:
+                    step = auth_manager.begin_two_step(user, remember, ua)
+                except ValueError as e:
+                    self._send_json({"status": "error", "error": str(e)}, 400)
+                    return
+                result = sms.send_sms(step["phone"], f"Your Call Desk sign-in code is {step['code']}. It expires in 5 minutes.")
+                if not result.get("ok"):
+                    self._send_json({"status": "error", "error": "Password accepted but the SMS code could not be sent: " + str(result.get("error", ""))}, 502)
+                    return
+                body = {"status": "ok", "step": "otp", "ticket": step["ticket"], "phone_masked": step["phone_masked"],
+                        "expires_in": auth_manager.OTP_TTL, "resend_after": auth_manager.OTP_RESEND_AFTER}
+                if result.get("dry_run"):
+                    body["dry_run_code"] = step["code"]   # SMS_DRY_RUN=1 only (local testing)
+                self._send_json(body)
+                return
+            token, doc = auth_manager.create_session(user, remember=remember, user_agent=ua, method="password")
+            info = auth_manager.session_info(token)
+            info["hint"] = "Add a phone number on your profile to turn on the SMS code step." if not phone else ""
+            self._send_json({"status": "ok", "step": "done", **info}, 200, self._set_session_cookie(token, doc["expires_at"] - time.time()))
+            return
+        if parsed.path == "/api/v1/auth/dev-session":
+            # Automated browser tests on this machine need a session cookie without a phone in the loop.
+            # Same trust boundary as the loopback API bypass; refused from any other address.
+            if not (self._is_loopback() and os.getenv("AUTH_TRUST_LOOPBACK", "1") != "0"):
+                self._send_json({"status": "error", "error": "Only available from localhost"}, 403)
+                return
+            user = auth_manager._current_user()
+            if not user:
+                self._send_json({"status": "error", "error": "No admin user"}, 400)
+                return
+            token, doc = auth_manager.create_session(user, remember=False, user_agent="dev-session", method="dev")
+            self._send_json({"status": "ok", "token": token, "cookie": self.SESSION_COOKIE, **auth_manager.session_info(token)},
+                            200, self._set_session_cookie(token, doc["expires_at"] - time.time()))
+            return
+        if parsed.path == "/api/v1/auth/otp/resend":
+            from agent import sms
+            try:
+                step = auth_manager.resend_code(str(payload.get("ticket") or ""))
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 429 if "Wait" in str(e) else 400)
+                return
+            result = sms.send_sms(step["phone"], f"Your Call Desk sign-in code is {step['code']}. It expires in 5 minutes.")
+            if not result.get("ok"):
+                self._send_json({"status": "error", "error": str(result.get("error", "SMS could not be sent"))}, 502)
+                return
+            body = {"status": "ok", "phone_masked": step["phone_masked"], "expires_in": auth_manager.OTP_TTL}
+            if result.get("dry_run"):
+                body["dry_run_code"] = step["code"]
+            self._send_json(body)
+            return
+        if parsed.path == "/api/v1/auth/otp/verify":
+            try:
+                token, doc = auth_manager.complete_two_step(str(payload.get("ticket") or ""), str(payload.get("code") or ""))
+            except ValueError as e:
+                time.sleep(0.4)
+                self._send_json({"status": "error", "error": str(e)}, 401)
+                return
+            self._send_json({"status": "ok", "step": "done", **auth_manager.session_info(token)}, 200, self._set_session_cookie(token, doc["expires_at"] - time.time()))
+            return
+        if parsed.path == "/api/v1/auth/setup":
+            try:
+                user = auth_manager.setup_admin(str(payload.get("email") or ""), str(payload.get("password") or ""), str(payload.get("name") or ""))
+                token, doc = auth_manager.create_session(user, remember=True, user_agent=self.headers.get("User-Agent", ""), method="setup")
+            except (ValueError, KeyError, PermissionError) as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            self._send_json({"status": "ok", "step": "done", **auth_manager.session_info(token)}, 200, self._set_session_cookie(token, doc["expires_at"] - time.time()))
+            return
+        if parsed.path == "/api/v1/auth/users":
+            v = self._viewer()
+            action = str(payload.get("action") or "create")
+            try:
+                if action == "remove":
+                    ok = auth_manager.deactivate_user(str(payload.get("user_id") or ""), v["user"].user_id if v["user"] else None)
+                    self._send_json({"status": "ok" if ok else "error", "removed": ok}, 200 if ok else 404)
+                    return
+                ws_id = v["user"].workspace_id if v["user"] else (auth_manager.get_profile().get("workspace_id") or "ws-default")
+                user = auth_manager.add_member(ws_id, str(payload.get("email") or ""), str(payload.get("password") or ""),
+                                               role=str(payload.get("role") or "operator"), name=str(payload.get("name") or ""),
+                                               phone=str(payload.get("phone") or ""))
+            except (ValueError, KeyError) as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            self._send_json({"status": "ok", "user": {"user_id": user.user_id, "email": user.email, "name": user.name, "role": user.role, "phone": user.phone}})
+            return
+        if parsed.path == "/api/v1/auth/logout":
+            auth_manager.logout(self._session_token())
+            self._send_json({"status": "ok", "authenticated": False}, 200, self._set_session_cookie("", 0))
             return
 
         if parsed.path == "/api/telephony/dial":
@@ -605,6 +904,14 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"status": "ok", "number": res})
             return
 
+        elif parsed.path == "/api/telephony/numbers/sync":
+            try:
+                numbers = telephony_manager.sync_carrier_numbers()
+                self._send_json({"status": "ok", "numbers": numbers, "total": len(numbers)})
+            except Exception as e:
+                self._send_json({"status": "error", "error": str(e)}, 500)
+            return
+
         elif parsed.path == "/api/telephony/trunks/inbound":
             from agent.telephony_manager import SIPInboundTrunk, validate_inbound_trunk_payload
             t_id = str(payload.get("trunk_id", "")).strip() or f"trunk-in-{int(time.time())}"
@@ -628,6 +935,78 @@ class Handler(SimpleHTTPRequestHandler):
             )
             telephony_manager.register_inbound_trunk(trunk)
             self._send_json({"status": "ok", "trunk": telephony_manager._public_trunk(trunk)})
+            return
+
+        elif parsed.path == "/api/telephony/numbers/update":
+            number = payload.get("phone_number", "").strip()
+            friendly = payload.get("friendly_name")
+            agent_name = payload.get("agent_name")
+            trunk_id = payload.get("trunk_id")
+            carrier = payload.get("carrier")
+            if not number:
+                self._send_json({"error": "Missing 'phone_number' parameter"}, 400)
+                return
+            res = telephony_manager.update_phone_number(
+                phone_number=number,
+                friendly_name=friendly,
+                agent_name=agent_name,
+                trunk_id=trunk_id,
+                carrier=carrier,
+            )
+            if not res:
+                self._send_json({"status": "error", "error": f"Phone number '{number}' not found"}, 404)
+                return
+            self._send_json({"status": "ok", "number": res})
+            return
+
+        elif parsed.path in ("/api/telephony/numbers/delete", "/api/telephony/numbers/remove"):
+            number = payload.get("phone_number", "").strip()
+            purge = bool(payload.get("purge", True))
+            if not number:
+                self._send_json({"error": "Missing 'phone_number' parameter"}, 400)
+                return
+            ok = telephony_manager.delete_phone_number(number, purge=purge)
+            if not ok:
+                self._send_json({"status": "error", "error": f"Phone number '{number}' not found"}, 404)
+                return
+            self._send_json({"status": "ok", "deleted": True})
+            return
+
+        elif parsed.path == "/api/telephony/trunks/inbound/delete":
+            trunk_id = payload.get("trunk_id", "").strip()
+            if not trunk_id:
+                self._send_json({"error": "Missing 'trunk_id' parameter"}, 400)
+                return
+            ok = telephony_manager.delete_inbound_trunk(trunk_id)
+            if not ok:
+                self._send_json({"status": "error", "error": f"Inbound trunk '{trunk_id}' not found"}, 404)
+                return
+            self._send_json({"status": "ok", "deleted": True})
+            return
+
+        elif parsed.path == "/api/telephony/trunks/outbound/delete":
+            trunk_id = payload.get("trunk_id", "").strip()
+            if not trunk_id:
+                self._send_json({"error": "Missing 'trunk_id' parameter"}, 400)
+                return
+            ok = telephony_manager.delete_outbound_trunk(trunk_id)
+            if not ok:
+                self._send_json({"status": "error", "error": f"Outbound trunk '{trunk_id}' not found"}, 404)
+                return
+            self._send_json({"status": "ok", "deleted": True})
+            return
+
+        elif parsed.path in ("/api/telephony/trunks/delete", "/api/telephony/trunks/remove"):
+            trunk_id = payload.get("trunk_id", "").strip()
+            if not trunk_id:
+                self._send_json({"error": "Missing 'trunk_id' parameter"}, 400)
+                return
+            ok_in = telephony_manager.delete_inbound_trunk(trunk_id)
+            ok_out = telephony_manager.delete_outbound_trunk(trunk_id)
+            if not ok_in and not ok_out:
+                self._send_json({"status": "error", "error": f"Trunk '{trunk_id}' not found"}, 404)
+                return
+            self._send_json({"status": "ok", "deleted": True})
             return
 
         elif parsed.path == "/api/telephony/trunks/outbound":
@@ -848,9 +1227,7 @@ class Handler(SimpleHTTPRequestHandler):
                 priority=priority,
             )
             if execute_now:
-                loop = asyncio.new_event_loop()
-                job = loop.run_until_complete(pipeline_worker.execute_job(job.job_id))
-                loop.close()
+                job = run_pipeline_job(job.job_id)
             self._send_json({"status": "ok", "job": job.to_dict()})
             return
 
@@ -862,9 +1239,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": f"Job '{job_id}' not found"}, 404)
                 return
             if execute_now:
-                loop = asyncio.new_event_loop()
-                job = loop.run_until_complete(pipeline_worker.execute_job(job.job_id))
-                loop.close()
+                job = run_pipeline_job(job.job_id)
             self._send_json({"status": "ok", "job": job.to_dict()})
             return
 
@@ -991,12 +1366,26 @@ class Handler(SimpleHTTPRequestHandler):
 
         elif parsed.path == "/api/agents":
             active = agent_builder.get_active_agent()
-            agent_id = payload.get("agent_id") or (active.agent_id if active else None)
+            # "new": true forces a create. Without it, a missing agent_id used to fall back to the
+            # live agent, so a second agent edited in the builder overwrote the first one.
+            create_new = bool(payload.get("new"))
+            viewer = self._viewer()
+            agent_id = None if create_new else (payload.get("agent_id") or (active.agent_id if active else None))
+            # A member with nothing loaded must not fall back to the workspace's live agent: create theirs.
+            if agent_id and not payload.get("agent_id") and not agent_builder.can_access(agent_id, viewer["owner"]):
+                agent_id = None
+            if agent_id and not agent_builder.can_access(agent_id, viewer["owner"]):
+                self._send_json({"status": "error", "error": "Agent not found"}, 404)
+                return
             if agent_id:
                 try:
-                    changes = {k: v for k, v in payload.items() if k != "agent_id"}
+                    changes = {k: v for k, v in payload.items() if k not in ("agent_id", "new", "activate", "note")}
                     cfg = agent_builder.update_agent(agent_id, changes, payload.get("note", "Updated via agent builder"))
-                    agent_builder.set_active(agent_id)
+                    # Saving edits no longer changes which agent takes live calls; use /api/agents/activate
+                    # (or activate: true here) for that.
+                    if payload.get("activate") or not agent_builder.get_active_agent():
+                        agent_builder.set_active(agent_id)
+                    cfg = agent_builder.get_agent(agent_id) or cfg
                     self._send_json({"status": "ok", "agent": cfg.to_dict(), "lint": agent_builder.lint_prompt(cfg.system_prompt)})
                     return
                 except Exception as e:
@@ -1008,9 +1397,12 @@ class Handler(SimpleHTTPRequestHandler):
                         name=payload.get("name", "Voice Agent"),
                         first_message=payload.get("first_message", "Hello, how can I help?"),
                         system_prompt=payload.get("system_prompt", "You are a helpful assistant."),
-                        **{k: v for k, v in payload.items() if k not in ("name", "first_message", "system_prompt")},
+                        owner_id=(viewer["user"].user_id if viewer["user"] else ""),
+                        **{k: v for k, v in payload.items() if k not in ("name", "first_message", "system_prompt", "agent_id", "new", "activate", "note", "owner_id")},
                     )
-                    agent_builder.set_active(cfg.agent_id)
+                    if payload.get("activate") or not agent_builder.get_active_agent():
+                        agent_builder.set_active(cfg.agent_id)
+                    cfg = agent_builder.get_agent(cfg.agent_id) or cfg
                     self._send_json({"status": "ok", "agent": cfg.to_dict()})
                     return
                 except Exception as e:
@@ -1098,6 +1490,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         elif parsed.path == "/api/agents/update":
+            if not self._agent_allowed(str(payload.get("agent_id", ""))):
+                return
             agent_id = payload.get("agent_id", "")
             changes = payload.get("changes") or payload.get("patch") or {k: v for k, v in payload.items() if k not in ("agent_id", "note")}
             try:
@@ -1117,6 +1511,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         elif parsed.path == "/api/agents/clone":
+            if not self._agent_allowed(str(payload.get("agent_id", ""))):
+                return
             try:
                 cfg = agent_builder.clone_agent(payload.get("agent_id", ""), payload.get("name"))
             except KeyError:
@@ -1126,12 +1522,16 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         elif parsed.path == "/api/agents/delete":
+            if not self._agent_allowed(str(payload.get("agent_id", ""))):
+                return
             removed = agent_builder.delete_agent(payload.get("agent_id", ""))
             self._send_json({"status": "ok" if removed else "error", "removed": removed},
                             200 if removed else 404)
             return
 
         elif parsed.path == "/api/agents/activate":
+            if not self._agent_allowed(str(payload.get("agent_id", ""))):
+                return
             try:
                 cfg = agent_builder.set_active(payload.get("agent_id", ""))
             except KeyError:
@@ -1141,6 +1541,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         elif parsed.path == "/api/agents/rollback":
+            if not self._agent_allowed(str(payload.get("agent_id", ""))):
+                return
             try:
                 cfg = agent_builder.rollback(payload.get("agent_id", ""), int(payload.get("revision", 0)))
             except KeyError as e:
@@ -1154,26 +1556,184 @@ class Handler(SimpleHTTPRequestHandler):
 
         elif parsed.path == "/api/agents/test":
             agent_id = payload.get("agent_id", "")
+            if agent_id and agent_id in agent_builder._agents and not self._agent_allowed(agent_id):
+                return
             if not agent_id or agent_id not in agent_builder._agents:
                 active = agent_builder.get_active_agent()
                 agent_id = active.agent_id if active else (list(agent_builder._agents.keys())[0] if agent_builder._agents else "test-agent")
             
-            # Apply inline edits if sent from builder
+            # Apply inline edits if sent from builder — but only when something actually changed.
+            # Writing a revision per test message had grown config/agents.json to 1.4 MB.
             editable_keys = ("system_prompt", "first_message", "voice_id", "llm_model", "tools", "speak_first")
-            changes = {k: v for k, v in payload.items() if k in editable_keys and v is not None}
-            if changes and agent_id in agent_builder._agents:
+            current = agent_builder._agents.get(agent_id)
+            changes = {k: v for k, v in payload.items()
+                       if k in editable_keys and v is not None and current is not None and getattr(current, k, None) != v}
+            if changes and current is not None:
                 try:
                     agent_builder.update_agent(agent_id, changes, note="Test run inline update")
                 except Exception:
                     pass
 
             try:
+                if "utterance" in payload:
+                    # Live sandbox: one new caller line against the transcript the page already shows.
+                    turn = agent_builder.reply_once(agent_id, payload.get("history") or [], str(payload.get("utterance") or ""))
+                    # Pre-warm the audio for each speech chunk right now, in the background, so the
+                    # page's fetch a few ms later finds it (or waits only for the remainder).
+                    voice = agent_builder.get_voice(str(payload.get("voice_id") or (current.voice_id if current else "")))
+                    style = str(payload.get("style") or (voice.style if voice else "") or "")
+                    if voice and turn.get("speech_chunks"):
+                        import threading
+                        from agent.voice_synthesizer import stream_voice_audio
+
+                        def _prewarm(chunk_text):
+                            for _ in stream_voice_audio(voice_id=voice.voice_id, name=voice.name, gender=voice.gender,
+                                                        style=style or voice.style, provider=voice.provider, text=chunk_text):
+                                pass
+                        for chunk in turn["speech_chunks"]:
+                            threading.Thread(target=_prewarm, args=(chunk,), daemon=True).start()
+                    self._send_json({"status": "ok", "turn": turn, "backend": turn.get("backend")})
+                    return
                 result = agent_builder.test_run(
                     agent_id, payload.get("utterances", []))
             except KeyError:
                 self._send_json({"status": "error", "error": "Agent not found"}, 404)
                 return
             self._send_json({"status": "ok", "result": result})
+            return
+
+        elif parsed.path == "/api/agents/test-call/save":
+            # The Agent Builder sandbox ends a test call: keep it like a real call so the dashboard
+            # shows the transcript, sentiment/summary and a playable dual-channel recording.
+            import base64
+            agent_id = payload.get("agent_id", "")
+            if agent_id and agent_builder.get_agent(agent_id) and not self._agent_allowed(agent_id):
+                return
+            cfg = agent_builder.get_agent(agent_id) or agent_builder.get_active_agent()
+            turns_in = payload.get("turns") or []
+            if not turns_in:
+                self._send_json({"status": "error", "error": "No transcript turns"}, 400)
+                return
+            started = float(payload.get("started_at") or time.time())
+            ended = float(payload.get("ended_at") or time.time())
+            call_id = f"sandbox-{int(started * 1000)}"
+            transcript_turns = []
+            for i, t in enumerate(turns_in, start=1):
+                is_caller = str(t.get("speaker", "")).lower() == "caller"
+                text = str(t.get("text", "")).strip()
+                transcript_turns.append({
+                    "turn_index": i,
+                    "role": "user" if is_caller else "assistant",
+                    "speaker": "Customer" if is_caller else (cfg.name if cfg else "AI Agent"),
+                    "text": text,
+                    "timestamp": float(t.get("at") or 0) / 1000.0 if t.get("at") else started,
+                    "word_count": len(text.split()),
+                    "tool": t.get("tool"),
+                    "backend": t.get("backend"),
+                })
+            audio_path = None
+            wav_b64 = payload.get("wav_base64") or ""
+            if wav_b64:
+                try:
+                    raw = base64.b64decode(wav_b64)
+                    if raw[:4] == b"RIFF":
+                        os.makedirs(call_history.recordings_dir, exist_ok=True)
+                        audio_path = os.path.join(call_history.recordings_dir, f"rec-{call_id}-{int(ended)}.wav")
+                        with open(audio_path, "wb") as f:
+                            f.write(raw)
+                        from agent import storage
+                        storage.save_recording(audio_path, call_id)
+                except Exception as e:
+                    log.warning("Sandbox recording not saved: %s", e)
+            job = pipeline_worker.enqueue_call(
+                call_id=call_id,
+                room_name=f"sandbox-{agent_id or 'agent'}",
+                transcript_turns=transcript_turns,
+                audio_path=audio_path,
+                metadata={
+                    "source": "agent-builder-sandbox",
+                    "agent_name": cfg.name if cfg else "AI Agent",
+                    "agent_id": cfg.agent_id if cfg else agent_id,
+                    "direction": "sandbox",
+                    "from_number": "Agent Builder test call",
+                    "to_number": cfg.name if cfg else "",
+                    "voice_id": payload.get("voice_id", ""),
+                    "llm_backend": payload.get("backend", ""),
+                    "started_at": started,
+                    "ended_at": ended,
+                    "duration_seconds": max(0.0, ended - started),
+                },
+                priority=3,
+            )
+            try:
+                job = run_pipeline_job(job.job_id)
+            except Exception as e:
+                log.warning("Sandbox post-call pipeline failed: %s", e)
+            self._send_json({"status": "ok", "call_id": call_id, "job_id": job.job_id, "has_audio": bool(audio_path)})
+            return
+
+        elif parsed.path == "/api/v1/auth/profile":
+            try:
+                su = self._session_user()
+                self._send_json({"status": "ok", "profile": auth_manager.update_profile(payload, su.user_id if su else None)})
+            except (KeyError, ValueError) as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+            return
+
+        elif parsed.path == "/api/agents/suggest-fields":
+            # AI reads the agent's prompt and proposes the data points to extract from every call.
+            from agent.schema_extractor import suggest_fields_from_prompt
+            agent_id = str(payload.get("agent_id") or "")
+            if agent_id and not self._agent_allowed(agent_id):
+                return
+            cfg = agent_builder.get_agent(agent_id) if agent_id else None
+            prompt_text = str(payload.get("system_prompt") or (cfg.system_prompt if cfg else ""))
+            first = str(payload.get("first_message") or (cfg.first_message if cfg else ""))
+            if not prompt_text.strip():
+                self._send_json({"status": "error", "error": "No prompt to analyse"}, 400)
+                return
+            try:
+                fields = suggest_fields_from_prompt(prompt_text, first)
+            except Exception as e:
+                self._send_json({"status": "error", "error": str(e)}, 502)
+                return
+            self._send_json({"status": "ok", "fields": fields, "count": len(fields)})
+            return
+
+        elif parsed.path == "/api/agents/extract-preview":
+            # Run the agent's field extraction on a past call (latest by default) to see what a webhook would carry.
+            from agent.schema_extractor import schema_extractor, fields_to_schema
+            agent_id = str(payload.get("agent_id") or "")
+            if not agent_id or not self._agent_allowed(agent_id):
+                if not agent_id:
+                    self._send_json({"status": "error", "error": "agent_id required"}, 400)
+                return
+            cfg = agent_builder.get_agent(agent_id)
+            fields = payload.get("fields") or (cfg.extraction_fields if cfg else [])
+            if not fields:
+                self._send_json({"status": "error", "error": "This agent has no data fields yet. Use Suggest from prompt first."}, 400)
+                return
+            turns = payload.get("transcript_turns")
+            call_id = str(payload.get("call_id") or "")
+            if not turns:
+                visible = self._viewer()["agents"]
+                if call_id:
+                    if not call_history.can_view(call_id, visible):
+                        self._send_json({"status": "error", "error": "Call not found"}, 404)
+                        return
+                else:
+                    listing = call_history.list_calls(page_size=1, agent=cfg.name if cfg else None, visible_agents=visible)
+                    call_id = listing["items"][0]["call_id"] if listing["items"] else ""
+                job = pipeline_worker.get_job(call_id=call_id) if call_id else None
+                turns = getattr(job, "transcript_turns", None) if job else None
+                if not turns:
+                    self._send_json({"status": "error", "error": "No transcript found for this agent yet. Run a test call first."}, 404)
+                    return
+            res = schema_extractor.extract_with_ai(f"agent:{agent_id}", call_id or "preview", turns, {}, schema=fields_to_schema(fields))
+            self._send_json({"status": "ok", "call_id": call_id, "engine": "gemini" if any(f.source == "ai" for f in res.fields) else "regex",
+                             "values": res.to_crm_payload(), "fields": [f.to_dict() for f in res.fields if not f.field_name.startswith("_")],
+                             "coverage": res.extraction_coverage, "confidence": res.overall_confidence, "missing_required": res.missing_required,
+                             "note": next((f.raw_match for f in res.fields if f.field_name == "_ai_note"), "")})
             return
 
         elif parsed.path == "/api/agents/lint":
@@ -1346,11 +1906,26 @@ class Handler(SimpleHTTPRequestHandler):
 print(f"Test page:  http://localhost:{PORT}")
 print(f"Signalling: {WS_URL}")
 print("Ctrl+C to stop\n")
+
+import signal
+try:
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
+except Exception:
+    pass
+
 try:
     webhook_dispatcher.attach_to_pipeline(pipeline_worker)
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    while True:
+        try:
+            server.serve_forever()
+        except (KeyboardInterrupt, SystemExit):
+            break
+        except Exception as err:
+            time.sleep(0.2)
 except OSError as e:
     raise SystemExit(f"Port {PORT} is in use ({e}). Pass another: "
                      f"python3 scripts/serve.py 9090")
 except KeyboardInterrupt:
     print("\nstopped")
+

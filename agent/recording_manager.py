@@ -12,12 +12,15 @@ Implements:
 5. REST API & WebRTC Data Channel Controls: start, pause, resume, stop, and list recordings.
 """
 
+import logging
 import math
 import os
 import struct
 import time
 import wave
 from enum import Enum
+
+log = logging.getLogger("recording-manager")
 from typing import Any, Dict, List, Optional, Tuple
 from pydantic import BaseModel, Field
 
@@ -349,6 +352,12 @@ class RecordingManager:
             )
         meta = session.stop()
         self._history.append(meta)
+        try:
+            from agent import storage
+            if getattr(meta, "file_path", None):
+                storage.save_recording(meta.file_path, call_id)
+        except Exception as e:
+            log.debug("recording not stored in PostgreSQL: %s", e)
         return meta
 
     def append_audio(

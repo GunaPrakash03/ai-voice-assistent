@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in — Call Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
+    --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
+    --line:#DDE0E9; --line-soft:#EBEDF3;
+    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
+    --pos:#2F7A4F; --pos-soft:#E6F2EA; --neg:#A32F26; --neg-soft:#FAEAE8;
+    --f-ui:"Archivo",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    --f-mono:"DM Mono","SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
+      --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
+      --line:#262B3A; --line-soft:#1C2130;
+      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
+      --pos:#5FBF88; --pos-soft:#12251A; --neg:#E0776C; --neg-soft:#2A1513;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  @media (max-width:860px){body{grid-template-columns:1fr}.side{display:none}}
+  .side{background:var(--rail);color:#fff;padding:48px 52px;display:flex;flex-direction:column;justify-content:space-between}
+  .brand b{font-size:22px;font-weight:700;display:block}
+  .brand span{color:#A8AEC4;font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .side h2{font-size:26px;line-height:1.25;margin:0 0 12px;font-weight:700;max-width:420px}
+  .side p{color:#A8AEC4;max-width:420px;margin:0 0 18px}
+  .side ul{list-style:none;padding:0;margin:0;color:#D5D8E4;display:grid;gap:10px;max-width:420px}
+  .side li{display:flex;gap:10px;align-items:flex-start}
+  .side li b{color:#F3B27A;font-family:var(--f-mono);font-size:12px;min-width:22px}
+  .side .foot{color:#767D96;font-family:var(--f-mono);font-size:11px}
+  .wrap{display:flex;align-items:center;justify-content:center;padding:32px 20px}
+  .card{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:30px 30px 26px;box-shadow:0 12px 40px rgba(19,23,37,.08)}
+  .crumb{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.09em;text-transform:uppercase;margin-bottom:4px}
+  h1{margin:0 0 6px;font-size:22px;font-weight:700}
+  .sub{color:var(--ink-soft);font-size:13px;margin:0 0 20px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:11.5px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
+  .field input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:14px;font-family:var(--f-ui)}
+  .field input:focus{outline:none;border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft)}
+  .field input.code{font-family:var(--f-mono);font-size:24px;letter-spacing:.35em;text-align:center;padding:12px}
+  .field .hint{font-size:11.5px;color:var(--ink-faint);margin-top:5px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 16px;font-size:12.5px;color:var(--ink-soft)}
+  .row label{display:flex;align-items:center;gap:6px;cursor:pointer}
+  .btn{width:100%;display:inline-flex;align-items:center;justify-content:center;padding:11px 16px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s;font-family:var(--f-ui)}
+  .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn-primary:hover{opacity:.92}
+  .btn-primary:disabled{opacity:.6;cursor:wait}
+  .btn-ghost{background:transparent;color:var(--ink-soft);border-color:var(--line);margin-top:8px}
+  .btn-ghost:hover{background:var(--sunk);color:var(--ink)}
+  .msg{min-height:20px;font-size:12.5px;margin:10px 0 0}
+  .msg.err{color:var(--neg)} .msg.ok{color:var(--pos)}
+  .step{display:none}
+  .step.on{display:block}
+  .stepper{display:flex;gap:6px;margin-bottom:18px}
+  .stepper span{flex:1;height:4px;border-radius:2px;background:var(--sunk)}
+  .stepper span.done{background:var(--accent)}
+  .link{background:none;border:none;color:var(--accent);cursor:pointer;font-size:12.5px;padding:0;font-family:var(--f-ui)}
+  .link:disabled{color:var(--ink-faint);cursor:default}
+  .phone-chip{display:inline-block;font-family:var(--f-mono);background:var(--sunk);padding:2px 8px;border-radius:6px}
+</style>
+</head>
+<body>
+  <aside class="side">
+    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div>
+      <h2>Sign in to your workspace</h2>
+      <p>Two quick steps keep the intake line safe: your password, then a one-time code sent by SMS to the phone on your account.</p>
+      <ul>
+        <li><b>01</b><span>Enter your email and password.</span></li>
+        <li><b>02</b><span>We text a 6-digit code to your phone. Type it in and you're in.</span></li>
+        <li><b>—</b><span>No phone on the account yet? Password alone signs you in; add one on your profile to turn the code step on.</span></li>
+      </ul>
+    </div>
+    <div class="foot">Voice Agent Service · sessions are HttpOnly cookies, codes expire in 5 minutes</div>
+  </aside>
+
+  <main class="wrap">
+    <div class="card">
+      <div class="stepper"><span id="dot1" class="done"></span><span id="dot2"></span></div>
+
+      <!-- First run: create the admin password -->
+      <section class="step" id="stepSetup">
+        <div class="crumb">First run</div>
+        <h1>Create your admin sign-in</h1>
+        <p class="sub">No password exists yet. Set the email and password for the workspace administrator.</p>
+        <form id="setupForm">
+          <div class="field"><label for="suName">Your name</label><input id="suName" placeholder="Your name" autocomplete="name"></div>
+          <div class="field"><label for="suEmail">Email</label><input id="suEmail" type="email" placeholder="you@company.com" autocomplete="username" required></div>
+          <div class="field"><label for="suPass">Password</label><input id="suPass" type="password" autocomplete="new-password" minlength="8" required><div class="hint">At least 8 characters.</div></div>
+          <div class="field"><label for="suPass2">Confirm password</label><input id="suPass2" type="password" autocomplete="new-password" required></div>
+          <button class="btn btn-primary" id="suBtn" type="submit">Create &amp; sign in</button>
+          <div class="msg" id="suMsg"></div>
+        </form>
+      </section>
+
+      <!-- Step 1: password -->
+      <section class="step" id="stepPassword">
+        <div class="crumb">Step 1 of 2</div>
+        <h1>Sign in</h1>
+        <p class="sub">Use the email and password for your workspace account.</p>
+        <form id="loginForm">
+          <div class="field"><label for="email">Email</label><input id="email" type="email" placeholder="you@company.com" autocomplete="username" required autofocus></div>
+          <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
+          <div class="row"><label><input type="checkbox" id="remember"> Keep me signed in for 30 days</label></div>
+          <button class="btn btn-primary" id="loginBtn" type="submit">Continue →</button>
+          <div class="msg" id="loginMsg"></div>
+        </form>
+      </section>
+
+      <!-- Step 2: SMS code -->
+      <section class="step" id="stepCode">
+        <div class="crumb">Step 2 of 2</div>
+        <h1>Enter the code we texted you</h1>
+        <p class="sub">A 6-digit code was sent to <span class="phone-chip" id="phoneMasked">•••</span>. It expires in <span id="countdown">5:00</span>.</p>
+        <form id="codeForm">
+          <div class="field"><label for="code">SMS code</label><input id="code" class="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="••••••" autocomplete="one-time-code" required></div>
+          <button class="btn btn-primary" id="codeBtn" type="submit">Verify &amp; sign in</button>
+          <div class="row" style="margin-top:12px"><button class="link" type="button" id="resendBtn" disabled>Resend code (30s)</button><button class="link" type="button" id="backBtn">← Use a different account</button></div>
+          <div class="msg" id="codeMsg"></div>
+        </form>
+      </section>
+    </div>
+  </main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var nextUrl = (function () { try { var n = new URLSearchParams(location.search).get("next"); return n && n.indexOf("/") === 0 && n.indexOf("//") !== 0 ? n : "/"; } catch (e) { return "/"; } })();
+  var ticket = null, countdownTimer = null, resendTimer = null;
+
+  function show(step) {
+    ["stepSetup", "stepPassword", "stepCode"].forEach(function (id) { $(id).classList.toggle("on", id === step); });
+    $("dot2").classList.toggle("done", step === "stepCode");
+    var first = $(step).querySelector("input"); if (first) setTimeout(function () { first.focus(); }, 50);
+  }
+  function msg(el, text, ok) { el.textContent = text || ""; el.className = "msg " + (ok ? "ok" : "err"); }
+  function post(url, body) {
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) })
+      .then(function (r) { return r.json().then(function (d) { d._http = r.status; return d; }); });
+  }
+  function done() { location.href = nextUrl; }
+
+  function startCountdown(seconds) {
+    clearInterval(countdownTimer);
+    var end = Date.now() + seconds * 1000;
+    function tick() {
+      var left = Math.max(0, Math.round((end - Date.now()) / 1000));
+      $("countdown").textContent = Math.floor(left / 60) + ":" + ("0" + (left % 60)).slice(-2);
+      if (left <= 0) { clearInterval(countdownTimer); msg($("codeMsg"), "The code has expired. Resend to get a new one.", false); }
+    }
+    tick(); countdownTimer = setInterval(tick, 1000);
+  }
+  function startResendWait(seconds) {
+    clearInterval(resendTimer);
+    var end = Date.now() + seconds * 1000, btn = $("resendBtn");
+    function tick() {
+      var left = Math.max(0, Math.round((end - Date.now()) / 1000));
+      btn.disabled = left > 0; btn.textContent = left > 0 ? "Resend code (" + left + "s)" : "Resend code";
+      if (left <= 0) clearInterval(resendTimer);
+    }
+    tick(); resendTimer = setInterval(tick, 1000);
+  }
+  function enterCodeStep(d) {
+    ticket = d.ticket;
+    $("phoneMasked").textContent = d.phone_masked || "your phone";
+    $("code").value = "";
+    msg($("codeMsg"), d.dry_run_code ? "Local test mode: your code is " + d.dry_run_code : "", true);
+    show("stepCode");
+    startCountdown(d.expires_in || 300);
+    startResendWait(d.resend_after || 30);
+  }
+
+  // Which step to show
+  fetch("/api/v1/auth/session").then(function (r) { return r.json(); }).then(function (d) {
+    if (d.authenticated) { done(); return; }
+    if (d.needs_setup) { $("suEmail").value = d.setup_email || ""; $("suName").value = d.setup_name || ""; }
+    show(d.needs_setup ? "stepSetup" : "stepPassword");
+  }).catch(function () { show("stepPassword"); });
+
+  $("setupForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if ($("suPass").value !== $("suPass2").value) { msg($("suMsg"), "Passwords do not match", false); return; }
+    $("suBtn").disabled = true; msg($("suMsg"), "Creating…", true);
+    post("/api/v1/auth/setup", { name: $("suName").value, email: $("suEmail").value, password: $("suPass").value })
+      .then(function (d) { if (d.status === "ok") { done(); } else { msg($("suMsg"), d.error || "Could not set up", false); $("suBtn").disabled = false; } })
+      .catch(function () { msg($("suMsg"), "Network error", false); $("suBtn").disabled = false; });
+  });
+
+  $("loginForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    $("loginBtn").disabled = true; msg($("loginMsg"), "Checking…", true);
+    post("/api/v1/auth/login", { email: $("email").value, password: $("password").value, remember: $("remember").checked })
+      .then(function (d) {
+        $("loginBtn").disabled = false;
+        if (d.status !== "ok") { msg($("loginMsg"), d.error || "Sign-in failed", false); return; }
+        if (d.step === "otp") { enterCodeStep(d); return; }
+        done();
+      })
+      .catch(function () { msg($("loginMsg"), "Network error", false); $("loginBtn").disabled = false; });
+  });
+
+  $("codeForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    $("codeBtn").disabled = true; msg($("codeMsg"), "Verifying…", true);
+    post("/api/v1/auth/otp/verify", { ticket: ticket, code: $("code").value.replace(/\D/g, "") })
+      .then(function (d) {
+        $("codeBtn").disabled = false;
+        if (d.status === "ok") { done(); return; }
+        msg($("codeMsg"), d.error || "Could not verify", false);
+        if (/start again/i.test(d.error || "")) { setTimeout(function () { show("stepPassword"); }, 1500); }
+      })
+      .catch(function () { msg($("codeMsg"), "Network error", false); $("codeBtn").disabled = false; });
+  });
+  $("code").addEventListener("input", function () { if (this.value.replace(/\D/g, "").length === 6) { $("codeForm").requestSubmit(); } });
+
+  $("resendBtn").addEventListener("click", function () {
+    $("resendBtn").disabled = true;
+    post("/api/v1/auth/otp/resend", { ticket: ticket }).then(function (d) {
+      if (d.status === "ok") { msg($("codeMsg"), "A new code was sent" + (d.dry_run_code ? " (local test mode: " + d.dry_run_code + ")" : ""), true); startCountdown(d.expires_in || 300); startResendWait(30); }
+      else { msg($("codeMsg"), d.error || "Could not resend", false); startResendWait(5); }
+    }).catch(function () { msg($("codeMsg"), "Network error", false); startResendWait(5); });
+  });
+  $("backBtn").addEventListener("click", function () { ticket = null; clearInterval(countdownTimer); clearInterval(resendTimer); $("password").value = ""; show("stepPassword"); });
+})();
+</script>
+</body>
+</html>

@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import os
+import re
 import time
 import wave
 from typing import AsyncIterable, Optional
@@ -38,6 +39,8 @@ from agent.llm_manager import (
     StreamingDialogueManager,
 )
 from agent.tts_manager import StreamingTTSManager
+from agent import storage as _storage
+_storage.bootstrap("agent worker")
 from agent.telephony_manager import telephony_manager, asdict
 from agent.transfer_manager import transfer_manager
 from agent.dtmf_manager import dtmf_manager
@@ -106,6 +109,48 @@ async def sample_speech_frames(path: str, repeat: int = 3) -> AsyncIterable[rtc.
             await asyncio.sleep(0.02)
 
 
+def resolve_agent_for_call(ctx: agents.JobContext):
+    """Which Agent Builder persona should take this call.
+
+    Inbound SIP participants carry the dialled DID in their attributes. If that number is assigned
+    to an agent on the Call Desk (SIP Trunks & DIDs tab), that agent answers, so several agents can
+    each own a phone number. Otherwise the agent marked live in the builder answers.
+    """
+    from agent.agent_builder import agent_builder
+    try:
+        from agent.telephony_manager import telephony_manager, normalize_phone_number
+    except Exception:
+        telephony_manager, normalize_phone_number = None, None
+
+    dialled = ""
+    for p in list(ctx.room.remote_participants.values()):
+        attrs = getattr(p, "attributes", {}) or {}
+        dialled = attrs.get("sip.trunkPhoneNumber") or attrs.get("sip.calledNumber") or attrs.get("sip.toNumber") or dialled
+        if dialled:
+            break
+    if not dialled:
+        # Only an explicit E.164 number in the room name counts; "softphone-1789381564553" is a timestamp.
+        m = re.search(r"(\+\d{10,15})", ctx.room.name or "")
+        dialled = m.group(1) if m else ""
+
+    if dialled and telephony_manager is not None:
+        try:
+            norm = normalize_phone_number(dialled)
+            rec = telephony_manager._owned_numbers.get(norm)
+            if rec and rec.status == "active" and rec.assigned_agent:
+                wanted = rec.assigned_agent.strip().lower()
+                for a in agent_builder.list_agents():
+                    if a["name"].strip().lower() == wanted or a["agent_id"] == wanted:
+                        cfg = agent_builder.get_agent(a["agent_id"])
+                        if cfg:
+                            log.info("DID %s is assigned to agent '%s'; using it for this call", norm, cfg.name)
+                            return cfg, norm
+                log.warning("DID %s is assigned to '%s' but no such agent exists; using the live agent", norm, rec.assigned_agent)
+        except Exception as e:
+            log.warning("DID → agent lookup failed (%s); using the live agent", e)
+    return agent_builder.get_active_agent(), dialled
+
+
 async def entrypoint(ctx: agents.JobContext):
     await ctx.connect()
     log.info("joined room %s", ctx.room.name)
@@ -122,6 +167,21 @@ async def entrypoint(ctx: agents.JobContext):
         voice=CARTESIA_VOICE_ID,
         sample_rate=TTS_SAMPLE_RATE,
     )
+
+    # The Agent Builder's active persona decides the prompt *and* the voice for real calls.
+    # Without this the picker's choice never left the browser: every call spoke Deepgram's default.
+    from agent.agent_builder import agent_builder
+    active_cfg, dialled_number = resolve_agent_for_call(ctx)
+    if active_cfg:
+        voice_opt = agent_builder.get_voice(active_cfg.voice_id)
+        tts_manager.apply_voice(
+            active_cfg.voice_id,
+            provider=voice_opt.provider if voice_opt else "",
+            gender=voice_opt.gender if voice_opt else "female",
+            voice_name=voice_opt.name if voice_opt else "",
+        )
+        log.info("Agent '%s' loaded for this call (dialled=%s): voice=%s engine=%s",
+                 active_cfg.name, dialled_number or "n/a", active_cfg.voice_id, tts_manager.provider)
 
     session = AgentSession(
         vad=vad,
@@ -148,7 +208,14 @@ async def entrypoint(ctx: agents.JobContext):
         },
     )
 
-    llm_manager = StreamingDialogueManager(model=LLM_MODEL)
+    assistant_agent: Optional[VoiceAssistantAgent] = None
+    llm_manager = StreamingDialogueManager(model=(active_cfg.llm_model if active_cfg and active_cfg.llm_model else LLM_MODEL))
+    if active_cfg:
+        llm_manager.system_instruction = active_cfg.system_prompt
+        llm_manager.context.system_instruction = active_cfg.system_prompt
+        llm_manager.temperature = active_cfg.temperature
+        llm_manager.enabled_tools = set(active_cfg.tools or [])
+    log.info("Dialogue backend: %s (%s)", llm_manager.backend, llm_manager.model)
     current_turn_texts: list[str] = []
     user_is_speaking = False
     turn_process_task: Optional[asyncio.Task] = None
@@ -167,7 +234,6 @@ async def entrypoint(ctx: agents.JobContext):
         pending.add(task)
         task.add_done_callback(pending.discard)
 
-    @tts_manager.tts.on("metrics_collected")
     def on_tts_metrics(m):
         ttfa_ms = round(m.ttfb * 1000.0, 2) if getattr(m, "ttfb", None) and m.ttfb > 0 else None
         dur_ms = round(m.duration * 1000.0, 2) if getattr(m, "duration", None) else None
@@ -184,6 +250,29 @@ async def entrypoint(ctx: agents.JobContext):
             "interrupted": getattr(m, "cancelled", False),
             "timestamp": time.time(),
         }, topic="tts_metrics", reliable=True)
+
+    def bind_tts_metrics(engine):
+        try:
+            engine.on("metrics_collected", on_tts_metrics)
+        except Exception as e:
+            log.debug("TTS metrics hook not attached: %s", e)
+
+    bind_tts_metrics(tts_manager.tts)
+
+    def publish_voice_state(agent_cfg):
+        info = getattr(tts_manager, "voice_info", {}) or {}
+        publish({
+            "type": "agent_config_event",
+            "event": "voice_engine",
+            "agent_id": agent_cfg.agent_id if agent_cfg else None,
+            "voice_id": info.get("requested") or tts_manager.voice,
+            "voice_name": info.get("voice_name", ""),
+            "requested_provider": info.get("requested_provider", ""),
+            "engine": info.get("engine") or tts_manager.provider,
+            "model": info.get("model", ""),
+            "fallback_reason": info.get("fallback_reason", ""),
+            "timestamp": time.time(),
+        }, topic="agent_config_event", reliable=True)
 
     async def execute_llm_turn(user_input: str):
         if not user_input.strip():
@@ -271,6 +360,7 @@ async def entrypoint(ctx: agents.JobContext):
                     "type": "agent_reply",
                     "text": metrics["text"],
                     "metrics": metrics,
+                    "backend": llm_manager.backend,
                     "timestamp": time.time(),
                 }, topic="agent_reply", reliable=True)
                 publish({
@@ -287,6 +377,20 @@ async def entrypoint(ctx: agents.JobContext):
                         allow_interruptions=True,
                     )
                     await speech_handle.wait_for_playout()
+                    from agent.agent_builder import looks_like_closing
+                    if llm_manager.backend != "mock" and looks_like_closing(metrics["text"]) \
+                            and not (speech_handle and speech_handle.interrupted):
+                        # The agent signed off: end the call instead of sitting on an open line.
+                        publish({"type": "call_end", "reason": "agent_closed", "text": metrics["text"],
+                                 "timestamp": time.time()}, topic="agent_state", reliable=True)
+                        await asyncio.sleep(1.0)
+                        try:
+                            from livekit import api as lk_api
+                            await ctx.api.room.delete_room(lk_api.DeleteRoomRequest(room=ctx.room.name))
+                            log.info("Call closed by agent sign-off; room %s deleted", ctx.room.name)
+                        except Exception as end_err:
+                            log.warning("Could not delete room after sign-off (%s); shutting the job down", end_err)
+                            ctx.shutdown(reason="agent closed the call")
                 except asyncio.CancelledError:
                     log.info("TTS playback cancelled in turn execution")
                 except Exception as play_err:
@@ -305,6 +409,19 @@ async def entrypoint(ctx: agents.JobContext):
             log.info("LLM turn task cancelled.")
         except Exception as err:
             log.error("Error during LLM generation: %s", err, exc_info=True)
+            publish({
+                "type": "agent_error",
+                "error": str(err)[:300],
+                "backend": llm_manager.backend,
+                "model": llm_manager.model,
+                "timestamp": time.time(),
+            }, topic="agent_state", reliable=True)
+            # Never leave a live caller in silence when the model call fails.
+            try:
+                await session.say("I'm sorry, I'm having a little trouble on my end. Could you say that once more?",
+                                  allow_interruptions=True).wait_for_playout()
+            except Exception as say_err:
+                log.error("Recovery line failed too: %s", say_err)
             publish({
                 "type": "agent_state",
                 "state": "listening",
@@ -1049,7 +1166,23 @@ async def entrypoint(ctx: agents.JobContext):
                 llm_manager.system_instruction = cfg.system_prompt
                 llm_manager.context.system_instruction = cfg.system_prompt
                 llm_manager.temperature = cfg.temperature
-                tts_manager.voice = cfg.voice_id
+                if cfg.llm_model:
+                    llm_manager.configure_backend(model=cfg.llm_model)
+                llm_manager.enabled_tools = set(cfg.tools or [])
+                voice_opt = agent_builder.get_voice(cfg.voice_id)
+                tts_manager.apply_voice(
+                    cfg.voice_id,
+                    provider=voice_opt.provider if voice_opt else "",
+                    gender=voice_opt.gender if voice_opt else "female",
+                    voice_name=voice_opt.name if voice_opt else "",
+                )
+                bind_tts_metrics(tts_manager.tts)
+                if assistant_agent is not None:
+                    try:
+                        assistant_agent.update_options(tts=tts_manager.tts)
+                    except Exception as e:
+                        log.warning("Could not swap live TTS engine: %s", e)
+                publish_voice_state(cfg)
                 if data.get("activate"):
                     agent_builder.set_active(agent_id)
                 publish({
@@ -1059,6 +1192,10 @@ async def entrypoint(ctx: agents.JobContext):
                     "agent_name": cfg.name,
                     "revision": cfg.revision,
                     "voice_id": cfg.voice_id,
+                    "llm_backend": llm_manager.backend,
+                    "llm_model": llm_manager.model,
+                    "voice_engine": tts_manager.provider,
+                    "voice_fallback_reason": (getattr(tts_manager, "voice_info", {}) or {}).get("fallback_reason", ""),
                     "temperature": cfg.temperature,
                     "tools": cfg.tools,
                     "first_message": cfg.first_message,
@@ -1107,8 +1244,32 @@ async def entrypoint(ctx: agents.JobContext):
             pending.add(task)
             task.add_done_callback(pending.discard)
 
-    await session.start(agent=VoiceAssistantAgent(), room=ctx.room)
-    log.info("dialogue worker active with Silero VAD, Streaming LLM (%s) & Cartesia/TTS (%s)", LLM_MODEL, TTS_MODEL)
+    assistant_agent = VoiceAssistantAgent()
+    await session.start(agent=assistant_agent, room=ctx.room)
+    publish_voice_state(active_cfg)
+
+    # Real callers expect the agent to speak first (Agent Builder "Who speaks first" = AI). Play the
+    # configured first message as soon as a caller is in the room; test/verify rooms that drive the
+    # agent over the data channel opt out with the "verify-" room prefix.
+    if active_cfg and getattr(active_cfg, "speak_first", "ai") == "ai" and active_cfg.first_message \
+            and not ctx.room.name.startswith("verify-"):
+        greeting = active_cfg.first_message
+        llm_manager.context.add_assistant_message(greeting)
+
+        async def greet():
+            try:
+                await asyncio.sleep(0.6)
+                publish({"type": "agent_reply", "text": greeting, "metrics": {"greeting": True},
+                         "backend": llm_manager.backend, "timestamp": time.time()}, topic="agent_reply", reliable=True)
+                await session.say(greeting, allow_interruptions=True).wait_for_playout()
+            except Exception as e:
+                log.warning("Greeting playback failed: %s", e)
+
+        gtask = asyncio.create_task(greet())
+        pending.add(gtask)
+        gtask.add_done_callback(pending.discard)
+    log.info("dialogue worker active with Silero VAD, Streaming LLM (%s) & TTS engine %s (%s)",
+             LLM_MODEL, tts_manager.provider, getattr(tts_manager, "voice_info", {}).get("model") or TTS_MODEL)
 
 
 if __name__ == "__main__":

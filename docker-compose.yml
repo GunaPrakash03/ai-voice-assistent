@@ -11,6 +11,27 @@ services:
       timeout: 3s
       retries: 5
 
+  # Durable store for everything: agents, phone numbers, SIP trunks, users/API keys, post-call
+  # jobs and the call recordings themselves (as bytes). Port 5433 on the host so it never
+  # collides with another Postgres on 5432.
+  postgres:
+    image: postgres:17-alpine
+    container_name: voice-postgres
+    environment:
+      POSTGRES_DB: ${VOICE_DB_NAME:-voice_agent}
+      POSTGRES_USER: ${VOICE_DB_USER:-voice}
+      POSTGRES_PASSWORD: ${VOICE_DB_PASSWORD:-voice_dev_password}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - voice_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${VOICE_DB_USER:-voice} -d ${VOICE_DB_NAME:-voice_agent}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   livekit:
     image: livekit/livekit-server:v1.8.4
     container_name: voice-livekit
@@ -33,19 +54,32 @@ services:
     container_name: voice-agent-worker
     depends_on:
       - livekit
+      - postgres
     environment:
       # The worker reaches LiveKit on the compose network, not localhost.
       LIVEKIT_URL: ws://livekit:7880
+      # Same database the dashboard uses, addressed on the compose network.
+      DATABASE_URL: postgresql://${VOICE_DB_USER:-voice}:${VOICE_DB_PASSWORD:-voice_dev_password}@postgres:5432/${VOICE_DB_NAME:-voice_agent}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
       STT_MODEL: ${STT_MODEL:-nova-3}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Gemini drives the live dialogue when the agent's model is gemini-* (key from the API Keys page / .env).
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
       CARTESIA_API_KEY: ${CARTESIA_API_KEY:-}
       CARTESIA_VOICE_ID: ${CARTESIA_VOICE_ID:-f786b574-daa5-4673-aa0c-cbe3e8534c02}
       TTS_MODEL: ${TTS_MODEL:-sonic-3}
+      # Live calls speak the Agent Builder's voice; ElevenLabs voices need the key inside the worker too.
+      ELEVEN_API_KEY: ${ELEVEN_API_KEY:-}
     volumes:
       - ./agent:/app/agent:ro
       - ./samples:/app/samples:ro
+      # Same agents.json the dashboard edits, so "active agent" and its voice reach real calls.
+      - ./config:/app/config
+      - ./recordings:/app/recordings
     restart: unless-stopped
+
+volumes:
+  voice_pgdata:

@@ -78,6 +78,12 @@ async def run() -> int:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         ctx = await browser.new_context()
+        # Pages are behind the login gate; mint a localhost dev session so the suite can open them.
+        try:
+            r = await ctx.request.post(f"{BASE}/api/v1/auth/dev-session", data={})
+            await r.json()
+        except Exception as e:
+            print(f"  (dev-session not available: {e})")
         page = await ctx.new_page()
 
         page_errors, console_errors, failed_requests, audio_responses = [], [], [], []

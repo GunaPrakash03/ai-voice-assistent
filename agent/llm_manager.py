@@ -9,6 +9,7 @@ Components:
 """
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -227,23 +228,61 @@ class StreamingDialogueManager:
     ) -> None:
         self.system_instruction = system_instruction
         self.model = model
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY", "").strip()
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.api_key = ""
+        self.backend = "mock"
 
         self.context = ConversationContextBuffer(system_instruction=system_instruction)
         self.active_generation_task: Optional[asyncio.Task] = None
-        self._is_mock = not bool(self.api_key)
+        self._pending_function_calls: List[dict] = []
+        # Tools the active agent has switched on in the builder; None = every registered tool.
+        self.enabled_tools: Optional[set] = None
 
         self.tool_registry = ToolRegistry()
         self.tool_dispatcher = AsyncToolDispatcher(self.tool_registry)
 
-        if not self._is_mock:
-            log.info("Initialized StreamingDialogueManager with OpenAI model=%s", self.model)
+        self.configure_backend(model=model, api_key=api_key)
+
+    def configure_backend(self, model: Optional[str] = None, api_key: Optional[str] = None) -> str:
+        """Picks the model backend from the model name and the keys available.
+
+        gemini-* -> Google Gemini (GEMINI_API_KEY / GOOGLE_API_KEY), anything else -> OpenAI
+        (OPENAI_API_KEY). With no usable key the local simulator answers, and the worker logs it
+        loudly because a live caller would otherwise hear canned clinic replies.
+        Returns the backend name: "gemini" | "openai" | "mock".
+        """
+        if model:
+            self.model = model
+        gemini_key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
+        openai_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+        wants_gemini = self.model.lower().startswith("gemini")
+
+        if api_key:
+            self.api_key = api_key
+            self.backend = "gemini" if wants_gemini else "openai"
+        elif wants_gemini and gemini_key:
+            self.api_key, self.backend = gemini_key, "gemini"
+        elif not wants_gemini and openai_key:
+            self.api_key, self.backend = openai_key, "openai"
+        elif gemini_key:
+            # Model name asked for OpenAI but only a Gemini key exists (or vice versa): use what works.
+            self.api_key, self.backend = gemini_key, "gemini"
+            if not wants_gemini:
+                self.model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+        elif openai_key:
+            self.api_key, self.backend = openai_key, "openai"
+            if wants_gemini:
+                self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         else:
-            log.info(
-                "OPENAI_API_KEY not set — using local conversational streaming simulator"
-            )
+            self.api_key, self.backend = "", "mock"
+
+        self._is_mock = self.backend == "mock"
+        if self._is_mock:
+            log.warning("No GEMINI_API_KEY / OPENAI_API_KEY — using the local conversational simulator (canned replies)")
+        else:
+            log.info("Initialized StreamingDialogueManager with %s model=%s", self.backend, self.model)
+        return self.backend
 
     @property
     def is_mock(self) -> bool:
@@ -438,6 +477,101 @@ class StreamingDialogueManager:
                 if delta and delta.content:
                     yield delta.content
 
+    @staticmethod
+    def _gemini_contents(messages: List[dict]) -> tuple[str, List[dict]]:
+        """Converts chat messages to Gemini (system_text, contents) with alternating roles."""
+        system_text = ""
+        contents: List[dict] = []
+        for m in messages:
+            if m["role"] == "system":
+                system_text += m["content"] + "\n"
+                continue
+            role = "user" if m["role"] == "user" else "model"
+            if contents and contents[-1]["role"] == role:
+                contents[-1]["parts"][0]["text"] += "\n" + m["content"]
+            else:
+                contents.append({"role": role, "parts": [{"text": m["content"]}]})
+        if not contents or contents[0]["role"] != "user":
+            contents.insert(0, {"role": "user", "parts": [{"text": "(call connected)"}]})
+        return system_text, contents
+
+    def _gemini_tools(self) -> List[dict]:
+        """Registered tools as Gemini functionDeclarations (OpenAPI-subset schemas only)."""
+        allowed = {"type", "properties", "required", "description", "enum", "items", "format", "nullable"}
+
+        def clean(schema):
+            if isinstance(schema, dict):
+                return {k: clean(v) for k, v in schema.items() if k in allowed or k in schema.get("properties", {})}
+            if isinstance(schema, list):
+                return [clean(x) for x in schema]
+            return schema
+
+        decls = []
+        for t in self.tool_registry.get_schemas():
+            fn = t.get("function", t)
+            if self.enabled_tools is not None and fn["name"] not in self.enabled_tools:
+                continue
+            params = fn.get("parameters") or {"type": "object", "properties": {}}
+            props = {k: clean(v) for k, v in (params.get("properties") or {}).items()}
+            decls.append({
+                "name": fn["name"],
+                "description": fn.get("description", ""),
+                "parameters": {"type": "object", "properties": props, "required": params.get("required", [])},
+            })
+        return [{"functionDeclarations": decls}] if decls else []
+
+    async def _gemini_stream(self, messages: List[dict], extra_contents: Optional[List[dict]] = None,
+                             use_tools: bool = True) -> AsyncIterable[str]:
+        """Streams tokens from Google Gemini (generateContent SSE) with plain aiohttp.
+
+        Function calls the model makes are collected in ``self._pending_function_calls`` for
+        ``generate_response`` to dispatch; only text parts are yielded.
+        """
+        import aiohttp
+        from agent.agent_builder import resolve_gemini_model, gemini_generation_config
+
+        system_text, contents = self._gemini_contents(messages)
+        if extra_contents:
+            contents = contents + extra_contents
+        model = resolve_gemini_model(self.model)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse"
+        payload = {
+            "system_instruction": {"parts": [{"text": system_text.strip() or self.system_instruction}]},
+            "contents": contents,
+            "generationConfig": gemini_generation_config(model, self.temperature, self.max_tokens),
+        }
+        if use_tools:
+            tools = self._gemini_tools()
+            if tools:
+                payload["tools"] = tools
+        self._pending_function_calls = []
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, json=payload, headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"}) as resp:
+                if resp.status != 200:
+                    body = (await resp.text())[:300]
+                    raise RuntimeError(f"Gemini HTTP {resp.status}: {body}")
+                async for raw in resp.content:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if not data or data == "[DONE]":
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    for cand in chunk.get("candidates", []):
+                        for part in cand.get("content", {}).get("parts", []):
+                            if part.get("functionCall"):
+                                # Keep the whole part: Gemini 3 insists the thoughtSignature comes back with it.
+                                self._pending_function_calls.append(part)
+                                continue
+                            text = part.get("text")
+                            if text and not part.get("thought"):
+                                yield text
+
     async def generate_response(
         self,
         user_text: str,
@@ -531,26 +665,66 @@ class StreamingDialogueManager:
                 else:
                     if self._is_mock:
                         token_stream = self._mock_stream(user_text)
+                    elif self.backend == "gemini":
+                        token_stream = self._gemini_stream(messages)
                     else:
                         token_stream = self._openai_stream(messages)
 
-                    async for token in token_stream:
-                        if first_token_time is None:
-                            first_token_time = time.perf_counter()
+                    async def _consume(stream):
+                        nonlocal first_token_time
+                        async for token in stream:
+                            if first_token_time is None:
+                                first_token_time = time.perf_counter()
 
-                        accumulated_text.append(token)
-                        if on_token:
-                            res = on_token(token)
-                            if asyncio.iscoroutine(res):
-                                await res
-
-                        new_clauses = splitter.feed_token(token)
-                        for clause in new_clauses:
-                            clauses_emitted.append(clause)
-                            if on_clause:
-                                res = on_clause(clause, False, len(clauses_emitted))
+                            accumulated_text.append(token)
+                            if on_token:
+                                res = on_token(token)
                                 if asyncio.iscoroutine(res):
                                     await res
+
+                            new_clauses = splitter.feed_token(token)
+                            for clause in new_clauses:
+                                clauses_emitted.append(clause)
+                                if on_clause:
+                                    res = on_clause(clause, False, len(clauses_emitted))
+                                    if asyncio.iscoroutine(res):
+                                        await res
+
+                    await _consume(token_stream)
+
+                    # Gemini asked for a tool: speak a filler, run it, then let the model phrase the
+                    # result. Same callbacks the simulator path uses, so the worker needs no changes.
+                    pending = list(getattr(self, "_pending_function_calls", []) or []) if self.backend == "gemini" else []
+                    if pending:
+                        follow_up: List[dict] = []
+                        for part in pending:
+                            call = part.get("functionCall", {})
+                            tool_name = call.get("name", "")
+                            tool_args = call.get("args") or {}
+                            log.info("Gemini requested tool: %s(%s)", tool_name, tool_args)
+                            if on_tool_call:
+                                res = on_tool_call(tool_name, tool_args)
+                                if asyncio.iscoroutine(res):
+                                    await res
+                            filler = self.tool_registry.filler_engine.get_filler(tool_name, tool_args)
+                            if on_filler:
+                                res = on_filler(filler)
+                                if asyncio.iscoroutine(res):
+                                    await res
+                            try:
+                                tool_res = await self.tool_dispatcher.execute_tool(tool_name, tool_args)
+                            except Exception as tool_err:
+                                tool_res = {"error": str(tool_err)}
+                            if on_tool_result:
+                                res = on_tool_result(tool_name, tool_res)
+                                if asyncio.iscoroutine(res):
+                                    await res
+                            tool_calls_executed.append({"tool": tool_name, "args": tool_args, "result": tool_res, "filler": filler})
+                            follow_up.append({"role": "model", "parts": [part]})
+                            follow_up.append({"role": "user", "parts": [{"functionResponse": {"name": tool_name, "response": {"result": tool_res}}}]})
+                        self._pending_function_calls = []
+                        await _consume(self._gemini_stream(messages, extra_contents=follow_up, use_tools=True))
+                        self._pending_function_calls = []   # no second round of tools in one turn
 
                 # Stream ended cleanly: flush remaining buffer
                 final_clauses = splitter.flush()

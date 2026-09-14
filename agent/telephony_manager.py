@@ -20,6 +20,10 @@ import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 log = logging.getLogger("telephony-manager")
 
@@ -27,6 +31,15 @@ E164_REGEX = re.compile(r"^\+?[1-9]\d{1,14}$")
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
 PHONE_NUMBERS_FILE = os.path.join(CONFIG_DIR, "phone_numbers.json")
 SIP_TRUNKS_FILE = os.path.join(CONFIG_DIR, "sip_trunks.json")
+
+
+def _storage_sync(path: str) -> None:
+    """Write-through to PostgreSQL (no-op when DATABASE_URL is unset)."""
+    try:
+        from agent import storage
+        storage.sync_file(path)
+    except Exception as e:
+        log.debug("storage sync skipped for %s: %s", path, e)
 VALID_TRANSPORTS = ("udp", "tcp", "tls")
 
 
@@ -131,6 +144,15 @@ def normalize_phone_number(number: str) -> str:
         else:
             cleaned = "+" + cleaned
     return cleaned
+
+
+def format_friendly_phone(number: str) -> str:
+    norm = normalize_phone_number(number)
+    if norm.startswith("+1") and len(norm) == 12:
+        return f"+1 ({norm[2:5]}) {norm[5:8]}-{norm[8:]}"
+    elif norm.startswith("+44") and len(norm) >= 12:
+        return f"+44 {norm[3:7]} {norm[7:]}"
+    return norm or number
 
 
 def is_valid_phone_number(number: str) -> bool:
@@ -264,6 +286,7 @@ class TelephonyManager:
                     "rules": [asdict(r) for r in self._dispatch_rules.values()],
                     "updated_at": time.time(),
                 }, f, indent=2)
+            _storage_sync(SIP_TRUNKS_FILE)
         except Exception as e:
             log.warning("Failed to save SIP trunks: %s", e)
 
@@ -383,6 +406,7 @@ class TelephonyManager:
                     "numbers": [asdict(n) for n in self._owned_numbers.values()],
                     "updated_at": time.time(),
                 }, f, indent=2)
+            _storage_sync(PHONE_NUMBERS_FILE)
         except Exception as e:
             log.warning("Failed to save phone numbers: %s", e)
 
@@ -416,6 +440,39 @@ class TelephonyManager:
         d["has_auth"] = bool(trunk.auth_username or trunk.auth_password)
         d["auth_password"] = _mask_secret(trunk.auth_password)
         return d
+
+    def delete_inbound_trunk(self, trunk_id: str) -> bool:
+        trunk = self._inbound_trunks.pop(trunk_id, None)
+        if not trunk:
+            return False
+        # Remove any dispatch rules associated only with this trunk
+        to_del = [rid for rid, r in self._dispatch_rules.items() if r.trunk_ids == [trunk_id]]
+        for rid in to_del:
+            self._dispatch_rules.pop(rid, None)
+        # Update any numbers referencing this trunk
+        for rec in self._owned_numbers.values():
+            if rec.assigned_trunk_id == trunk_id:
+                rec.assigned_trunk_id = "trunk-inbound-primary"
+        self._save_trunks()
+        self._save_phone_numbers()
+        log.info("Deleted Inbound SIP Trunk: %s", trunk_id)
+        return True
+
+    def delete_outbound_trunk(self, trunk_id: str) -> bool:
+        trunk = self._outbound_trunks.pop(trunk_id, None)
+        if not trunk:
+            return False
+        self._save_trunks()
+        log.info("Deleted Outbound SIP Trunk: %s", trunk_id)
+        return True
+
+    def delete_dispatch_rule(self, rule_id: str) -> bool:
+        rule = self._dispatch_rules.pop(rule_id, None)
+        if not rule:
+            return False
+        self._save_trunks()
+        log.info("Deleted Dispatch Rule: %s", rule_id)
+        return True
 
     def list_inbound_trunks(self) -> List[dict]:
         return [self._public_trunk(t) for t in self._inbound_trunks.values()]
@@ -451,6 +508,81 @@ class TelephonyManager:
         return ended
 
     # ── Phone Number Management ──────────────────────────────────────────────
+    @staticmethod
+    def _get_twilio_creds() -> Optional[tuple]:
+        sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+        token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+        if sid and token:
+            return (sid, token)
+        return None
+
+    @staticmethod
+    def _get_telnyx_creds() -> Optional[str]:
+        key = os.getenv("TELNYX_API_KEY", "").strip()
+        return key if key else None
+
+    def _release_twilio_number(self, rec: PhoneNumberRecord) -> None:
+        if rec.carrier == "twilio" or "twilio_sid" in rec.metadata:
+            creds = self._get_twilio_creds()
+            if creds:
+                sid, token = creds
+                twilio_sid = rec.metadata.get("twilio_sid")
+                if not twilio_sid:
+                    try:
+                        r = requests.get(
+                            f"https://api.twilio.com/2010-04-01/Accounts/{sid}/IncomingPhoneNumbers.json?PhoneNumber={requests.utils.quote(rec.phone_number)}",
+                            auth=(sid, token),
+                            timeout=5,
+                        )
+                        if r.status_code == 200:
+                            data = r.json().get("incoming_phone_numbers", [])
+                            if data:
+                                twilio_sid = data[0].get("sid")
+                    except Exception as e:
+                        log.warning("Failed to lookup Twilio SID for %s: %s", rec.phone_number, e)
+
+                if twilio_sid:
+                    try:
+                        del_r = requests.delete(
+                            f"https://api.twilio.com/2010-04-01/Accounts/{sid}/IncomingPhoneNumbers/{twilio_sid}.json",
+                            auth=(sid, token),
+                            timeout=5,
+                        )
+                        log.info("Twilio API delete number %s (%s) response status: %s", rec.phone_number, twilio_sid, del_r.status_code)
+                    except Exception as e:
+                        log.warning("Failed to delete Twilio number %s via API: %s", rec.phone_number, e)
+
+    def _release_telnyx_number(self, rec: PhoneNumberRecord) -> None:
+        if rec.carrier == "telnyx" or "telnyx_id" in rec.metadata:
+            key = self._get_telnyx_creds()
+            if key:
+                headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+                telnyx_id = rec.metadata.get("telnyx_id")
+                if not telnyx_id:
+                    try:
+                        r = requests.get(
+                            f"https://api.telnyx.com/v2/phone_numbers?filter[phone_number]={requests.utils.quote(rec.phone_number)}",
+                            headers=headers,
+                            timeout=5,
+                        )
+                        if r.status_code == 200:
+                            data = r.json().get("data", [])
+                            if data:
+                                telnyx_id = data[0].get("id")
+                    except Exception as e:
+                        log.warning("Failed to lookup Telnyx ID for %s: %s", rec.phone_number, e)
+
+                if telnyx_id:
+                    try:
+                        del_r = requests.delete(
+                            f"https://api.telnyx.com/v2/phone_numbers/{telnyx_id}",
+                            headers=headers,
+                            timeout=5,
+                        )
+                        log.info("Telnyx API delete number %s (%s) response status: %s", rec.phone_number, telnyx_id, del_r.status_code)
+                    except Exception as e:
+                        log.warning("Failed to delete Telnyx number %s via API: %s", rec.phone_number, e)
+
     def list_carriers(self) -> List[dict]:
         out = []
         for cid, meta in CARRIERS.items():
@@ -462,13 +594,132 @@ class TelephonyManager:
 
     def list_available_numbers(self, country: Optional[str] = None, search: Optional[str] = None, carrier: Optional[str] = None) -> List[dict]:
         owned = {k for k, v in self._owned_numbers.items() if v.status == "active"}
-        results = []
+        target_carrier = (carrier or "").lower().strip()
+        target_country = (country or "").upper().strip()
+
+        live_results: List[dict] = []
+
+        # 1. Twilio live query
+        if target_carrier in ("twilio", "all", ""):
+            tw_creds = self._get_twilio_creds()
+            if tw_creds:
+                sid, token = tw_creds
+                cntry = target_country if (target_country and target_country != "ALL") else "US"
+                try:
+                    params: Dict[str, Any] = {"PageSize": 20}
+                    if search:
+                        q = search.strip()
+                        if q.isdigit() and len(q) == 3:
+                            params["AreaCode"] = q
+                        elif any(c.isdigit() for c in q):
+                            params["Contains"] = re.sub(r"[^\d]", "", q)
+                    r = requests.get(
+                        f"https://api.twilio.com/2010-04-01/Accounts/{sid}/AvailablePhoneNumbers/{cntry}/Local.json",
+                        params=params,
+                        auth=(sid, token),
+                        timeout=5,
+                    )
+                    if r.status_code == 200:
+                        data = r.json()
+                        for item in data.get("available_phone_numbers", []):
+                            p_num = item.get("phone_number")
+                            if not p_num or p_num in owned:
+                                continue
+                            locality = item.get("locality") or ""
+                            region_code = item.get("region") or cntry
+                            region_str = f"{locality}, {region_code}".strip(", ") or "Twilio Direct"
+                            caps = []
+                            cap_dict = item.get("capabilities", {})
+                            if cap_dict.get("voice"):
+                                caps.append("voice")
+                            caps.append("sip")
+                            if cap_dict.get("sms"):
+                                caps.append("sms")
+                            if cap_dict.get("mms"):
+                                caps.append("mms")
+                            live_results.append({
+                                "phone_number": p_num,
+                                "carrier": "twilio",
+                                "friendly_name": item.get("friendly_name") or p_num,
+                                "country": item.get("iso_country") or cntry,
+                                "region": region_str,
+                                "capabilities": caps,
+                                "monthly_cost": 1.15,
+                            })
+                except Exception as e:
+                    log.warning("Twilio Live AvailablePhoneNumbers API query failed: %s", e)
+
+        # 2. Telnyx live query
+        if target_carrier in ("telnyx", "all", ""):
+            tx_key = self._get_telnyx_creds()
+            if tx_key:
+                cntry = target_country if (target_country and len(target_country) == 2 and target_country != "ALL") else "US"
+                try:
+                    tx_headers = {"Authorization": f"Bearer {tx_key}", "Content-Type": "application/json"}
+                    tx_params: Dict[str, Any] = {
+                        "filter[country_code]": cntry,
+                        "filter[phone_number_type]": "local",
+                        "filter[limit]": 24,
+                    }
+                    if search:
+                        q_digits = re.sub(r"[^\d]", "", search.strip())
+                        if q_digits:
+                            tx_params["filter[phone_number][contains]"] = q_digits
+                    r = requests.get(
+                        "https://api.telnyx.com/v2/available_phone_numbers",
+                        params=tx_params,
+                        headers=tx_headers,
+                        timeout=5,
+                    )
+                    if r.status_code == 200:
+                        data = r.json().get("data", [])
+                        for item in data:
+                            p_num = item.get("phone_number", "")
+                            # Skip invalid, unassigned, or masked wildcard numbers (e.g. +18334------)
+                            if not p_num or "-" in p_num or "*" in p_num or p_num in owned:
+                                continue
+                            # Parse region
+                            reg_info = item.get("region_information", [])
+                            city = next((r.get("region_name") for r in reg_info if r.get("region_type") in ("rate_center", "location")), "")
+                            state = next((r.get("region_name") for r in reg_info if r.get("region_type") == "state"), cntry)
+                            region_str = f"{city.title()}, {state}".strip(", ") if city else f"{state} (Telnyx)"
+
+                            cost_info = item.get("cost_information", {})
+                            try:
+                                m_cost = float(cost_info.get("monthly_cost", 1.00))
+                                if m_cost <= 0:
+                                    m_cost = 1.00
+                            except (TypeError, ValueError):
+                                m_cost = 1.00
+
+                            features_raw = item.get("features", [])
+                            features_list = [f.get("name") for f in features_raw if isinstance(f, dict)] if isinstance(features_raw, list) else []
+                            caps = ["voice", "sip", "sms"]
+                            if "mms" in features_list:
+                                caps.append("mms")
+
+                            live_results.append({
+                                "phone_number": p_num,
+                                "carrier": "telnyx",
+                                "friendly_name": format_friendly_phone(p_num),
+                                "country": cntry,
+                                "region": region_str,
+                                "capabilities": caps,
+                                "monthly_cost": round(m_cost, 2),
+                            })
+                except Exception as e:
+                    log.warning("Telnyx Live AvailablePhoneNumbers API query failed: %s", e)
+
+        if target_carrier in ("twilio", "telnyx") and live_results:
+            return live_results
+
+        results = list(live_results) if target_carrier in ("all", "") else []
         for item in AVAILABLE_NUMBERS_CATALOG:
             if item["phone_number"] in owned:
                 continue
-            if carrier and carrier.lower() != "all" and item["carrier"] != carrier.lower():
+            if target_carrier and target_carrier != "all" and item["carrier"] != target_carrier:
                 continue
-            if country and country.upper() != "ALL" and item["country"] != country.upper():
+            if target_country and target_country != "ALL" and item["country"] != target_country:
                 continue
             if search:
                 q = search.lower().strip()
@@ -476,8 +727,92 @@ class TelephonyManager:
                     q not in item["friendly_name"].lower() and
                     q not in item["region"].lower()):
                     continue
-            results.append(item)
+            if not any(r["phone_number"] == item["phone_number"] for r in results):
+                results.append(item)
         return results
+
+    def sync_carrier_numbers(self) -> List[dict]:
+        """Fetch and sync active numbers directly from live carrier accounts (Twilio & Telnyx)."""
+        changed = False
+
+        # 1. Sync from Twilio
+        tw_creds = self._get_twilio_creds()
+        if tw_creds:
+            sid, token = tw_creds
+            try:
+                r = requests.get(
+                    f"https://api.twilio.com/2010-04-01/Accounts/{sid}/IncomingPhoneNumbers.json",
+                    auth=(sid, token),
+                    timeout=5,
+                )
+                if r.status_code == 200:
+                    data = r.json().get("incoming_phone_numbers", [])
+                    for item in data:
+                        p_num = normalize_phone_number(item.get("phone_number", ""))
+                        if not p_num:
+                            continue
+                        rec = self._owned_numbers.get(p_num)
+                        if not rec or rec.status != "active":
+                            trunk_sid = item.get("trunk_sid") or "trunk-inbound-primary"
+                            rec = PhoneNumberRecord(
+                                phone_number=p_num,
+                                friendly_name=item.get("friendly_name") or format_friendly_phone(p_num),
+                                country="US",
+                                region="Twilio Primary",
+                                capabilities=["voice", "sip", "sms", "mms"],
+                                monthly_cost=1.15,
+                                status="active",
+                                carrier="twilio",
+                                assigned_trunk_id=trunk_sid,
+                                assigned_agent="Maya - Bottini & Bottini",
+                                purchased_at=time.time(),
+                                metadata={"twilio_sid": item.get("sid"), "trunk_sid": item.get("trunk_sid")},
+                            )
+                            self._owned_numbers[p_num] = rec
+                            self._ensure_number_rule(rec)
+                            changed = True
+            except Exception as e:
+                log.warning("Twilio carrier sync failed: %s", e)
+
+        # 2. Sync from Telnyx
+        tx_key = self._get_telnyx_creds()
+        if tx_key:
+            try:
+                headers = {"Authorization": f"Bearer {tx_key}", "Content-Type": "application/json"}
+                r = requests.get("https://api.telnyx.com/v2/phone_numbers", headers=headers, timeout=5)
+                if r.status_code == 200:
+                    data = r.json().get("data", [])
+                    for item in data:
+                        p_num = normalize_phone_number(item.get("phone_number", ""))
+                        if not p_num or item.get("status") != "active":
+                            continue
+                        rec = self._owned_numbers.get(p_num)
+                        if not rec or rec.status != "active":
+                            rec = PhoneNumberRecord(
+                                phone_number=p_num,
+                                friendly_name=format_friendly_phone(p_num),
+                                country="US",
+                                region="Telnyx Primary",
+                                capabilities=["voice", "sip", "sms", "mms"],
+                                monthly_cost=1.00,
+                                status="active",
+                                carrier="telnyx",
+                                assigned_trunk_id="trunk-inbound-primary",
+                                assigned_agent="Maya - Bottini & Bottini",
+                                purchased_at=time.time(),
+                                metadata={"telnyx_id": item.get("id"), "connection_id": item.get("connection_id")},
+                            )
+                            self._owned_numbers[p_num] = rec
+                            self._ensure_number_rule(rec)
+                            changed = True
+            except Exception as e:
+                log.warning("Telnyx carrier sync failed: %s", e)
+
+        if changed:
+            self._save_trunks()
+            self._save_phone_numbers()
+
+        return [asdict(n) for n in self._owned_numbers.values() if n.status == "active"]
 
     def list_owned_numbers(self) -> List[dict]:
         return [asdict(n) for n in self._owned_numbers.values() if n.status == "active"]
@@ -503,11 +838,82 @@ class TelephonyManager:
         country = catalog_entry["country"] if catalog_entry else "US"
         region = catalog_entry["region"] if catalog_entry else "Direct Inward Dialing"
         capabilities = catalog_entry["capabilities"] if catalog_entry else ["voice", "sip", "sms", "dual_channel"]
-        monthly_cost = catalog_entry["monthly_cost"] if catalog_entry else 1.50
+        monthly_cost = catalog_entry["monthly_cost"] if catalog_entry else 1.15
         fname = friendly_name or (catalog_entry["friendly_name"] if catalog_entry else norm)
-        carrier_id = (catalog_entry["carrier"] if catalog_entry else (carrier or "telnyx")).lower()
+        carrier_id = (carrier or (catalog_entry["carrier"] if catalog_entry else "twilio")).lower()
         if carrier_id not in CARRIERS:
             raise ValueError(f"Unknown carrier '{carrier_id}'. Choose one of: {', '.join(CARRIERS)}")
+
+        metadata: Dict[str, Any] = {}
+
+        # If Twilio carrier, execute REAL LIVE Twilio API purchase
+        if carrier_id == "twilio":
+            creds = self._get_twilio_creds()
+            if creds:
+                sid, token = creds
+                buy_data: Dict[str, str] = {
+                    "PhoneNumber": norm,
+                    "FriendlyName": fname,
+                }
+                if assigned_trunk_id.startswith("TK"):
+                    buy_data["TrunkSid"] = assigned_trunk_id
+
+                try:
+                    r = requests.post(
+                        f"https://api.twilio.com/2010-04-01/Accounts/{sid}/IncomingPhoneNumbers.json",
+                        data=buy_data,
+                        auth=(sid, token),
+                        timeout=10,
+                    )
+                    if r.status_code not in (200, 201):
+                        err_json = {}
+                        try:
+                            err_json = r.json()
+                        except Exception:
+                            pass
+                        err_msg = err_json.get("message") or f"HTTP {r.status_code}: {r.text}"
+                        err_code = err_json.get("code")
+                        code_str = f" [Code {err_code}]" if err_code else ""
+                        raise ValueError(f"Twilio Carrier Purchase Failed{code_str}: {err_msg}")
+
+                    res_json = r.json()
+                    metadata["twilio_sid"] = res_json.get("sid")
+                    metadata["trunk_sid"] = res_json.get("trunk_sid")
+                    if res_json.get("friendly_name"):
+                        fname = res_json.get("friendly_name")
+                except requests.RequestException as req_err:
+                    raise ValueError(f"Twilio Carrier Connection Error: {req_err}")
+
+        # If Telnyx carrier, execute REAL LIVE Telnyx API purchase
+        elif carrier_id == "telnyx":
+            key = self._get_telnyx_creds()
+            if key:
+                headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+                order_payload = {"phone_numbers": [{"phone_number": norm}]}
+                try:
+                    r = requests.post(
+                        "https://api.telnyx.com/v2/number_orders",
+                        json=order_payload,
+                        headers=headers,
+                        timeout=10,
+                    )
+                    if r.status_code not in (200, 201):
+                        err_json = {}
+                        try:
+                            err_json = r.json()
+                        except Exception:
+                            pass
+                        errors = err_json.get("errors", [])
+                        err_detail = errors[0].get("detail") if errors else (err_json.get("message") or f"HTTP {r.status_code}: {r.text}")
+                        err_code = errors[0].get("code") if errors else ""
+                        code_str = f" [Code {err_code}]" if err_code else ""
+                        raise ValueError(f"Telnyx Carrier Purchase Failed{code_str}: {err_detail}")
+
+                    res_json = r.json().get("data", {})
+                    metadata["telnyx_order_id"] = res_json.get("id")
+                    monthly_cost = 1.00
+                except requests.RequestException as req_err:
+                    raise ValueError(f"Telnyx Carrier Connection Error: {req_err}")
 
         record = PhoneNumberRecord(
             phone_number=norm,
@@ -521,6 +927,7 @@ class TelephonyManager:
             assigned_trunk_id=assigned_trunk_id,
             assigned_agent=assigned_agent,
             purchased_at=time.time(),
+            metadata=metadata,
         )
         self._owned_numbers[norm] = record
 
@@ -534,7 +941,7 @@ class TelephonyManager:
         self._save_trunks()
         self._save_phone_numbers()
 
-        log.info("Purchased phone number %s -> assigned to %s on %s", norm, assigned_agent, assigned_trunk_id)
+        log.info("Purchased phone number %s -> assigned to %s on %s (carrier=%s)", norm, assigned_agent, assigned_trunk_id, carrier_id)
         return asdict(record)
 
     def release_number(self, phone_number: str) -> bool:
@@ -542,6 +949,9 @@ class TelephonyManager:
         rec = self._owned_numbers.get(norm)
         if not rec or rec.status != "active":
             return False
+
+        self._release_twilio_number(rec)
+        self._release_telnyx_number(rec)
 
         rec.status = "released"
         # Unbind from trunk and drop its dispatch rule
@@ -582,6 +992,71 @@ class TelephonyManager:
         self._save_phone_numbers()
         log.info("Updated routing for %s -> agent=%s trunk=%s", norm, agent_name, rec.assigned_trunk_id)
         return asdict(rec)
+
+    def update_phone_number(
+        self,
+        phone_number: str,
+        friendly_name: Optional[str] = None,
+        agent_name: Optional[str] = None,
+        trunk_id: Optional[str] = None,
+        carrier: Optional[str] = None,
+    ) -> Optional[dict]:
+        norm = normalize_phone_number(phone_number)
+        rec = self._owned_numbers.get(norm)
+        if not rec:
+            return None
+
+        if friendly_name is not None and friendly_name.strip():
+            rec.friendly_name = friendly_name.strip()
+        if agent_name is not None and agent_name.strip():
+            rec.assigned_agent = agent_name.strip()
+        if carrier is not None and carrier.strip():
+            c_id = carrier.strip().lower()
+            if c_id in CARRIERS:
+                rec.carrier = c_id
+        if trunk_id is not None and trunk_id.strip():
+            t_id = trunk_id.strip()
+            if t_id in self._inbound_trunks and t_id != rec.assigned_trunk_id:
+                old_trunk = self._inbound_trunks.get(rec.assigned_trunk_id)
+                if old_trunk and norm in old_trunk.numbers:
+                    old_trunk.numbers.remove(norm)
+                new_trunk = self._inbound_trunks.get(t_id)
+                if new_trunk and norm not in new_trunk.numbers:
+                    new_trunk.numbers.append(norm)
+                rec.assigned_trunk_id = t_id
+
+        self._ensure_number_rule(rec)
+        self._save_trunks()
+        self._save_phone_numbers()
+        log.info("Updated phone number %s details (friendly_name='%s', agent='%s', trunk='%s')",
+                 norm, rec.friendly_name, rec.assigned_agent, rec.assigned_trunk_id)
+        return asdict(rec)
+
+    def delete_phone_number(self, phone_number: str, purge: bool = False) -> bool:
+        norm = normalize_phone_number(phone_number)
+        rec = self._owned_numbers.get(norm)
+        if not rec:
+            return False
+
+        if rec.status == "active":
+            self._release_twilio_number(rec)
+            self._release_telnyx_number(rec)
+
+        # Unbind from trunk and drop its dispatch rule
+        trunk = self._inbound_trunks.get(rec.assigned_trunk_id)
+        if trunk and norm in trunk.numbers:
+            trunk.numbers.remove(norm)
+        self._dispatch_rules.pop(self._number_rule_id(norm), None)
+
+        if purge:
+            self._owned_numbers.pop(norm, None)
+        else:
+            rec.status = "released"
+
+        self._save_trunks()
+        self._save_phone_numbers()
+        log.info("Deleted/released phone number %s (purged=%s)", norm, purge)
+        return True
 
     def route_inbound_call(self, dialed_number: str, caller_number: str) -> Optional[dict]:
         norm_dialed = normalize_phone_number(dialed_number)

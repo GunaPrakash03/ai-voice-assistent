@@ -20,7 +20,7 @@ import time
 import wave
 from array import array
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Set, Any, Dict, List, Optional, Tuple
 
 log = logging.getLogger("voice-agent.history")
 if not log.handlers:
@@ -157,7 +157,7 @@ class CallHistoryStore:
 
         audio_path = audio.get(call_id)
         started = job.get("created_at", 0.0) or 0.0
-        duration = float(metrics.get("call_duration_seconds") or tel.get("duration_seconds") or 0.0)
+        duration = float(metrics.get("call_duration_seconds") or tel.get("duration_seconds") or metadata.get("duration_seconds") or 0.0)
 
         outcome = summary.get("resolution_status", "unknown")
         transferred = outcome == "escalated" or bool(sentiment.get("frustration_detected")) and outcome == "escalated"
@@ -169,9 +169,10 @@ class CallHistoryStore:
             started_at=started,
             ended_at=job.get("completed_at") or started + duration,
             duration_seconds=round(duration, 2),
-            direction=tel.get("direction", "inbound"),
-            from_number=tel.get("from_number", ""),
-            to_number=tel.get("to_number", ""),
+            # Sandbox test calls carry their own direction/numbers in metadata (no SIP leg).
+            direction=tel.get("direction") or metadata.get("direction", "inbound"),
+            from_number=tel.get("from_number") or metadata.get("from_number", ""),
+            to_number=tel.get("to_number") or metadata.get("to_number", ""),
             agent_name=metadata.get("agent_name", "AI Agent"),
             sentiment=sentiment.get("overall_polarity", "unknown"),
             sentiment_score=round(float(sentiment.get("overall_score", 0.0)), 4),
@@ -216,8 +217,9 @@ class CallHistoryStore:
         search: Optional[str] = None,
         sort: str = "started_at",
         order: str = "desc",
+        visible_agents: Optional[Set[str]] = None,
     ) -> Dict[str, Any]:
-        rows = self.load()
+        rows = self._visible_rows(visible_agents)
 
         if sentiment:
             rows = [r for r in rows if r.sentiment == sentiment]
@@ -259,11 +261,25 @@ class CallHistoryStore:
             "has_next": page < pages,
             "has_prev": page > 1,
             "filters": {
-                "sentiments": sorted({r.sentiment for r in self.load()}),
-                "agents": sorted({r.agent_name for r in self.load()}),
-                "outcomes": sorted({r.outcome for r in self.load()}),
+                "sentiments": sorted({r.sentiment for r in self._visible_rows(visible_agents)}),
+                "agents": sorted({r.agent_name for r in self._visible_rows(visible_agents)}),
+                "outcomes": sorted({r.outcome for r in self._visible_rows(visible_agents)}),
             },
         }
+
+    def _visible_rows(self, visible_agents: Optional[Set[str]]) -> List[CallRecord]:
+        """Members only see calls handled by their own agents; None means no restriction."""
+        rows = self.load()
+        if visible_agents is None:
+            return rows
+        return [r for r in rows if r.agent_name in visible_agents]
+
+    def can_view(self, call_id: str, visible_agents: Optional[Set[str]]) -> bool:
+        if visible_agents is None:
+            return True
+        self.load()
+        rec = self._cache.get(call_id)
+        return bool(rec and rec.agent_name in visible_agents)
 
     def get_call(self, call_id: str) -> Optional[Dict[str, Any]]:
         """Full inspector payload: record, timeline, sentiment, extractions."""
@@ -413,8 +429,8 @@ class CallHistoryStore:
         }
 
     # ── Aggregates & export ──────────────────────────────────────────────────
-    def stats(self) -> Dict[str, Any]:
-        rows = self.load()
+    def stats(self, visible_agents: Optional[Set[str]] = None) -> Dict[str, Any]:
+        rows = self._visible_rows(visible_agents)
         if not rows:
             return {"calls": 0, "with_audio": 0, "avg_duration_seconds": 0.0,
                     "sentiment": {}, "outcomes": {}, "agents": {},

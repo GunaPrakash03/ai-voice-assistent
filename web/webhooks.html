@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Webhooks & Data — Voice Agent Service</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
+    --rail-ink:#A8AEC4; --rail-on:#FFFFFF;
+    --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
+    --line:#DDE0E9; --line-soft:#EBEDF3;
+    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
+    --pos:#2F7A4F; --pos-soft:#E6F2EA; --neu:#5A6480; --neu-soft:#EDEFF4; --neg:#A32F26; --neg-soft:#FAEAE8;
+    --f-ui:"Archivo",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    --f-mono:"DM Mono","SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
+      --rail-ink:#767D96; --rail-on:#FFFFFF;
+      --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
+      --line:#262B3A; --line-soft:#1C2130;
+      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
+      --pos:#5FBF88; --pos-soft:#12251A; --neu:#8891AB; --neu-soft:#1A1F2C; --neg:#E0776C; --neg-soft:#2A1513;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .top-app-bar{background:var(--panel);border-bottom:1px solid var(--line);height:44px;padding:0 18px;display:flex;align-items:center;justify-content:space-between}
+  .app-dropdown{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:var(--ink)}
+  .app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:calc(100vh - 44px)}
+  .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
+  .brand{padding:0 18px 18px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
+  .brand b{color:var(--rail-on);font-size:15px;font-weight:700;display:block}
+  .brand span{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+  .nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
+  .nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
+  .nav a:hover{background:rgba(255,255,255,.06);color:var(--rail-on)}
+  .nav .active{background:var(--accent);color:#fff;font-weight:600}
+  .nav .ct{font-family:var(--f-mono);font-size:11px;opacity:.85}
+  .rail-foot{margin-top:auto;padding:14px 18px 0;border-top:1px solid rgba(255,255,255,.07)}
+  .rail-foot div{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;line-height:1.7}
+  main{padding:22px 26px 40px;max-width:1240px}
+  .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+  .crumb{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.09em;text-transform:uppercase;margin-bottom:2px}
+  h1{margin:0;font-size:22px;font-weight:700}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+  @media (max-width:1000px){.grid{grid-template-columns:1fr}}
+  @media (max-width:900px){.app{grid-template-columns:1fr}.rail{display:none}}
+  .stack{display:flex;flex-direction:column;gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .card-h{padding:12px 16px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .card-h h2{margin:0;font-size:14px;font-weight:700}
+  .card-h .meta{font-family:var(--f-mono);font-size:11px;color:var(--ink-faint)}
+  .card-b{padding:16px}
+  .banner{background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--ink-soft)}
+  .banner b{color:var(--ink)}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:11.5px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
+  .field input,.field select,.field textarea{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13px;font-family:var(--f-ui)}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft)}
+  .field .hint{font-size:11.5px;color:var(--ink-faint);margin-top:4px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;padding:7px 14px;border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s;text-decoration:none;font-family:var(--f-ui)}
+  .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn-primary:hover{opacity:.92}
+  .btn-ghost{background:transparent;color:var(--ink-soft);border-color:var(--line)}
+  .btn-ghost:hover{background:var(--sunk);color:var(--ink)}
+  .btn-sm{padding:4px 10px;font-size:11.5px}
+  .btn:disabled{opacity:.6;cursor:wait}
+  .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+  .msg{font-size:12.5px;min-height:18px}
+  .msg.ok{color:var(--pos)} .msg.err{color:var(--neg)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.06em;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:8px 10px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td input,td select{width:100%;padding:5px 7px;border-radius:5px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:12.5px;font-family:var(--f-ui)}
+  .mono{font-family:var(--f-mono);font-size:12px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
+  .pill.pos{background:var(--pos-soft);color:var(--pos)} .pill.neg{background:var(--neg-soft);color:var(--neg)} .pill.neu{background:var(--neu-soft);color:var(--neu)} .pill.accent{background:var(--accent-soft);color:var(--accent)}
+  .empty{color:var(--ink-faint);font-size:13px;padding:12px 10px}
+  pre{margin:0;background:var(--sunk);border:1px solid var(--line-soft);border-radius:8px;padding:12px;font-family:var(--f-mono);font-size:11.5px;overflow:auto;max-height:320px;color:var(--ink)}
+  .test-result{margin-top:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--sunk);font-size:12.5px}
+  .test-result.ok{border-color:var(--pos);background:var(--pos-soft)} .test-result.bad{border-color:var(--neg);background:var(--neg-soft)}
+  .kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;font-size:12.5px}
+  .kv dt{color:var(--ink-faint);font-family:var(--f-mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding-top:2px} .kv dd{margin:0;overflow-wrap:anywhere}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--ground);padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;transition:all .2s;pointer-events:none;max-width:90vw}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<header class="top-app-bar">
+  <div class="app-dropdown"><span>Call Desk</span><span style="color:var(--ink-faint)">/</span><span>Webhooks &amp; Data</span></div>
+  <div><a class="btn btn-ghost" href="/api-keys.html">🔑 API Keys &amp; Providers</a></div>
+</header>
+<div class="app">
+  <nav class="rail">
+    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div class="nav">
+      <a href="/">Overview</a>
+      <a href="/#calls">Calls</a>
+      <a href="/#agents">Agents</a>
+      <a href="/api-keys.html">API Keys &amp; Providers<span class="ct">🔑</span></a>
+      <a href="/webhooks.html" class="active">Webhooks &amp; Data<span class="ct">⚡</span></a>
+      <a href="/profile.html">My Profile<span class="ct">👤</span></a>
+      <a href="/user-guide.html">How to use<span class="ct">📘</span></a>
+    </div>
+    <div class="rail-foot"><!-- profile card injected by /profile.js --></div>
+  </nav>
+  <div>
+    <main>
+      <div class="page-header">
+        <div><div class="crumb">INTEGRATIONS</div><h1>Webhooks &amp; extracted call data</h1></div>
+        <a class="btn btn-ghost" href="/">← Back to Call Desk</a>
+      </div>
+      <div class="banner">
+        <b>How it works.</b> After every call the AI reads the transcript, fills in the data fields you define per agent
+        (name, phone, matter, …) and the result is posted as <span class="mono">extracted</span> in the
+        <span class="mono">call.completed</span> webhook, signed with your endpoint secret. Use <b>Suggest from prompt</b> to let the AI propose the fields from the agent's own instructions.
+      </div>
+
+      <div class="grid">
+        <div class="stack">
+          <!-- Endpoints -->
+          <div class="card">
+            <div class="card-h"><h2>Webhook endpoints</h2><span class="meta" id="epMeta"></span></div>
+            <div class="card-b" style="padding:0 6px 6px">
+              <table id="epTable"><thead><tr><th>Endpoint</th><th>Events</th><th>Health</th><th></th></tr></thead><tbody></tbody></table>
+              <div class="empty" id="epEmpty" hidden>No endpoints yet. Add one below.</div>
+              <div id="testResult" hidden class="test-result" style="margin:10px"></div>
+              <form id="epForm" style="padding:12px 10px 6px;border-top:1px solid var(--line-soft);margin-top:6px">
+                <div style="font-size:11.5px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Add an endpoint</div>
+                <div class="row2">
+                  <div class="field"><label for="epName">Name</label><input id="epName" placeholder="e.g. HubSpot intake"></div>
+                  <div class="field"><label for="epUrl">URL</label><input id="epUrl" type="url" placeholder="https://example.com/hooks/calls" required></div>
+                </div>
+                <div class="row2">
+                  <div class="field"><label for="epSecret">Signing secret</label><input id="epSecret" placeholder="leave empty to generate"><div class="hint">Sent as an HMAC-SHA256 signature header on every delivery.</div></div>
+                  <div class="field"><label>Events</label>
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;padding-top:6px">
+                      <label><input type="checkbox" class="ev" value="call.completed" checked> call.completed</label>
+                      <label><input type="checkbox" class="ev" value="call.extracted" checked> call.extracted</label>
+                      <label><input type="checkbox" class="ev" value="call.analyzed"> call.analyzed</label>
+                      <label><input type="checkbox" class="ev" value="call.transcribed"> call.transcribed</label>
+                      <label><input type="checkbox" class="ev" value="call.failed"> call.failed</label>
+                    </div></div>
+                </div>
+                <div class="actions"><button type="submit" class="btn btn-primary" id="epAdd">＋ Add endpoint</button><span class="msg" id="epMsg"></span></div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Deliveries -->
+          <div class="card">
+            <div class="card-h"><h2>Recent deliveries</h2><button class="btn btn-ghost btn-sm" id="dlRefresh" type="button">↻ Refresh</button></div>
+            <div class="card-b" style="padding:0 6px 6px">
+              <table id="dlTable"><thead><tr><th>When</th><th>Event</th><th>Endpoint</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
+              <div class="empty" id="dlEmpty" hidden>No deliveries yet. Use "Test" on an endpoint or finish a call.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <!-- Agent data fields -->
+          <div class="card">
+            <div class="card-h">
+              <h2>Data fields per agent</h2>
+              <select id="agentSel" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13px;min-width:220px"></select>
+            </div>
+            <div class="card-b" style="padding:0 6px 6px">
+              <div class="actions" style="padding:10px 10px 4px">
+                <button class="btn btn-primary btn-sm" id="btnSuggest" type="button">✨ Suggest from prompt (AI)</button>
+                <button class="btn btn-ghost btn-sm" id="btnAddField" type="button">＋ Add field</button>
+                <button class="btn btn-ghost btn-sm" id="btnSaveFields" type="button">💾 Save fields</button>
+                <button class="btn btn-ghost btn-sm" id="btnPreview" type="button">▶ Preview on latest call</button>
+                <span class="msg" id="fieldsMsg"></span>
+              </div>
+              <table id="fieldsTable"><thead><tr><th style="width:26%">Field</th><th style="width:14%">Type</th><th>Description / question the agent asks</th><th style="width:8%">Req.</th><th></th></tr></thead><tbody></tbody></table>
+              <div class="empty" id="fieldsEmpty" hidden>No fields yet. Click "Suggest from prompt" and the AI will read this agent's instructions and propose them.</div>
+            </div>
+          </div>
+
+          <!-- Preview -->
+          <div class="card">
+            <div class="card-h"><h2>Extraction preview</h2><span class="meta" id="pvMeta"></span></div>
+            <div class="card-b">
+              <div id="pvBody"><div class="empty" style="padding:0">Run "Preview on latest call" to see what the AI pulls out of a real transcript.</div></div>
+            </div>
+          </div>
+
+          <!-- Payload example -->
+          <div class="card">
+            <div class="card-h"><h2>What your endpoint receives</h2><span class="meta">POST · JSON · HMAC-SHA256</span></div>
+            <div class="card-b">
+<pre>{
+  "event": "call.completed",
+  "call": { "call_id": "…", "agent_name": "Maya - Bottini &amp; Bottini",
+            "from_number": "+1951…", "duration_seconds": 184 },
+  "extracted": { "caller_name": "Guna Prakash", "callback_phone": "+91…",
+                 "email": "guna@gmail.com", "matter_type": "securities" },
+  "summary": { "executive_summary": "…", "key_intent": "…" },
+  "sentiment": { "overall_polarity": "neutral" },
+  "transcript": [ { "speaker": "Customer", "text": "…" }, … ]
+}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]; }); }
+  function ago(ts) { if (!ts) return "—"; var s = Math.max(0, Math.round(Date.now() / 1000 - ts)); return s < 60 ? s + "s ago" : s < 3600 ? Math.round(s / 60) + "m ago" : s < 86400 ? Math.round(s / 3600) + "h ago" : new Date(ts * 1000).toLocaleDateString(); }
+  var toastTimer; function toast(m) { var t = $("toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 3500); }
+  function setMsg(el, text, ok) { el.textContent = text || ""; el.className = "msg " + (ok ? "ok" : "err"); }
+  function api(url, body) { return fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined).then(function (r) { return r.json(); }); }
+
+  // ── Endpoints ──
+  var lastByEndpoint = {};
+  function loadEndpoints() {
+    return api("/api/webhooks/endpoints").then(function (d) {
+      var eps = d.endpoints || [];
+      eps.forEach(function (e) { var l = lastByEndpoint[e.endpoint_id]; if (l) { e.last_status = l.status === "delivered" ? 200 : 500; } });
+      $("epMeta").textContent = eps.length + " endpoint" + (eps.length === 1 ? "" : "s");
+      $("epEmpty").hidden = eps.length > 0;
+      $("epTable").querySelector("tbody").innerHTML = eps.map(function (e) {
+        var h = e.health || e.stats || {}; var ok = e.last_status ? (e.last_status >= 200 && e.last_status < 300) : null;
+        return "<tr><td><b>" + esc(e.name || e.description || e.endpoint_id) + "</b><div class='mono' style='color:var(--ink-faint)'>" + esc(e.url) + "</div></td>" +
+               "<td class='mono' style='color:var(--ink-soft)'>" + esc((e.events || []).join(", ")) + "</td>" +
+               "<td>" + (e.enabled === false ? "<span class='pill neu'>disabled</span>" : "<span class='pill " + (ok === null ? "neu" : ok ? "pos" : "neg") + "'>" + (ok === null ? "untested" : ok ? "connected" : "failing") + "</span>") + "</td>" +
+               "<td style='white-space:nowrap'><button class='btn btn-primary btn-sm ep-test' data-id='" + esc(e.endpoint_id) + "'>Test</button> <button class='btn btn-ghost btn-sm ep-del' data-id='" + esc(e.endpoint_id) + "'>Delete</button></td></tr>";
+      }).join("");
+      Array.prototype.forEach.call(document.querySelectorAll(".ep-test"), function (b) { b.addEventListener("click", function () { testEndpoint(b.dataset.id, b); }); });
+      Array.prototype.forEach.call(document.querySelectorAll(".ep-del"), function (b) { b.addEventListener("click", function () {
+        api("/api/webhooks/delete", { endpoint_id: b.dataset.id }).then(function (d) { toast(d.status === "ok" ? "Endpoint deleted" : "❌ " + (d.error || "failed")); loadEndpoints(); });
+      }); });
+    });
+  }
+  function testEndpoint(id, btn) {
+    btn.disabled = true; btn.textContent = "Testing…";
+    var box = $("testResult"); box.hidden = false; box.className = "test-result"; box.textContent = "Sending a signed test event…";
+    var t0 = Date.now();
+    api("/api/webhooks/test", { endpoint_id: id, event: "call.completed", payload: { test: true, extracted: { caller_name: "Test Caller", callback_phone: "+15550100000" }, sent_at: Date.now() / 1000 } })
+      .then(function (d) {
+        btn.disabled = false; btn.textContent = "Test";
+        var dl = d.delivery || {}; var status = dl.status || d.status; var last = (dl.attempts || []).slice(-1)[0] || {}; var code = last.status_code || dl.response_status;
+        var okay = status === "delivered" || (code >= 200 && code < 300);
+        box.className = "test-result " + (okay ? "ok" : "bad");
+        box.innerHTML = (okay ? "✅ <b>Connected.</b> " : "❌ <b>Not reachable.</b> ") +
+          "HTTP " + esc(code || "—") + " · " + (Date.now() - t0) + " ms round trip · attempts " + esc(dl.attempts ? dl.attempts.length : (dl.attempt_count || 1)) +
+          (dl.last_error || dl.error ? "<div class='mono' style='margin-top:4px'>" + esc(dl.last_error || dl.error) + "</div>" : "") +
+          (dl.delivery_id ? "<div class='mono' style='color:var(--ink-faint);margin-top:4px'>delivery " + esc(dl.delivery_id) + "</div>" : "");
+        loadEndpoints(); loadDeliveries();
+      }).catch(function () { btn.disabled = false; btn.textContent = "Test"; box.className = "test-result bad"; box.textContent = "Network error"; });
+  }
+  $("epForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var events = Array.prototype.map.call(document.querySelectorAll(".ev:checked"), function (c) { return c.value; });
+    $("epAdd").disabled = true;
+    api("/api/webhooks/register", { url: $("epUrl").value.trim(), description: $("epName").value.trim(), events: events, secret: $("epSecret").value.trim() || null })
+      .then(function (d) {
+        $("epAdd").disabled = false;
+        if (d.status === "ok") { setMsg($("epMsg"), "Added" + (d.endpoint && d.endpoint.secret ? " — secret: " + d.endpoint.secret : ""), true); $("epForm").reset(); loadEndpoints(); }
+        else { setMsg($("epMsg"), d.error || "Could not add endpoint", false); }
+      }).catch(function () { $("epAdd").disabled = false; setMsg($("epMsg"), "Network error", false); });
+  });
+
+  // ── Deliveries ──
+  function loadDeliveries() {
+    return api("/api/webhooks/deliveries?limit=15").then(function (d) {
+      var rows = d.deliveries || d.items || [];
+      lastByEndpoint = {}; rows.slice().reverse().forEach(function (r) { lastByEndpoint[r.endpoint_id] = r; });
+      $("dlEmpty").hidden = rows.length > 0;
+      $("dlTable").querySelector("tbody").innerHTML = rows.map(function (r) {
+        var st = r.status || ""; var cls = st === "delivered" ? "pos" : (st === "failed" || st === "dead_letter") ? "neg" : "neu";
+        var lastA = (r.attempts || []).slice(-1)[0] || {};
+        return "<tr><td>" + ago(r.created_at || r.queued_at) + "</td><td class='mono'>" + esc(r.event) + "</td><td class='mono' style='color:var(--ink-soft)'>" + esc(r.endpoint_id) + "</td>" +
+               "<td><span class='pill " + cls + "'>" + esc(st) + "</span>" + (lastA.status_code ? " <span class='mono'>HTTP " + esc(lastA.status_code) + "</span>" : "") + (lastA.error ? " <span class='mono' style='color:var(--neg)'>" + esc(String(lastA.error).slice(0, 60)) + "</span>" : "") + "</td>" +
+               "<td><button class='btn btn-ghost btn-sm dl-replay' data-id='" + esc(r.delivery_id) + "'>Replay</button></td></tr>";
+      }).join("");
+      Array.prototype.forEach.call(document.querySelectorAll(".dl-replay"), function (b) { b.addEventListener("click", function () {
+        api("/api/webhooks/replay", { delivery_id: b.dataset.id }).then(function (d) { toast(d.status === "ok" ? "Replayed" : "❌ " + (d.error || "failed")); loadDeliveries(); });
+      }); });
+    });
+  }
+  $("dlRefresh").addEventListener("click", loadDeliveries);
+
+  // ── Agent fields ──
+  var agents = [], fields = [];
+  function currentAgent() { return agents.find(function (a) { return a.agent_id === $("agentSel").value; }); }
+  function renderFields() {
+    $("fieldsEmpty").hidden = fields.length > 0;
+    $("fieldsTable").querySelector("tbody").innerHTML = fields.map(function (f, i) {
+      var types = ["string", "number", "boolean", "date", "phone", "email", "enum"];
+      return "<tr data-i='" + i + "'><td><input class='f-name mono' value='" + esc(f.name) + "' placeholder='field_name'>" +
+             (f.type === "enum" ? "<input class='f-options' style='margin-top:4px' value='" + esc((f.options || []).join(", ")) + "' placeholder='options, comma separated'>" : "") + "</td>" +
+             "<td><select class='f-type'>" + types.map(function (t) { return "<option" + (t === f.type ? " selected" : "") + ">" + t + "</option>"; }).join("") + "</select></td>" +
+             "<td><input class='f-desc' value='" + esc(f.description || "") + "' placeholder='what it is'>" +
+             "<input class='f-q' style='margin-top:4px' value='" + esc(f.question || "") + "' placeholder='how the agent asks for it (optional)'></td>" +
+             "<td style='text-align:center'><input type='checkbox' class='f-req'" + (f.required ? " checked" : "") + "></td>" +
+             "<td><button class='btn btn-ghost btn-sm f-del' type='button'>✕</button></td></tr>";
+    }).join("");
+    Array.prototype.forEach.call(document.querySelectorAll(".f-del"), function (b) { b.addEventListener("click", function () { readFields(); fields.splice(parseInt(b.closest("tr").dataset.i, 10), 1); renderFields(); }); });
+    Array.prototype.forEach.call(document.querySelectorAll(".f-type"), function (s) { s.addEventListener("change", function () { readFields(); renderFields(); }); });
+  }
+  function readFields() {
+    fields = Array.prototype.map.call(document.querySelectorAll("#fieldsTable tbody tr"), function (tr) {
+      var opts = tr.querySelector(".f-options");
+      return { name: tr.querySelector(".f-name").value.trim(), type: tr.querySelector(".f-type").value, description: tr.querySelector(".f-desc").value.trim(),
+               question: tr.querySelector(".f-q").value.trim(), required: tr.querySelector(".f-req").checked,
+               options: opts ? opts.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean) : [] };
+    }).filter(function (f) { return f.name; });
+  }
+  function loadAgents() {
+    return api("/api/agents").then(function (d) {
+      agents = d.agents || [];
+      $("agentSel").innerHTML = agents.map(function (a) { return "<option value='" + esc(a.agent_id) + "'>" + esc(a.name) + (a.webhook_enabled ? " · webhook on" : " · webhook off") + "</option>"; }).join("");
+      var a = currentAgent(); fields = (a && a.extraction_fields) ? a.extraction_fields.slice() : []; renderFields();
+    });
+  }
+  $("agentSel").addEventListener("change", function () { var a = currentAgent(); fields = (a && a.extraction_fields) ? a.extraction_fields.slice() : []; renderFields(); $("pvBody").innerHTML = "<div class='empty' style='padding:0'>Run \"Preview on latest call\" to see what the AI pulls out of a real transcript.</div>"; $("pvMeta").textContent = ""; });
+  $("btnAddField").addEventListener("click", function () { readFields(); fields.push({ name: "", type: "string", description: "", required: false }); renderFields(); });
+  $("btnSuggest").addEventListener("click", function () {
+    var a = currentAgent(); if (!a) return;
+    $("btnSuggest").disabled = true; setMsg($("fieldsMsg"), "Asking the AI to read " + a.name + "'s prompt…", true);
+    api("/api/agents/suggest-fields", { agent_id: a.agent_id }).then(function (d) {
+      $("btnSuggest").disabled = false;
+      if (d.status !== "ok") { setMsg($("fieldsMsg"), d.error || "Suggestion failed", false); return; }
+      readFields();
+      var have = {}; fields.forEach(function (f) { have[f.name] = true; });
+      var added = 0; (d.fields || []).forEach(function (f) { if (!have[f.name]) { fields.push(f); added++; } });
+      renderFields(); setMsg($("fieldsMsg"), added + " field(s) suggested — review, then Save fields", true);
+    }).catch(function () { $("btnSuggest").disabled = false; setMsg($("fieldsMsg"), "Network error", false); });
+  });
+  $("btnSaveFields").addEventListener("click", function () {
+    var a = currentAgent(); if (!a) return; readFields();
+    api("/api/agents/update", { agent_id: a.agent_id, changes: { extraction_fields: fields }, note: "Data fields updated" }).then(function (d) {
+      if (d.status === "ok") { a.extraction_fields = fields.slice(); setMsg($("fieldsMsg"), "Saved " + fields.length + " field(s)", true); toast("✅ Fields saved"); }
+      else { setMsg($("fieldsMsg"), d.error || "Save failed", false); }
+    });
+  });
+  $("btnPreview").addEventListener("click", function () {
+    var a = currentAgent(); if (!a) return; readFields();
+    $("btnPreview").disabled = true; $("pvMeta").textContent = "extracting…";
+    api("/api/agents/extract-preview", { agent_id: a.agent_id, fields: fields }).then(function (d) {
+      $("btnPreview").disabled = false;
+      if (d.status !== "ok") { $("pvMeta").textContent = ""; $("pvBody").innerHTML = "<div class='msg err'>" + esc(d.error || "Preview failed") + "</div>"; return; }
+      $("pvMeta").textContent = "call " + d.call_id + " · " + d.engine + " · coverage " + Math.round((d.coverage || 0) * 100) + "%";
+      var rows = (d.fields || []).map(function (f) {
+        return "<tr><td class='mono'>" + esc(f.field_name) + "</td><td>" + (f.value === null || f.value === undefined ? "<span class='pill neu'>not found</span>" : "<b>" + esc(String(f.value)) + "</b>") + "</td><td><span class='pill " + (f.source === "ai" ? "accent" : "neu") + "'>" + esc(f.source) + "</span> " + Math.round((f.confidence || 0) * 100) + "%</td></tr>";
+      }).join("");
+      $("pvBody").innerHTML = "<table><thead><tr><th>Field</th><th>Value</th><th>Source</th></tr></thead><tbody>" + rows + "</tbody></table>" +
+        (d.missing_required && d.missing_required.length ? "<div class='msg err' style='margin-top:8px'>Missing required: " + esc(d.missing_required.join(", ")) + "</div>" : "") +
+        (d.note ? "<div class='msg err' style='margin-top:8px'>" + esc(d.note) + "</div>" : "") +
+        "<div style='margin-top:10px'><div class='crumb'>Webhook \"extracted\" payload</div><pre>" + esc(JSON.stringify(d.values || {}, null, 2)) + "</pre></div>";
+    }).catch(function () { $("btnPreview").disabled = false; $("pvMeta").textContent = ""; $("pvBody").innerHTML = "<div class='msg err'>Network error</div>"; });
+  });
+
+  loadDeliveries().then(loadEndpoints); loadAgents();
+})();
+</script>
+<script src="/profile.js"></script>
+</body>
+</html>

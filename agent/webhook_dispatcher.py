@@ -547,8 +547,36 @@ class WebhookDispatcher:
             payload = {k: v for k, v in evt.items() if k != "type"}
             job = worker.get_job(job_id=evt.get("job_id"))
             if job is not None:
+                # Per-agent opt-in: an agent with "Webhook & data" switched off posts nothing.
+                try:
+                    from agent.agent_builder import agent_builder
+                    md0 = job.metadata or {}
+                    cfg = agent_builder.get_agent(md0.get("agent_id") or "")
+                    if cfg is None and md0.get("agent_name"):
+                        cfg = next((agent_builder.get_agent(a["agent_id"]) for a in agent_builder.list_agents()
+                                    if a["name"] == md0.get("agent_name")), None)
+                    if cfg is not None and not cfg.webhook_enabled:
+                        return None
+                except Exception:
+                    pass
                 payload["metrics"] = job.metrics
                 payload["archive_url"] = job.archive_url
+                md = job.metadata or {}
+                payload["call"] = {
+                    "call_id": job.call_id, "room": job.room_name,
+                    "agent_id": md.get("agent_id"), "agent_name": md.get("agent_name"),
+                    "direction": md.get("direction"), "from_number": md.get("from_number"), "to_number": md.get("to_number"),
+                    "started_at": md.get("started_at") or job.created_at, "duration_seconds": md.get("duration_seconds"),
+                }
+                payload["summary"] = md.get("summary")
+                payload["sentiment"] = md.get("sentiment")
+                # Flat key→value data the AI pulled out of the transcript (agent's own fields first).
+                agent_x = md.get("agent_extraction") or {}
+                payload["extracted"] = agent_x.get("values") or {}
+                payload["extraction"] = {"agent_fields": agent_x, "schemas": md.get("crm_payloads") or {}}
+                if event_name in (WebhookEvent.CALL_COMPLETED.value, WebhookEvent.CALL_EXTRACTED.value):
+                    payload["transcript"] = [{"speaker": t.get("speaker"), "role": t.get("role"), "text": t.get("text")}
+                                             for t in (job.transcript_turns or [])]
             return self.dispatch_soon(event_name, payload, call_id=evt.get("call_id"))
 
         worker.subscribe(on_pipeline_event)

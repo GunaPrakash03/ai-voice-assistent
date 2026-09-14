@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import urllib.error
 import urllib.request
 from typing import Dict, Optional
 
@@ -53,6 +54,113 @@ from agent import retell_voices as _retell
 
 # Global in-memory cache for ultra-fast instant audio playback (<5ms response)
 _AUDIO_CACHE: Dict[str, bytes] = {}
+
+# Which engine actually produced the last clip for a voice, and why a fallback was used.
+# Keyed by voice_id so the API layer can tell the UI "you picked Fiona, you are hearing Jenny".
+_LAST_ENGINE: Dict[str, Dict[str, str]] = {}
+# Voices the configured ElevenLabs plan refuses (HTTP 402 "paid_plan_required"). Remembered so
+# every reply does not pay a ~1 s round-trip just to be refused again.
+_PLAN_LOCKED_VOICES: Dict[str, str] = {}
+
+
+def _note_engine(voice_id: str, engine: str, fallback_reason: str = "") -> None:
+    _LAST_ENGINE[voice_id] = {"engine": engine, "fallback_reason": fallback_reason}
+
+
+def get_voice_engine_status(voice_id: str) -> Dict[str, str]:
+    """Engine that served the most recent clip for this voice, plus the plan-lock note if any."""
+    info = dict(_LAST_ENGINE.get(voice_id, {"engine": "", "fallback_reason": ""}))
+    info["plan_locked"] = _PLAN_LOCKED_VOICES.get(voice_id, "")
+    return info
+
+
+def plan_locked_voices() -> Dict[str, str]:
+    return dict(_PLAN_LOCKED_VOICES)
+
+
+_XI_CATEGORY_CACHE: Dict[str, object] = {"at": 0.0, "cats": {}}
+
+
+def _elevenlabs_categories(api_key: str) -> Dict[str, str]:
+    """voice_id -> category (premade / professional / cloned / generated), cached 10 minutes."""
+    import time as _time
+    if _time.time() - float(_XI_CATEGORY_CACHE["at"]) < 600 and _XI_CATEGORY_CACHE["cats"]:
+        return _XI_CATEGORY_CACHE["cats"]  # type: ignore[return-value]
+    cats: Dict[str, str] = {}
+    try:
+        req = urllib.request.Request("https://api.elevenlabs.io/v1/voices", headers={"xi-api-key": api_key})
+        with urllib.request.urlopen(req, timeout=6.0) as resp:
+            for v in json.loads(resp.read().decode("utf-8")).get("voices", []):
+                cats[v.get("voice_id", "")] = v.get("category", "")
+        _XI_CATEGORY_CACHE.update(at=_time.time(), cats=cats)
+    except Exception as e:
+        log.debug("ElevenLabs voice list unavailable: %s", e)
+    return cats
+
+
+def _elevenlabs_probe(voice_id: str, api_key: str) -> str:
+    """"" if the plan can synthesize this voice, else the reason. One 2-character request, remembered."""
+    if voice_id in _PLAN_LOCKED_VOICES:
+        return _PLAN_LOCKED_VOICES[voice_id]
+    try:
+        req = urllib.request.Request(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format=mp3_22050_32",
+            data=json.dumps({"text": "Hi", "model_id": "eleven_turbo_v2_5"}).encode("utf-8"),
+            headers={"xi-api-key": api_key, "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=8.0) as resp:
+            resp.read(64)
+        return ""
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = json.loads(e.read().decode("utf-8", "replace")).get("detail", {}).get("message", "")
+        except Exception:
+            pass
+        reason = f"ElevenLabs plan does not allow this voice via the API (402: {detail or 'paid plan required'})" if e.code == 402 else f"ElevenLabs API error {e.code}"
+        if e.code == 402:
+            _PLAN_LOCKED_VOICES[voice_id] = reason
+        return reason
+    except Exception as e:
+        return f"ElevenLabs unreachable: {e}"
+
+
+def voice_engine_readiness(voice_id: str, provider: str, gender: str = "female") -> Dict[str, object]:
+    """What will actually speak for this catalog voice right now.
+
+    Returns {"ready": bool, "engine": label, "note": why-not}. "ready" means the voice you picked is
+    the voice you will hear (sandbox and live calls); otherwise a neural fallback speaks instead.
+    """
+    provider = (provider or "").lower()
+    fb = _spread_fallback_voice(voice_id, gender).replace("Neural", "")
+    fallback_label = f"Neural HD fallback ({fb.split('-')[-1]})"
+    if provider in ("studio", "neural"):
+        return {"ready": True, "engine": "Neural HD (free)", "note": ""}
+    if provider == "elevenlabs":
+        key = os.getenv("ELEVEN_API_KEY") or os.getenv("ELEVENLABS_API_KEY") or os.getenv("XI_API_KEY")
+        if not key:
+            return {"ready": False, "engine": fallback_label, "note": "ElevenLabs API key not configured"}
+        cat = _elevenlabs_categories(key).get(voice_id.replace("eleven-", ""), "")
+        if cat == "premade":
+            return {"ready": True, "engine": "ElevenLabs Turbo v2.5", "note": ""}
+        reason = _elevenlabs_probe(voice_id.replace("eleven-", ""), key)
+        if reason:
+            return {"ready": False, "engine": fallback_label, "note": reason}
+        return {"ready": True, "engine": "ElevenLabs Turbo v2.5", "note": ""}
+    if provider == "deepgram":
+        ok = bool(os.getenv("DEEPGRAM_API_KEY"))
+        return {"ready": ok, "engine": "Deepgram Aura" if ok else fallback_label, "note": "" if ok else "DEEPGRAM_API_KEY not configured"}
+    if provider == "openai":
+        ok = bool(os.getenv("OPENAI_API_KEY"))
+        return {"ready": ok, "engine": "OpenAI TTS" if ok else fallback_label, "note": "" if ok else "OPENAI_API_KEY not configured"}
+    if provider == "cartesia":
+        ok = bool(os.getenv("CARTESIA_API_KEY"))
+        return {"ready": ok, "engine": "Cartesia Sonic" if ok else fallback_label, "note": "" if ok else "CARTESIA_API_KEY not configured"}
+    if provider == "retell":
+        # Retell has no text-to-speech API. Its voices are ElevenLabs/OpenAI/Cartesia voices under the
+        # hood; the bundled entries are demo sample clips, so custom sentences always fall back.
+        return {"ready": False, "engine": fallback_label,
+                "note": "Retell AI is a call platform, not a speech engine: this is a demo sample clip, so your own sentences are spoken by the free neural voice. Pick the same voice under ElevenLabs or Deepgram to hear it for real"}
+    return {"ready": False, "engine": fallback_label, "note": f"No engine for provider '{provider}'"}
 _ELEVEN_PREVIEW_MAP: Dict[str, str] = {}
 
 # Official ElevenLabs CDN preview audio recordings (direct authentic portal recordings)
@@ -482,6 +590,26 @@ def _retell_neural_fallback_key(voice_id: str) -> str:
     return f"retell-{name}"
 
 
+MAX_SPOKEN_SENTENCES = 5
+
+_FALLBACK_POOL = {
+    "female": ["en-US-AvaNeural", "en-US-JennyNeural", "en-US-AriaNeural", "en-US-EmmaNeural", "en-US-MichelleNeural",
+               "en-US-AnaNeural", "en-GB-SoniaNeural", "en-GB-LibbyNeural", "en-AU-NatashaNeural", "en-IE-EmilyNeural",
+               "en-CA-ClaraNeural", "en-NZ-MollyNeural", "en-ZA-LeahNeural", "en-IN-NeerjaNeural"],
+    "male": ["en-US-GuyNeural", "en-US-AndrewNeural", "en-US-BrianNeural", "en-US-ChristopherNeural", "en-US-EricNeural",
+             "en-US-RogerNeural", "en-US-SteffanNeural", "en-GB-RyanNeural", "en-GB-ThomasNeural", "en-AU-WilliamNeural",
+             "en-IE-ConnorNeural", "en-CA-LiamNeural", "en-NZ-MitchellNeural", "en-IN-PrabhatNeural"],
+}
+
+
+def _spread_fallback_voice(voice_id: str, gender: str) -> str:
+    """Deterministic, well-spread neural voice for a voice we cannot synthesize natively."""
+    import hashlib
+    pool = _FALLBACK_POOL["male" if (gender or "").lower() == "male" else "female"]
+    h = int(hashlib.sha1((voice_id or "").encode("utf-8")).hexdigest(), 16)
+    return pool[h % len(pool)]
+
+
 def clean_spoken_speech_text(text: str) -> str:
     """Strips XML/HTML/SSML tags, URLs, brackets, JSON, Markdown, and prompt directives so only clean spoken sentences are vocalized."""
     if not text or not isinstance(text, str):
@@ -526,7 +654,10 @@ def clean_spoken_speech_text(text: str) -> str:
     # 4. Remove or normalize URLs: https://www.example.com/page -> "our website"
     t = re.sub(r"https?://(?:www\.)?[^\s/$.?#].[^\s]*", "our website", t, flags=re.I)
     t = re.sub(r"www\.[^\s/$.?#].[^\s]*", "our website", t, flags=re.I)
-    t = re.sub(r"\b[a-zA-Z0-9\-]+\.(?:com|org|net|gov|edu|io|ai)(?:/[^\s]*)?", "our website", t, flags=re.I)
+    # Bare domains stay as they are: "gmail.com" inside an email address was being rewritten to
+    # "our website", which corrupted the transcript *and* the history sent back to the model.
+    # A domain with a path is still a link the caller cannot follow by ear.
+    t = re.sub(r"(?<![\w@.])\b[a-zA-Z0-9\-]+\.(?:com|org|net|gov|edu|io|ai)/[^\s]+", "our website", t, flags=re.I)
 
     # 5. Remove Markdown links: [Title](url) -> Title
     t = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", t)
@@ -543,12 +674,17 @@ def clean_spoken_speech_text(text: str) -> str:
     t = re.sub(r"[\\/{}\[\]<>]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
 
-    # 9. Extract first 1-2 clean sentences for crisp conversational speech
+    # 9. Keep spoken turns short, but never cut the question off the end of a turn. A two-sentence
+    #    cap dropped "Is that your first name? And could you spell your last name?" from the name
+    #    readback, so the caller answered a question they never heard.
     sentences = re.split(r"(?<=[.!?])\s+", t)
     if sentences:
         clean_sentences = [s.strip() for s in sentences if len(s.strip()) > 3]
-        if len(clean_sentences) > 2:
-            t = " ".join(clean_sentences[:2])
+        if len(clean_sentences) > MAX_SPOKEN_SENTENCES:
+            kept = clean_sentences[:MAX_SPOKEN_SENTENCES]
+            if clean_sentences[-1].endswith("?") and clean_sentences[-1] not in kept:
+                kept = kept[:-1] + [clean_sentences[-1]]
+            t = " ".join(kept)
         elif clean_sentences:
             t = " ".join(clean_sentences)
 
@@ -584,13 +720,18 @@ async def generate_speech_audio_bytes(
     clean_name = name.replace("(Studio Pro)", "").replace("(Free Neural)", "").replace("(Spanish Studio Pro)", "").replace("(Retell AI)", "").replace("(British Free)", "").replace("(Indian English Free)", "").replace("(Aussie Free)", "").strip() or "Assistant"
     
     phrase = cleaned_input or f"Hello! I am {clean_name}, your AI voice assistant. How can I help you today?"
+    fallback_reason = ""
+    requested_voice_id = voice_id  # retell voices may be remapped to a neural profile below
 
     # 0. Retell AI platform voice library
     if provider == "retell" or _retell.is_retell_voice_id(voice_id):
         retell_audio = _synthesize_retell_voice(voice_id, phrase, cleaned_input, gender)
         if retell_audio:
             _AUDIO_CACHE[cache_key] = retell_audio
+            _note_engine(requested_voice_id, "retell")
             return retell_audio
+        fallback_reason = ("Retell AI is a call platform, not a speech engine: this entry is a demo sample clip, "
+                           "so your own sentences are spoken by the free neural voice")
         # Route the neural fallback through the tuned retell-<name> profile if we have one.
         fb_key = _retell_neural_fallback_key(voice_id)
         if fb_key in NEURAL_VOICE_MAP and voice_id not in NEURAL_VOICE_MAP:
@@ -600,7 +741,11 @@ async def generate_speech_audio_bytes(
     if provider == "elevenlabs" or voice_id.startswith("eleven-"):
         # If user has ELEVENLABS_API_KEY / XI_API_KEY
         xi_key = os.getenv("ELEVEN_API_KEY") or os.getenv("ELEVENLABS_API_KEY") or os.getenv("XI_API_KEY")
-        if xi_key:
+        if not xi_key:
+            fallback_reason = "ElevenLabs API key not configured"
+        elif voice_id in _PLAN_LOCKED_VOICES:
+            fallback_reason = _PLAN_LOCKED_VOICES[voice_id]
+        if xi_key and voice_id not in _PLAN_LOCKED_VOICES:
             try:
                 raw_id = voice_id.replace("eleven-", "")
                 url = f"https://api.elevenlabs.io/v1/text-to-speech/{raw_id}"
@@ -623,15 +768,31 @@ async def generate_speech_audio_bytes(
                     audio_bytes = resp.read()
                     if audio_bytes:
                         _AUDIO_CACHE[cache_key] = audio_bytes
+                        _note_engine(requested_voice_id, "elevenlabs")
                         return audio_bytes
+            except urllib.error.HTTPError as e:
+                detail = ""
+                try:
+                    detail = json.loads(e.read().decode("utf-8", "replace")).get("detail", {}).get("message", "")
+                except Exception:
+                    pass
+                if e.code == 402:
+                    # Free/Starter plans cannot synthesize Voice Library / professional voices via the API.
+                    fallback_reason = f"ElevenLabs plan does not allow this voice via the API (402: {detail or 'paid plan required'})"
+                    _PLAN_LOCKED_VOICES[voice_id] = fallback_reason
+                else:
+                    fallback_reason = f"ElevenLabs API error {e.code}: {detail or e.reason}"
+                log.warning("ElevenLabs API request failed for %s: %s", voice_id, fallback_reason)
             except Exception as e:
-                log.warning("ElevenLabs API key request failed: %s", e)
+                fallback_reason = f"ElevenLabs API request failed: {e}"
+                log.warning("ElevenLabs API request failed for %s: %s", voice_id, e)
 
         # Direct official ElevenLabs portal CDN recording (authentic voice) if previewing without custom text
         if not cleaned_input:
             cdn_audio = _fetch_elevenlabs_cdn(voice_id)
             if cdn_audio:
                 _AUDIO_CACHE[cache_key] = cdn_audio
+                _note_engine(requested_voice_id, "elevenlabs-cdn-sample")
                 return cdn_audio
 
     # 2. Deepgram Aura Official TTS (uses DEEPGRAM_API_KEY from .env)
@@ -641,7 +802,10 @@ async def generate_speech_audio_bytes(
             dg_audio = _fetch_deepgram_tts(voice_id, phrase, dg_key)
             if dg_audio:
                 _AUDIO_CACHE[cache_key] = dg_audio
+                _note_engine(requested_voice_id, "deepgram")
                 return dg_audio
+        else:
+            fallback_reason = "Deepgram API key not configured"
 
     # 3. OpenAI TTS API (if OPENAI_API_KEY is present)
     if provider == "openai" or voice_id.startswith("openai-"):
@@ -651,7 +815,10 @@ async def generate_speech_audio_bytes(
             oa_audio = _fetch_openai_tts(voice_name, phrase, oa_key)
             if oa_audio:
                 _AUDIO_CACHE[cache_key] = oa_audio
+                _note_engine(requested_voice_id, "openai")
                 return oa_audio
+        else:
+            fallback_reason = "OpenAI API key not configured"
 
     # 4. Cartesia Sonic API (if CARTESIA_API_KEY is present)
     if provider == "cartesia":
@@ -660,19 +827,25 @@ async def generate_speech_audio_bytes(
             cart_audio = _fetch_cartesia_tts(voice_id, phrase, cart_key)
             if cart_audio:
                 _AUDIO_CACHE[cache_key] = cart_audio
+                _note_engine(requested_voice_id, "cartesia")
                 return cart_audio
+        else:
+            fallback_reason = "Cartesia API key not configured"
 
     # 5. High-Definition Neural TTS with Human Emotion & Expressive Tone
     cfg = NEURAL_VOICE_MAP.get(voice_id)
-    if not cfg:
-        is_female = (gender == "female")
-        neural = "en-US-JennyNeural" if is_female else "en-US-GuyNeural"
-        rate = "+0%"
-        pitch = "+0Hz"
-    else:
+    is_native_neural = provider in ("studio", "neural")
+    if cfg and is_native_neural:
         neural = cfg["neural"]
         rate = cfg.get("rate", "+0%")
         pitch = cfg.get("pitch", "+0Hz")
+    else:
+        # A *fallback* for some other provider's voice: spread requested voices across distinct
+        # neural voices so switching Cimo -> Fiona -> Anika is audible (12 catalog voices used to
+        # collapse onto "Ava"). Tuned profiles are kept only for the Studio/Neural catalog itself.
+        neural = _spread_fallback_voice(requested_voice_id, gender)
+        rate = (cfg or {}).get("rate", "+0%")
+        pitch = (cfg or {}).get("pitch", "+0Hz")
 
     # Map user/preset tone labels to expressive human styles
     style_key = (style or "").lower().strip()
@@ -713,6 +886,9 @@ async def generate_speech_audio_bytes(
         audio_bytes = audio_stream.getvalue()
         if audio_bytes:
             _AUDIO_CACHE[cache_key] = audio_bytes
+            # Studio / neural voices are *meant* to run on this engine; anything else got here by falling back.
+            is_native = provider in ("studio", "neural")
+            _note_engine(requested_voice_id, f"neural:{neural}", "" if is_native else (fallback_reason or f"{provider} engine unavailable"))
             return audio_bytes
     except Exception as ex:
         log.warning("Neural TTS failed for %s (%s): %s", voice_id, neural, ex)
@@ -735,11 +911,39 @@ async def generate_speech_audio_bytes(
             val = int(math.sin(2 * math.pi * f0 * t) * env * 16000)
             data.extend(struct.pack("<h", val))
         wf.writeframes(data)
+    _note_engine(requested_voice_id, "tone-simulator", fallback_reason or "no speech engine available")
     return buf.getvalue()
 
 
+import threading
+_INFLIGHT: Dict[str, threading.Event] = {}
+_INFLIGHT_LOCK = threading.Lock()
+
+
+def _cache_key(voice_id: str, text: str) -> str:
+    return f"{voice_id}:{clean_spoken_speech_text(text or '')}"
+
+
 def get_voice_audio(voice_id: str, name: str = "", gender: str = "female", style: str = "", provider: str = "cartesia", text: str = "") -> bytes:
-    """Synchronous wrapper for generating speech audio."""
+    """Synchronous wrapper for generating speech audio.
+
+    Concurrent requests for the same voice+text (the server pre-warm and the page's own fetch a few
+    milliseconds later) share one synthesis instead of running it twice.
+    """
+    key = _cache_key(voice_id, text)
+    if key in _AUDIO_CACHE:
+        return _AUDIO_CACHE[key]
+    with _INFLIGHT_LOCK:
+        ev = _INFLIGHT.get(key)
+        owner = ev is None
+        if owner:
+            ev = threading.Event()
+            _INFLIGHT[key] = ev
+    if not owner:
+        ev.wait(timeout=30.0)
+        cached = _AUDIO_CACHE.get(key)
+        if cached is not None:
+            return cached
     loop = asyncio.new_event_loop()
     try:
         return loop.run_until_complete(
@@ -754,3 +958,169 @@ def get_voice_audio(voice_id: str, name: str = "", gender: str = "female", style
         )
     finally:
         loop.close()
+        if owner:
+            with _INFLIGHT_LOCK:
+                _INFLIGHT.pop(key, None)
+            ev.set()
+
+
+class _LiveStream:
+    """An in-progress synthesis that several consumers can follow chunk by chunk."""
+    def __init__(self):
+        self.chunks: List[bytes] = []
+        self.done = False
+        self.cond = threading.Condition()
+
+    def follow(self):
+        i = 0
+        while True:
+            with self.cond:
+                while i >= len(self.chunks) and not self.done:
+                    self.cond.wait(30.0)
+                if i < len(self.chunks):
+                    b = self.chunks[i]; i += 1
+                else:
+                    return
+            yield b
+
+
+_STREAMS: Dict[str, _LiveStream] = {}
+
+
+def stream_voice_audio(voice_id: str, name: str = "", gender: str = "female", style: str = "",
+                       provider: str = "cartesia", text: str = ""):
+    """Yields audio bytes as the engine produces them, so playback can begin before the clip ends.
+
+    Streams ElevenLabs (premade voices), Deepgram Aura and the neural engine; other providers fall
+    back to the whole clip in one piece. A second request for the same clip while one is being
+    produced (the server pre-warm and the page's fetch) follows the same stream chunk by chunk.
+    The completed clip is cached under the same key the non-streaming path uses.
+    """
+    key = _cache_key(voice_id, text)
+    cached = _AUDIO_CACHE.get(key)
+    if cached is not None:
+        yield cached
+        return
+    with _INFLIGHT_LOCK:
+        live = _STREAMS.get(key)
+    if live is not None:
+        for b in live.follow():
+            yield b
+        return
+    if key in _INFLIGHT:
+        yield get_voice_audio(voice_id, name, gender, style, provider, text)
+        return
+    phrase = clean_spoken_speech_text(text or "")
+    if not phrase:
+        yield get_voice_audio(voice_id, name, gender, style, provider, text)
+        return
+
+    provider = (provider or "").lower()
+    xi_key = (os.getenv("ELEVEN_API_KEY") or os.getenv("ELEVENLABS_API_KEY") or os.getenv("XI_API_KEY") or "").strip()
+    dg_key = (os.getenv("DEEPGRAM_API_KEY") or "").strip()
+    plan: Optional[tuple] = None   # (mode, fallback reason)
+    if provider == "elevenlabs" and xi_key and voice_id not in _PLAN_LOCKED_VOICES:
+        plan = ("elevenlabs", "")
+    elif provider == "deepgram" and dg_key:
+        plan = ("deepgram", "")
+    elif provider in ("studio", "neural"):
+        plan = ("neural", "")
+    elif provider in ("retell", "elevenlabs", "cartesia", "openai"):
+        reason = ("Retell AI is a call platform, not a speech engine: this is a demo sample clip, so your own sentences are spoken by the free neural voice" if provider == "retell"
+                  else _PLAN_LOCKED_VOICES.get(voice_id) or f"{provider} engine unavailable (no API key)")
+        plan = ("neural", reason)
+    if plan is None:
+        yield get_voice_audio(voice_id, name, gender, style, provider, text)
+        return
+
+    live = _LiveStream()
+    ev = threading.Event()
+    with _INFLIGHT_LOCK:
+        _STREAMS[key] = live
+        _INFLIGHT[key] = ev
+    result = {"engine": "", "fallback": plan[1]}
+
+    def push(b: bytes):
+        with live.cond:
+            live.chunks.append(b)
+            live.cond.notify_all()
+
+    def produce():
+        mode = plan[0]
+        try:
+            if mode == "elevenlabs":
+                req = urllib.request.Request(
+                    f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id.replace('eleven-', '')}/stream?optimize_streaming_latency=3",
+                    data=json.dumps({"text": phrase, "model_id": "eleven_turbo_v2_5",
+                                     "voice_settings": {"stability": 0.50, "similarity_boost": 0.80, "style": 0.15, "use_speaker_boost": True}}).encode("utf-8"),
+                    headers={"xi-api-key": xi_key, "Content-Type": "application/json"})
+                try:
+                    with urllib.request.urlopen(req, timeout=12.0) as resp:
+                        result["engine"] = "elevenlabs"
+                        while True:
+                            b = resp.read(4096)
+                            if not b:
+                                break
+                            push(b)
+                except urllib.error.HTTPError as e:
+                    if e.code == 402:
+                        _PLAN_LOCKED_VOICES[voice_id] = "ElevenLabs plan does not allow this voice via the API (402)"
+                    result["fallback"] = f"ElevenLabs API error {e.code}"
+                    mode = "neural"
+            if mode == "deepgram":
+                req = urllib.request.Request(
+                    f"https://api.deepgram.com/v1/speak?model={voice_id}",
+                    data=json.dumps({"text": phrase}).encode("utf-8"),
+                    headers={"Authorization": f"Token {dg_key}", "Content-Type": "application/json", "User-Agent": "VoiceAgentService/1.0"})
+                try:
+                    with urllib.request.urlopen(req, timeout=12.0) as resp:
+                        result["engine"] = "deepgram"
+                        while True:
+                            b = resp.read(4096)
+                            if not b:
+                                break
+                            push(b)
+                except Exception as e:
+                    result["fallback"] = f"Deepgram error: {e}"
+                    mode = "neural"
+            if mode == "neural" and not live.chunks:
+                import edge_tts
+                cfg = NEURAL_VOICE_MAP.get(voice_id)
+                if cfg and provider in ("studio", "neural"):
+                    neural, rate, pitch = cfg["neural"], cfg.get("rate", "+0%"), cfg.get("pitch", "+0Hz")
+                else:
+                    neural, rate, pitch = _spread_fallback_voice(voice_id, gender), (cfg or {}).get("rate", "+0%"), (cfg or {}).get("pitch", "+0Hz")
+                result["engine"] = f"neural:{neural}"
+
+                async def run():
+                    comm = edge_tts.Communicate(phrase, voice=neural, rate=rate, pitch=pitch)
+                    async for c in comm.stream():
+                        if c["type"] == "audio":
+                            push(c["data"])
+                loop = asyncio.new_event_loop()
+                try:
+                    loop.run_until_complete(run())
+                finally:
+                    loop.close()
+        except Exception as e:
+            log.warning("Streaming synthesis failed for %s: %s", voice_id, e)
+        finally:
+            if live.chunks:
+                _AUDIO_CACHE[key] = b"".join(live.chunks)
+                _note_engine(voice_id, result["engine"] or "unknown", result["fallback"])
+            with live.cond:
+                live.done = True
+                live.cond.notify_all()
+            with _INFLIGHT_LOCK:
+                _STREAMS.pop(key, None)
+                _INFLIGHT.pop(key, None)
+            ev.set()
+
+    threading.Thread(target=produce, daemon=True).start()
+    got_any = False
+    for b in live.follow():
+        got_any = True
+        yield b
+    if not got_any:
+        # Engine produced nothing (network error): fall back to the robust whole-clip path.
+        yield get_voice_audio(voice_id, name, gender, style, provider, text)

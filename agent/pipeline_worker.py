@@ -276,6 +276,13 @@ class PostCallPipelineWorker:
             with open(STATE_FILE, "w", encoding="utf-8") as f:
                 jobs_data = [j.to_dict() for j in list(self._jobs.values())[-100:]]
                 json.dump({"jobs": jobs_data, "updated_at": time.time()}, f, indent=2)
+            try:
+                from agent import storage
+                # The file keeps the last 100 jobs; the database keeps every job ever completed.
+                for j in list(self._jobs.values())[-100:]:
+                    storage.save_document("call_jobs", j.job_id, j.to_dict())
+            except Exception as e:
+                log.debug("storage sync skipped: %s", e)
         except Exception as e:
             log.warning("Failed to save pipeline state: %s", e)
 
@@ -478,6 +485,28 @@ class PostCallPipelineWorker:
                 transcript_turns=job.transcript_turns,
                 metadata=job.metadata,
             )
+            # The agent's own field list (Agent Builder → Data & webhooks), extracted by Gemini when
+            # available. This is the payload integrators actually want on the webhook.
+            try:
+                from agent.agent_builder import agent_builder
+                from agent.schema_extractor import fields_to_schema
+                agent_id = (job.metadata or {}).get("agent_id") or ""
+                cfg = agent_builder.get_agent(agent_id) if agent_id else None
+                if cfg is None and (job.metadata or {}).get("agent_name"):
+                    cfg = next((agent_builder.get_agent(a["agent_id"]) for a in agent_builder.list_agents()
+                                if a["name"] == job.metadata.get("agent_name")), None)
+                if cfg and cfg.webhook_enabled and cfg.extraction_fields:
+                    sid = f"agent:{cfg.agent_id}"
+                    res = schema_extractor.extract_with_ai(sid, job.call_id, job.transcript_turns, job.metadata,
+                                                           schema=fields_to_schema(cfg.extraction_fields))
+                    extraction_results[sid] = res
+                    job.metadata["agent_extraction"] = {"agent_id": cfg.agent_id, "schema_id": sid,
+                                                        "engine": "gemini" if any(f.source == "ai" for f in res.fields) else "regex",
+                                                        "values": res.to_crm_payload(),
+                                                        "confidence": res.overall_confidence, "coverage": res.extraction_coverage,
+                                                        "missing_required": res.missing_required}
+            except Exception as e:
+                log.warning("Agent-specific extraction skipped: %s", e)
             # Store serializable results
             job.metadata["extractions"] = {
                 sid: res.to_dict() for sid, res in extraction_results.items()

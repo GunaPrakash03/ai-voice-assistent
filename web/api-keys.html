@@ -140,13 +140,13 @@
       <a href="/#calls">Calls<span class="ct" id="navCtCalls">0</span></a>
       <a href="/#detail">Call detail</a>
       <a href="/agent-builder.html">Agents<span class="ct" id="navCtAgents">1</span></a>
-      <a href="/api-keys.html" class="active">API Keys &amp; Providers<span class="ct">🔑</span></a>
+      <a href="/api-keys.html" class="active" data-admin-only>API Keys &amp; Providers<span class="ct">🔑</span></a>
+      <a href="/webhooks.html">Webhooks &amp; Data<span class="ct">⚡</span></a>
+      <a href="/profile.html">My Profile<span class="ct">👤</span></a>
+      <a href="/user-guide.html">How to use<span class="ct">📘</span></a>
     </div>
     <div class="rail-foot">
-      <div>WORKSPACE</div>
-      <div style="color:var(--rail-on)">Voice Agent Service</div>
-      <div><a href="/live-console.html">Live console</a> · <a href="/agent-builder.html">Builder</a></div>
-      <div><a href="/task-plan.html">Task plan</a> · <a href="/softphone.html">Softphone</a></div>
+      <!-- profile card is injected here by /profile.js -->
     </div>
   </nav>
 
@@ -635,5 +635,6 @@
   loadProviders();
 })();
 </script>
+<script src="/profile.js"></script>
 </body>
 </html>
