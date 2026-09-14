@@ -56,7 +56,28 @@
       "assigned_agent": "Apex Legal Assistant",
       "purchased_at": 1788951742.9044557,
       "metadata": {}
+    },
+    {
+      "phone_number": "+15155859366",
+      "friendly_name": "+1 (515) 585-9366 (Twilio Live)",
+      "country": "US",
+      "region": "Iowa, United States",
+      "capabilities": [
+        "voice",
+        "sip",
+        "sms",
+        "mms"
+      ],
+      "monthly_cost": 1.15,
+      "status": "active",
+      "carrier": "twilio",
+      "assigned_trunk_id": "trunk-inbound-primary",
+      "assigned_agent": "Maya - Bottini & Bottini",
+      "purchased_at": 1789357500.0,
+      "metadata": {
+        "twilio_sid": "PN6732627cdac3794bd93936a0e2b2386b"
+      }
     }
   ],
-  "updated_at": 1789356927.2167869
+  "updated_at": 1789357500.0
 }

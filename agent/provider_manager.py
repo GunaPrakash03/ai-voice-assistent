@@ -483,6 +483,59 @@ class ProviderManager:
                     "error": f"Failed to connect to Anthropic: {str(ex)}",
                 }
 
+        # 7. Twilio Telephony
+        elif provider_id == "twilio":
+            try:
+                import base64
+                sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+                # If key looks like SID, or if separate token provided
+                auth_token = key
+                if key.startswith("AC") and not sid:
+                    sid = key
+                if not sid:
+                    sid = self.get_key("TWILIO_ACCOUNT_SID")
+                if not sid or not auth_token:
+                    return {
+                        "status": "error",
+                        "provider": "twilio",
+                        "connected": False,
+                        "error": "Both TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required for Twilio authentication.",
+                    }
+                url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}.json"
+                auth_str = base64.b64encode(f"{sid}:{auth_token}".encode()).decode("ascii")
+                req = urllib.request.Request(
+                    url,
+                    headers={"Authorization": f"Basic {auth_str}", "User-Agent": "VoiceAgentService/1.0"}
+                )
+                with urllib.request.urlopen(req, timeout=6.0) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    elapsed_ms = int((time.perf_counter() - start) * 1000)
+                    friendly_name = data.get("friendly_name", "Twilio Project")
+                    acc_type = data.get("type", "Standard")
+                    status_str = data.get("status", "active")
+                    return {
+                        "status": "ok",
+                        "provider": "twilio",
+                        "connected": True,
+                        "latency_ms": elapsed_ms,
+                        "details": f"Authenticated successfully with Twilio! Account: '{friendly_name}' ({acc_type}, status: {status_str}).",
+                    }
+            except urllib.error.HTTPError as he:
+                return {
+                    "status": "error",
+                    "provider": "twilio",
+                    "connected": False,
+                    "code": he.code,
+                    "error": f"Twilio API returned HTTP {he.code}: {he.reason}",
+                }
+            except Exception as ex:
+                return {
+                    "status": "error",
+                    "provider": "twilio",
+                    "connected": False,
+                    "error": f"Failed to connect to Twilio: {str(ex)}",
+                }
+
         return {
             "status": "ok",
             "provider": provider_id,

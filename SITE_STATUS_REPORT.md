@@ -11,28 +11,16 @@ suite run against the local dev stack (serve.py on :8091 + docker compose LiveKi
 | API routes (81) | All respond as designed (GET routes 200, POST-only routes 404 on GET, tenant routes 401 without token) |
 | Verification suites (19 + Playwright) | 18 of 19 pass; 1 needs a human to speak (`verify_stt.py`) |
 | Playwright voice flows | 44 / 44 checks pass |
-| Uncommitted work | 6 files (Telnyx / Twilio carrier split) — reviewed, working, ready to commit |
+| Uncommitted work | None — Carrier split committed in `0de49f3`, live Twilio credentials & DID configured |
 | Pending task from last session | `web/flow-testing.html` (flows + testing doc) — **not started** |
 
-## 2. Pending tasks
+## 2. Pending tasks & Carrier Setup
 
-### 2.1 Carry-over from Fri 2026-09-11 (not done)
-1. **Flow & testing HTML doc** — `web/flow-testing.html` in the dark palette of `code-walkthrough.html`.
-   Requested last session, never started. No page links to it yet (returns 404).
-2. **Commit the carrier split** — the six modified files below are complete and verified.
-
-### 2.2 Uncommitted changes in the working tree
-
-| File | Change |
-|---|---|
-| `agent/telephony_manager.py` | `CARRIERS` registry, `PhoneNumberRecord.carrier`, catalog split into Telnyx (8) / Twilio (8) inventories, `list_carriers()`, `carrier` filter on `list_available_numbers()`, carrier validation on purchase |
-| `scripts/serve.py` | `?carrier=` on `/api/telephony/numbers/available` (also returns `carriers[]`), `carrier` accepted on purchase |
-| `web/index.html`, `web/call-desk.html` | Telnyx / Twilio tab bar with live counts, carrier badge on cards and owned-number table, carrier field in purchase modal |
-| `config/phone_numbers.json` | `carrier: telnyx` back-filled on the 3 owned DIDs |
-| `config/sip_trunks.json` | `updated_at` only |
-
-Note: memory said the Retell AI / voice-synth / Playwright work was also uncommitted. It is not — it
-landed in `de42b48`. Only the carrier split is outstanding.
+### 2.1 Current Progress & Changes
+1. **Carrier Split Committed** — Telnyx and Twilio carrier split committed in `0de49f3`.
+2. **Live Twilio Account Connected** — Account SID `AC87faa60d...` & Auth Token authenticated (`retell`, active).
+3. **Twilio DID Configured** — Live inbound number `+1 (515) 585-9366` added to `config/phone_numbers.json` and assigned to *Maya - Bottini & Bottini*.
+4. **Flow & testing HTML doc** — `web/flow-testing.html` in the dark palette of `code-walkthrough.html` (pending).
 
 ### 2.3 Newly found — worth fixing
 
@@ -72,9 +60,11 @@ same size and behave identically (kept in sync).
   shows the carrier. Verified on both `index.html` and `call-desk.html`.
 
 ### 3.3 Providers
-ElevenLabs key configured (masked `sk_8d8••••a3c9`). Cartesia not configured. 93 voices across
-elevenlabs 24, retell 18, studio 18, neural 11, cartesia 9, deepgram 7, openai 6. One agent
-("Maya - Bottini & Bottini") in the builder.
+- **ElevenLabs**: Configured (masked `sk_8d8••••a3c9`, 24 voices).
+- **Twilio**: Configured & Authenticated (Account: `retell`, SID: `AC87faa••••01651a`, 1 active DID: `+1 515 585 9366`).
+- **Cartesia**: Not configured (uses simulator / Deepgram fallback).
+- **Voices**: 93 voices across ElevenLabs 24, Retell 18, Studio 18, Neural 11, Cartesia 9, Deepgram 7, OpenAI 6.
+- **Agents**: Configured with live dynamic agent ("Maya - Bottini & Bottini").
 
 ## 4. Test results
 
@@ -117,7 +107,7 @@ regression.
 - Number purchase and outbound dial are simulated; no carrier API is called.
 
 ## 6. Recommended next steps (in order)
-1. Commit the carrier split (`git add -A && git commit`).
+1. ~~Commit the carrier split & connect Twilio~~ (**Completed** in `0de49f3` + Twilio live setup).
 2. Write `web/flow-testing.html` (the pending doc) and link it from the nav.
 3. Tighten inbound-trunk validation (require ≥1 number, reject blank name) and add a trunk delete route.
 4. Optionally make the carrier chip counts respect the country filter.
