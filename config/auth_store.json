@@ -194,7 +194,7 @@
       "phone": "",
       "password_hash": "5506afb216928aaccfea739591abd2d5b761ef8fa845fe3e1416327ab5eebf0c",
       "password_salt": "4263481ad082a7cb8fa20c47d1fb1f45",
-      "last_login_at": 1789389698.6304493
+      "last_login_at": 1789389791.3539956
     },
     {
       "user_id": "usr-632668d1",
@@ -1377,7 +1377,7 @@
       "is_test": false,
       "created_at": 1789389703.23521,
       "expires_at": null,
-      "last_used_at": null,
+      "last_used_at": 1789389703.354858,
       "revoked": false
     }
   ],
@@ -1571,7 +1571,17 @@
       "remember": false,
       "user_agent": "dev-session",
       "method": "dev"
+    },
+    {
+      "token_hash": "c6695d97d508433237b1039703a448cecde0ac6bde614d476e2da35ca4d1b285",
+      "user_id": "usr-admin-01",
+      "workspace_id": "ws-default",
+      "created_at": 1789389791.3539913,
+      "expires_at": 1789432991.3539917,
+      "remember": false,
+      "user_agent": "dev-session",
+      "method": "dev"
     }
   ],
-  "updated_at": 1789389703.2369633
+  "updated_at": 1789389791.3550885
 }

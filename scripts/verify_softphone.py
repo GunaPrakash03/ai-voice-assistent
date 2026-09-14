@@ -180,8 +180,18 @@ def test_softphone_rest_endpoints():
     """Verify softphone-related REST endpoints served by scripts/serve.py on port 8091."""
     base_url = "http://localhost:8091"
 
+    # Pages sit behind the login gate: mint a localhost dev session and send its cookie.
+    cookie = ""
+    try:
+        sreq = urllib.request.Request(f"{base_url}/api/v1/auth/dev-session", data=b"{}", headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(sreq, timeout=5) as sr:
+            sc = sr.headers.get("Set-Cookie", "")
+            cookie = sc.split(";", 1)[0] if sc else ""
+    except Exception:
+        pass
+
     # 1. GET /softphone.html
-    req = urllib.request.Request(f"{base_url}/softphone.html")
+    req = urllib.request.Request(f"{base_url}/softphone.html", headers={"Cookie": cookie} if cookie else {})
     with urllib.request.urlopen(req, timeout=5) as r:
         assert r.status == 200
         content = r.read().decode("utf-8")

@@ -1,5 +1,35 @@
 # Site Status Report — 2026-09-14
 
+## 0. Executive summary (end of day)
+
+**State:** all 20 verification suites pass (full run 18/20 back-to-back; the two failures were the
+known LiveKit handshake flake and a page-gate issue in the softphone suite, both pass alone — the
+suite now takes a dev session). All 11 pages load with zero JavaScript errors. Work through ff70480 is
+committed; the remaining uncommitted set is the last round of tweaks (permission relaxation, header
+removal, builder new-agent mode, user guide, softphone suite fix).
+
+**What the platform does now (built or fixed today):**
+| Area | Result |
+|---|---|
+| Sign-in | Password, then SMS code (Twilio) when a phone is on the profile; first-run admin setup; HttpOnly sessions; sign-out |
+| Users & roles | Admin / operator / analyst. Members: full dashboard except API keys and member management; private agents and calls |
+| Agents | Owned per user; builder with Save/revisions; "new agent" mode; Set live; per-number routing |
+| Dialogue | Gemini drives sandbox and live calls (retired model ids remapped, thinking budget fixed); tools via function calling |
+| Voice | Real engines streamed (ElevenLabs premade, Deepgram Aura); honest fallback labels; picker readiness chips |
+| Test call | One request per turn (1.2–1.6 s), streamed audio (0.5 s to voice on ElevenLabs), mic paused while agent speaks, auto hang-up, saved to history with dual-channel recording |
+| Softphone | Actually joins the LiveKit room now; agent greets on pick-up; sign-off ends the call |
+| Webhooks & data | Per-agent toggle; AI-suggested fields from the prompt; Gemini extraction from transcripts; signed call.completed payload with `extracted`; admin test/replay page |
+| Storage | PostgreSQL write-through + restore for every store and every recording |
+| Docs | In-app **How to use** page (`/user-guide.html`) linked from every sidebar |
+
+**Still simulated / needs a decision:** real phone calls (no LiveKit SIP service in the stack), the
+`s3://` archive URL (local placeholder), Twilio trial SMS restriction, ElevenLabs free plan voices.
+
+**Recommended next:** commit; add the LiveKit SIP container and point the Twilio trunk at it for real
+calls; decide on cloud storage for the archive.
+
+---
+
 Scope: pending work check, full site sweep (8 pages, 81 API routes), and the complete verification
 suite run against the local dev stack (serve.py on :8091 + docker compose LiveKit / Redis / worker).
 
@@ -426,3 +456,13 @@ Data scoping to their own agents/calls is unchanged.)*
   `call.extracted` + `call.completed` with 8 of 10 fields filled by Gemini (coverage 80%); toggle off →
   0 deliveries, toggle on → 2. Suites 3.4 / 3.3 / 3.1 / 4.1 pass; 10 pages clean.
 - Maya currently has the toggle **on** with 10 AI-suggested fields; the local test endpoint was removed.
+
+### 7.24 Final checks and in-app guide
+- `web/user-guide.html`: "How to use this dashboard" — 12 sections (sign in, provider keys, build an
+  agent, test call, voices, go live & numbers, calls & recordings, webhooks & data, softphone, users &
+  roles, where data lives, troubleshooting) in the app's own style, linked as **How to use** in every
+  sidebar. Renders with the profile card, no errors.
+- Agent Builder top header bar removed (user request). Members with no agents get a "Create your first
+  agent" form; saving creates their own agent (server no longer falls back to the live agent for them).
+- Full regression: 20/20 suites pass individually (`verify_softphone.py` now mints a dev session for
+  the page fetch). 11 pages clean.
