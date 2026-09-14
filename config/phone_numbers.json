@@ -13,6 +13,7 @@
       ],
       "monthly_cost": 2.0,
       "status": "active",
+      "carrier": "telnyx",
       "assigned_trunk_id": "trunk-inbound-primary",
       "assigned_agent": "Intake Agent",
       "purchased_at": 1789123705.1966922,
@@ -31,6 +32,7 @@
       ],
       "monthly_cost": 2.0,
       "status": "active",
+      "carrier": "telnyx",
       "assigned_trunk_id": "trunk-inbound-primary",
       "assigned_agent": "Support Agent",
       "purchased_at": 1788951734.4027483,
@@ -49,11 +51,12 @@
       ],
       "monthly_cost": 1.5,
       "status": "active",
+      "carrier": "telnyx",
       "assigned_trunk_id": "trunk-inbound-primary",
       "assigned_agent": "Apex Legal Assistant",
       "purchased_at": 1788951742.9044557,
       "metadata": {}
     }
   ],
-  "updated_at": 1789124042.6089
+  "updated_at": 1789356927.2167869
 }

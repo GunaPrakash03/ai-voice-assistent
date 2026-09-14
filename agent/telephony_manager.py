@@ -52,6 +52,7 @@ class PhoneNumberRecord:
     capabilities: List[str]  # ["voice", "sip", "sms", "dual_channel"]
     monthly_cost: float
     status: str = "active"  # "active" | "released"
+    carrier: str = "telnyx"  # "telnyx" | "twilio"
     assigned_trunk_id: str = "trunk-inbound-primary"
     assigned_agent: str = "Intake Agent"
     purchased_at: float = field(default_factory=time.time)
@@ -177,19 +178,31 @@ def validate_outbound_trunk_payload(trunk_id: str, name: str, address: str, numb
     return errors
 
 
+CARRIERS = {
+    "telnyx": {"name": "Telnyx", "sip_host": "sip.telnyx.com", "docs_url": "https://portal.telnyx.com/#/app/numbers/search-numbers"},
+    "twilio": {"name": "Twilio", "sip_host": "sip.twilio.com", "docs_url": "https://console.twilio.com/us1/develop/phone-numbers/manage/search"},
+}
+
+# Inventory is kept per carrier so the marketplace never mixes Telnyx and Twilio DIDs in one list.
 AVAILABLE_NUMBERS_CATALOG = [
-    {"phone_number": "+14158000129", "friendly_name": "+1 (415) 800-0129", "country": "US", "region": "San Francisco, CA", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
-    {"phone_number": "+12125003491", "friendly_name": "+1 (212) 500-3491", "country": "US", "region": "New York, NY", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
-    {"phone_number": "+13127658920", "friendly_name": "+1 (312) 765-8920", "country": "US", "region": "Chicago, IL", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
-    {"phone_number": "+12064129983", "friendly_name": "+1 (206) 412-9983", "country": "US", "region": "Seattle, WA", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
-    {"phone_number": "+15129930415", "friendly_name": "+1 (512) 993-0415", "country": "US", "region": "Austin, TX", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
-    {"phone_number": "+16175508821", "friendly_name": "+1 (617) 550-8821", "country": "US", "region": "Boston, MA", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
-    {"phone_number": "+18005550199", "friendly_name": "+1 (800) 555-0199 (Toll-Free)", "country": "US", "region": "Toll-Free North America", "capabilities": ["voice", "sip", "sms", "toll_free"], "monthly_cost": 2.00},
-    {"phone_number": "+18885550142", "friendly_name": "+1 (888) 555-0142 (Toll-Free)", "country": "US", "region": "Toll-Free North America", "capabilities": ["voice", "sip", "sms", "toll_free"], "monthly_cost": 2.00},
-    {"phone_number": "+442079460912", "friendly_name": "+44 20 7946 0912", "country": "GB", "region": "London, UK", "capabilities": ["voice", "sip", "dual_channel"], "monthly_cost": 2.50},
-    {"phone_number": "+61291001844", "friendly_name": "+61 2 9100 1844", "country": "AU", "region": "Sydney, Australia", "capabilities": ["voice", "sip", "dual_channel"], "monthly_cost": 3.00},
-    {"phone_number": "+493023125990", "friendly_name": "+49 30 2312 5990", "country": "DE", "region": "Berlin, Germany", "capabilities": ["voice", "sip", "dual_channel"], "monthly_cost": 2.50},
-    {"phone_number": "+14165507812", "friendly_name": "+1 (416) 550-7812", "country": "CA", "region": "Toronto, ON", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.75},
+    # ── Telnyx inventory
+    {"phone_number": "+14158000129", "carrier": "telnyx", "friendly_name": "+1 (415) 800-0129", "country": "US", "region": "San Francisco, CA", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
+    {"phone_number": "+12125003491", "carrier": "telnyx", "friendly_name": "+1 (212) 500-3491", "country": "US", "region": "New York, NY", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
+    {"phone_number": "+13127658920", "carrier": "telnyx", "friendly_name": "+1 (312) 765-8920", "country": "US", "region": "Chicago, IL", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
+    {"phone_number": "+15129930415", "carrier": "telnyx", "friendly_name": "+1 (512) 993-0415", "country": "US", "region": "Austin, TX", "capabilities": ["voice", "sip", "sms", "dual_channel"], "monthly_cost": 1.50},
+    {"phone_number": "+18005550199", "carrier": "telnyx", "friendly_name": "+1 (800) 555-0199 (Toll-Free)", "country": "US", "region": "Toll-Free North America", "capabilities": ["voice", "sip", "sms", "toll_free"], "monthly_cost": 2.00},
+    {"phone_number": "+18885550142", "carrier": "telnyx", "friendly_name": "+1 (888) 555-0142 (Toll-Free)", "country": "US", "region": "Toll-Free North America", "capabilities": ["voice", "sip", "sms", "toll_free"], "monthly_cost": 2.00},
+    {"phone_number": "+442079460912", "carrier": "telnyx", "friendly_name": "+44 20 7946 0912", "country": "GB", "region": "London, UK", "capabilities": ["voice", "sip", "dual_channel"], "monthly_cost": 2.50},
+    {"phone_number": "+493023125990", "carrier": "telnyx", "friendly_name": "+49 30 2312 5990", "country": "DE", "region": "Berlin, Germany", "capabilities": ["voice", "sip", "dual_channel"], "monthly_cost": 2.50},
+    # ── Twilio inventory
+    {"phone_number": "+12064129983", "carrier": "twilio", "friendly_name": "+1 (206) 412-9983", "country": "US", "region": "Seattle, WA", "capabilities": ["voice", "sip", "sms", "mms"], "monthly_cost": 1.15},
+    {"phone_number": "+16175508821", "carrier": "twilio", "friendly_name": "+1 (617) 550-8821", "country": "US", "region": "Boston, MA", "capabilities": ["voice", "sip", "sms", "mms"], "monthly_cost": 1.15},
+    {"phone_number": "+13235550164", "carrier": "twilio", "friendly_name": "+1 (323) 555-0164", "country": "US", "region": "Los Angeles, CA", "capabilities": ["voice", "sip", "sms", "mms"], "monthly_cost": 1.15},
+    {"phone_number": "+17865550138", "carrier": "twilio", "friendly_name": "+1 (786) 555-0138", "country": "US", "region": "Miami, FL", "capabilities": ["voice", "sip", "sms", "mms"], "monthly_cost": 1.15},
+    {"phone_number": "+18335550177", "carrier": "twilio", "friendly_name": "+1 (833) 555-0177 (Toll-Free)", "country": "US", "region": "Toll-Free North America", "capabilities": ["voice", "sip", "sms", "toll_free"], "monthly_cost": 2.15},
+    {"phone_number": "+14165507812", "carrier": "twilio", "friendly_name": "+1 (416) 550-7812", "country": "CA", "region": "Toronto, ON", "capabilities": ["voice", "sip", "sms", "mms"], "monthly_cost": 1.15},
+    {"phone_number": "+61291001844", "carrier": "twilio", "friendly_name": "+61 2 9100 1844", "country": "AU", "region": "Sydney, Australia", "capabilities": ["voice", "sip"], "monthly_cost": 3.15},
+    {"phone_number": "+442038078115", "carrier": "twilio", "friendly_name": "+44 20 3807 8115", "country": "GB", "region": "London, UK", "capabilities": ["voice", "sip"], "monthly_cost": 1.15},
 ]
 
 
@@ -438,11 +451,22 @@ class TelephonyManager:
         return ended
 
     # ── Phone Number Management ──────────────────────────────────────────────
-    def list_available_numbers(self, country: Optional[str] = None, search: Optional[str] = None) -> List[dict]:
-        owned = set(self._owned_numbers.keys())
+    def list_carriers(self) -> List[dict]:
+        out = []
+        for cid, meta in CARRIERS.items():
+            active = {k for k, v in self._owned_numbers.items() if v.status == "active"}
+            owned = sum(1 for n in self._owned_numbers.values() if n.status == "active" and n.carrier == cid)
+            avail = sum(1 for i in AVAILABLE_NUMBERS_CATALOG if i["carrier"] == cid and i["phone_number"] not in active)
+            out.append({"carrier": cid, "name": meta["name"], "sip_host": meta["sip_host"], "docs_url": meta["docs_url"], "owned": owned, "available": avail})
+        return out
+
+    def list_available_numbers(self, country: Optional[str] = None, search: Optional[str] = None, carrier: Optional[str] = None) -> List[dict]:
+        owned = {k for k, v in self._owned_numbers.items() if v.status == "active"}
         results = []
         for item in AVAILABLE_NUMBERS_CATALOG:
             if item["phone_number"] in owned:
+                continue
+            if carrier and carrier.lower() != "all" and item["carrier"] != carrier.lower():
                 continue
             if country and country.upper() != "ALL" and item["country"] != country.upper():
                 continue
@@ -464,6 +488,7 @@ class TelephonyManager:
         friendly_name: str = "",
         assigned_trunk_id: str = "trunk-inbound-primary",
         assigned_agent: str = "Intake Agent",
+        carrier: Optional[str] = None,
     ) -> dict:
         norm = normalize_phone_number(phone_number)
         if not is_valid_phone_number(norm):
@@ -480,6 +505,9 @@ class TelephonyManager:
         capabilities = catalog_entry["capabilities"] if catalog_entry else ["voice", "sip", "sms", "dual_channel"]
         monthly_cost = catalog_entry["monthly_cost"] if catalog_entry else 1.50
         fname = friendly_name or (catalog_entry["friendly_name"] if catalog_entry else norm)
+        carrier_id = (catalog_entry["carrier"] if catalog_entry else (carrier or "telnyx")).lower()
+        if carrier_id not in CARRIERS:
+            raise ValueError(f"Unknown carrier '{carrier_id}'. Choose one of: {', '.join(CARRIERS)}")
 
         record = PhoneNumberRecord(
             phone_number=norm,
@@ -489,6 +517,7 @@ class TelephonyManager:
             capabilities=capabilities,
             monthly_cost=monthly_cost,
             status="active",
+            carrier=carrier_id,
             assigned_trunk_id=assigned_trunk_id,
             assigned_agent=assigned_agent,
             purchased_at=time.time(),

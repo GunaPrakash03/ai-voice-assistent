@@ -116,6 +116,15 @@
       "rate_limit_rpm": 150,
       "metadata": {},
       "active": true
+    },
+    {
+      "workspace_id": "ws-b8a68a64",
+      "name": "Rest Test Clinic",
+      "slug": "rest-test-clinic",
+      "created_at": 1789357043.7823014,
+      "rate_limit_rpm": 150,
+      "metadata": {},
+      "active": true
     }
   ],
   "users": [
@@ -221,6 +230,14 @@
       "email": "operator1@clinic.com",
       "role": "operator",
       "created_at": 1789123575.004639,
+      "active": true
+    },
+    {
+      "user_id": "usr-72fdb518",
+      "workspace_id": "ws-b8a68a64",
+      "email": "operator1@clinic.com",
+      "role": "operator",
+      "created_at": 1789357043.7888432,
       "active": true
     }
   ],
@@ -776,7 +793,53 @@
       "expires_at": null,
       "last_used_at": null,
       "revoked": false
+    },
+    {
+      "key_id": "key-5aaceb704600",
+      "workspace_id": "ws-b8a68a64",
+      "name": "REST API Key",
+      "key_prefix": "ak_live_XyYz...",
+      "key_hash": "bdfc318d8171696cacd1fecf19148f26b0af42d4f5fd7ed9e52ee617b82d5bc7",
+      "scopes": [
+        "calls:read",
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789357043.7842584,
+      "expires_at": null,
+      "last_used_at": 1789357043.7871518,
+      "revoked": true
+    },
+    {
+      "key_id": "key-e83dda2d4d41",
+      "workspace_id": "ws-b8a68a64",
+      "name": "Dispatch Key",
+      "key_prefix": "ak_live_SXYL...",
+      "key_hash": "e642e5432363ffb241c91865ddd2f115d9d9b0b5a9aa8f372d43e493dca3a692",
+      "scopes": [
+        "calls:dispatch"
+      ],
+      "is_test": false,
+      "created_at": 1789357043.7939477,
+      "expires_at": null,
+      "last_used_at": 1789357043.795833,
+      "revoked": false
+    },
+    {
+      "key_id": "key-9969abbe16b9",
+      "workspace_id": "ws-b8a68a64",
+      "name": "Read Only Key",
+      "key_prefix": "ak_live_HHWu...",
+      "key_hash": "386f4523dbccb246ad282a80107b7a649ba7bcabe7621d8dc709de214dc3c242",
+      "scopes": [
+        "calls:read"
+      ],
+      "is_test": false,
+      "created_at": 1789357043.847266,
+      "expires_at": null,
+      "last_used_at": null,
+      "revoked": false
     }
   ],
-  "updated_at": 1789123575.066725
+  "updated_at": 1789357043.8475935
 }

@@ -431,6 +431,10 @@
               <span class="meta">Instant carrier DID provisioning</span>
             </div>
             <div class="card-b">
+              <div class="filters" id="marketCarrierTabs" role="tablist" aria-label="Carrier">
+                <button role="tab" data-carrier="telnyx" aria-pressed="true">📡 Telnyx Numbers <span class="ct" id="ctTelnyx">…</span></button>
+                <button role="tab" data-carrier="twilio" aria-pressed="false">☎️ Twilio Numbers <span class="ct" id="ctTwilio">…</span></button>
+              </div>
               <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
                 <select id="marketCountry" style="padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);font-size:13px">
                   <option value="ALL">🌍 All Countries</option>
@@ -506,6 +510,10 @@
       <div class="form-group">
         <label>Selected Phone Number</label>
         <input type="text" id="modalBuyNumber" readonly style="font-family:var(--f-mono);font-weight:700">
+      </div>
+      <div class="form-group">
+        <label>Carrier</label>
+        <input type="text" id="modalBuyCarrier" readonly data-carrier="telnyx" style="font-weight:700">
       </div>
       <div class="form-group">
         <label>Friendly Name / Label</label>
@@ -955,7 +963,7 @@
         var agentSelector = '<select class="agent-inline-select" data-num="' + CI.escapeHtml(n.phone_number) + '" data-trunk="' + CI.escapeHtml(n.assigned_trunk_id || "trunk-inbound-primary") + '" title="Click to choose agent for this phone number" style="padding:4px 8px;border-radius:4px;border:1px solid var(--accent-border);background:var(--accent-soft);color:var(--accent);font-weight:600;font-size:12px;cursor:pointer">' + agentOptions + '</select>';
 
         return '<tr>' +
-          '<td class="mono" style="font-weight:700;color:var(--ink)">' + CI.escapeHtml(n.phone_number) + '</td>' +
+          '<td class="mono" style="font-weight:700;color:var(--ink)">' + CI.escapeHtml(n.phone_number) + '<br>' + carrierBadge(n.carrier) + '</td>' +
           '<td>' + CI.escapeHtml(n.friendly_name || n.region) + '<br><small style="color:var(--ink-faint)">' + CI.escapeHtml(n.region) + '</small></td>' +
           '<td>' + capsHtml + '</td>' +
           '<td class="mono">$' + (n.monthly_cost || 1.50).toFixed(2) + '/mo</td>' +
@@ -1006,15 +1014,27 @@
     });
   }
 
+  var activeCarrier = "telnyx";
+  var CARRIER_LABEL = { telnyx: "Telnyx", twilio: "Twilio" };
+  function carrierBadge(c) {
+    var id = (c || "telnyx").toLowerCase();
+    var col = id === "twilio" ? "#F22F46" : "#00C08B";
+    return '<span class="carrier-chip carrier-' + id + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;letter-spacing:.3px;color:#fff;background:' + col + '">' + (CARRIER_LABEL[id] || id) + '</span>';
+  }
+
   function loadAvailableNumbers() {
     var country = $("#marketCountry").value;
     var search = $("#marketSearch").value.trim();
-    var url = "/api/telephony/numbers/available?country=" + encodeURIComponent(country) + "&search=" + encodeURIComponent(search);
+    var url = "/api/telephony/numbers/available?carrier=" + encodeURIComponent(activeCarrier) + "&country=" + encodeURIComponent(country) + "&search=" + encodeURIComponent(search);
 
     return fetch(url).then(function (r) { return r.json(); }).then(function (data) {
       var list = data.available || [];
+      (data.carriers || []).forEach(function (c) {
+        var el = $(c.carrier === "twilio" ? "#ctTwilio" : "#ctTelnyx");
+        if (el) { el.textContent = c.available; }
+      });
       if (!list.length) {
-        $("#marketNumbersList").innerHTML = '<div class="empty">No available numbers matching your search filters.</div>';
+        $("#marketNumbersList").innerHTML = '<div class="empty">No ' + (CARRIER_LABEL[activeCarrier] || activeCarrier) + ' numbers match your search filters.</div>';
         return;
       }
 
@@ -1026,20 +1046,20 @@
         return '<div class="num-card">' +
           '<div style="display:flex;justify-content:space-between;align-items:center">' +
             '<span class="ph">' + CI.escapeHtml(n.friendly_name || n.phone_number) + '</span>' +
-            '<span class="pill pos">ready</span>' +
+            carrierBadge(n.carrier) +
           '</div>' +
           '<div class="reg">📍 ' + CI.escapeHtml(n.region) + ' (' + CI.escapeHtml(n.country) + ')</div>' +
           '<div class="caps">' + capsHtml + '</div>' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">' +
             '<span class="price">$' + (n.monthly_cost || 1.50).toFixed(2) + ' <small style="font-size:11px;color:var(--ink-faint)">/ mo</small></span>' +
-            '<button class="btn sm btn-buy-did" data-num="' + CI.escapeHtml(n.phone_number) + '" data-name="' + CI.escapeHtml(n.friendly_name) + '" data-price="' + n.monthly_cost + '">⚡ Buy &amp; Assign</button>' +
+            '<button class="btn sm btn-buy-did" data-num="' + CI.escapeHtml(n.phone_number) + '" data-name="' + CI.escapeHtml(n.friendly_name) + '" data-price="' + n.monthly_cost + '" data-carrier="' + CI.escapeHtml(n.carrier || "telnyx") + '">⚡ Buy &amp; Assign</button>' +
           '</div>' +
         '</div>';
       }).join("");
 
       Array.prototype.forEach.call(document.querySelectorAll(".btn-buy-did"), function (b) {
         b.addEventListener("click", function () {
-          openPurchaseModal(b.dataset.num, b.dataset.name, b.dataset.price);
+          openPurchaseModal(b.dataset.num, b.dataset.name, b.dataset.price, b.dataset.carrier);
         });
       });
     }).catch(function () {});
@@ -1087,6 +1107,15 @@
     if (tv === "market") { loadAvailableNumbers(); }
   });
 
+  $("#marketCarrierTabs").addEventListener("click", function (event) {
+    var btn = event.target.closest("button[data-carrier]");
+    if (!btn) { return; }
+    Array.prototype.forEach.call(document.querySelectorAll("#marketCarrierTabs button"), function (b) {
+      b.setAttribute("aria-pressed", String(b === btn));
+    });
+    activeCarrier = btn.dataset.carrier;
+    loadAvailableNumbers();
+  });
   $("#marketCountry").addEventListener("change", loadAvailableNumbers);
   $("#marketSearch").addEventListener("input", function () {
     clearTimeout(searchTimer);
@@ -1100,8 +1129,9 @@
   });
 
   // ── Purchase Modal Logic ──────────────────────────────────────────────────
-  function openPurchaseModal(num, name, price) {
+  function openPurchaseModal(num, name, price, carrier) {
     $("#modalBuyNumber").value = num;
+    if ($("#modalBuyCarrier")) { $("#modalBuyCarrier").value = CARRIER_LABEL[(carrier || "telnyx").toLowerCase()] || carrier; $("#modalBuyCarrier").dataset.carrier = (carrier || "telnyx").toLowerCase(); }
     $("#modalBuyFriendly").value = name || num;
     $("#modalBuyPrice").textContent = "$" + parseFloat(price || 1.50).toFixed(2) + "/mo";
 
@@ -1130,7 +1160,8 @@
       phone_number: $("#modalBuyNumber").value,
       friendly_name: $("#modalBuyFriendly").value.trim(),
       agent_name: $("#modalBuyAgent").value,
-      trunk_id: $("#modalBuyTrunk").value
+      trunk_id: $("#modalBuyTrunk").value,
+      carrier: ($("#modalBuyCarrier") && $("#modalBuyCarrier").dataset.carrier) || "telnyx"
     };
 
     fetch("/api/telephony/numbers/purchase", {

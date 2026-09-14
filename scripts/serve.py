@@ -144,9 +144,12 @@ class Handler(SimpleHTTPRequestHandler):
             q = parse_qs(parsed.query)
             country = (q.get("country") or [""])[0] or None
             search = (q.get("search") or q.get("q") or [""])[0] or None
+            carrier = (q.get("carrier") or [""])[0] or None
             self._send_json({
                 "status": "ok",
-                "available": telephony_manager.list_available_numbers(country=country, search=search),
+                "carrier": carrier or "all",
+                "carriers": telephony_manager.list_carriers(),
+                "available": telephony_manager.list_available_numbers(country=country, search=search, carrier=carrier),
             })
             return
         elif parsed.path == "/api/telephony/calls":
@@ -552,6 +555,7 @@ class Handler(SimpleHTTPRequestHandler):
             friendly = payload.get("friendly_name", "").strip()
             trunk_id = payload.get("trunk_id", "trunk-inbound-primary").strip()
             agent_name = payload.get("agent_name", "Intake Agent").strip()
+            carrier = (payload.get("carrier") or "").strip() or None
             if not number:
                 self._send_json({"error": "Missing 'phone_number' parameter"}, 400)
                 return
@@ -561,6 +565,7 @@ class Handler(SimpleHTTPRequestHandler):
                     friendly_name=friendly,
                     assigned_trunk_id=trunk_id or "trunk-inbound-primary",
                     assigned_agent=agent_name or "Intake Agent",
+                    carrier=carrier,
                 )
                 self._send_json({"status": "ok", "number": rec})
             except ValueError as e:
