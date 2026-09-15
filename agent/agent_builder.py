@@ -1097,7 +1097,9 @@ class AgentBuilder:
                     payload_dict = {
                         "system_instruction": system_instruction,
                         "contents": gemini_contents,
-                        "generationConfig": gemini_generation_config(model_name, cfg.temperature, 300),
+                        # Thinking tokens share the output budget; a long confirmation turn can use all 300
+                        # and come back empty, so the retry gets room to finish.
+                        "generationConfig": gemini_generation_config(model_name, cfg.temperature, 300 if attempt == 0 else 1200),
                     }
                     payload = json.dumps(payload_dict).encode("utf-8")
                     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json", "x-goog-api-key": gemini_key})
@@ -1105,12 +1107,17 @@ class AgentBuilder:
                     # used to fall back to the rule script without telling anyone.
                     with urllib.request.urlopen(req, timeout=20.0) as resp:
                         data = json.loads(resp.read().decode("utf-8"))
-                        text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                        cand = (data.get("candidates") or [{}])[0]
+                        parts = (cand.get("content") or {}).get("parts") or []
+                        text = "".join(p.get("text") or "" for p in parts if not p.get("thought")).strip()
                         if text:
                             clean = clean_spoken_speech_text(text)
                             if clean:
                                 self.last_reply_backend = f"gemini:{model_name}"
                                 return clean
+                        gemini_error = f"empty reply (finishReason={cand.get('finishReason')}, parts={len(parts)})"
+                        log.warning("Gemini sandbox reply was empty on attempt %d: %s", attempt + 1, gemini_error)
+                        continue
                 except Exception as e:
                     detail = ""
                     try:

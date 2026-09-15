@@ -21,6 +21,20 @@ from agent.tool_manager import AsyncToolDispatcher, ToolRegistry
 
 log = logging.getLogger("llm-manager")
 
+# Stands in for the caller's words in the context until Gemini, hearing the audio, reports them.
+AUDIO_PLACEHOLDER = "[caller audio]"
+
+
+def _clean_transcript(text: str) -> str:
+    """'CALLER: CALLER: "hi"' -> 'hi' (the model sometimes repeats the marker or quotes the line)."""
+    t = (text or "").strip()
+    while True:
+        m = re.match(r"^\**\s*CALLER\s*:\**\s*", t, re.I)
+        if not m:
+            break
+        t = t[m.end():].strip()
+    return t.strip().strip('"').strip()
+
 
 @dataclass
 class Message:
@@ -49,8 +63,10 @@ class ConversationContextBuffer:
     def __init__(
         self,
         system_instruction: str = "You are a concise, helpful AI voice assistant.",
-        max_turns: int = 20,
-        max_tokens: int = 4000,
+        # A one-question-per-turn intake runs to 100+ turns; the caller's name, number and email must
+        # still be in the context at the closing readback. Gemini/OpenAI contexts take this easily.
+        max_turns: int = 400,
+        max_tokens: int = 48000,
     ) -> None:
         self.system_instruction = system_instruction
         self.max_turns = max_turns
@@ -520,8 +536,15 @@ class StreamingDialogueManager:
             })
         return [{"functionDeclarations": decls}] if decls else []
 
+    HEAR_INSTRUCTION = (
+        "The caller's latest utterance is attached as audio; listen to it instead of reading text. "
+        "Your output must start with exactly one line of the form\nCALLER: <verbatim transcript of what the caller said>\n"
+        "followed by a newline, and then your spoken reply to the caller as usual. If the audio has no "
+        "intelligible speech, write 'CALLER: ' with nothing after it and then ask the caller to repeat."
+    )
+
     async def _gemini_stream(self, messages: List[dict], extra_contents: Optional[List[dict]] = None,
-                             use_tools: bool = True) -> AsyncIterable[str]:
+                             use_tools: bool = True, audio: Optional[bytes] = None) -> AsyncIterable[str]:
         """Streams tokens from Google Gemini (generateContent SSE) with plain aiohttp.
 
         Function calls the model makes are collected in ``self._pending_function_calls`` for
@@ -531,6 +554,14 @@ class StreamingDialogueManager:
         from agent.agent_builder import resolve_gemini_model, gemini_generation_config
 
         system_text, contents = self._gemini_contents(messages)
+        if audio:
+            import base64
+            last = next((c for c in reversed(contents) if c["role"] == "user"), None)
+            if last is not None:
+                earlier = (last["parts"][0].get("text") or "").replace(AUDIO_PLACEHOLDER, "").strip()
+                last["parts"] = ([{"text": earlier}] if earlier else []) + [
+                    {"inline_data": {"mime_type": "audio/wav", "data": base64.b64encode(audio).decode("ascii")}},
+                    {"text": self.HEAR_INSTRUCTION}]
         if extra_contents:
             contents = contents + extra_contents
         model = resolve_gemini_model(self.model)
@@ -580,10 +611,17 @@ class StreamingDialogueManager:
         on_tool_call: Optional[Callable[[str, dict], Any]] = None,
         on_filler: Optional[Callable[[str], Any]] = None,
         on_tool_result: Optional[Callable[[str, dict], Any]] = None,
+        user_audio: Optional[bytes] = None,
+        on_transcript: Optional[Callable[[str], Any]] = None,
     ) -> dict:
         """
         Executes a streaming LLM turn:
         - Appends user message to context buffer.
+        - With ``user_audio`` (WAV bytes, Gemini backend only) the model hears the caller directly in
+          the same call that produces the reply: it first emits one "CALLER: <transcript>" line, which
+          is handed to ``on_transcript`` and written into the context in place of ``user_text``, and
+          only the reply that follows is streamed to ``on_token`` / ``on_clause``. One round trip
+          instead of transcribe-then-answer.
         - Detects mid-call tool invocations (or OpenAI tool calls).
         - Emits filler speech immediately (<100ms) to eliminate dead air.
         - Dispatches tools asynchronously and formats grounded responses.
@@ -596,8 +634,10 @@ class StreamingDialogueManager:
         self.cancel_active_generation()
 
         # Add user turn to context
-        self.context.add_user_message(user_text)
+        user_msg = self.context.add_user_message(user_text)
         messages = self.context.get_messages_for_llm()
+        hear_audio = bool(user_audio) and self.backend == "gemini" and not self._is_mock
+        transcript_seen: List[str] = []
 
         splitter = ClauseBoundarySplitter()
         accumulated_text: List[str] = []
@@ -666,9 +706,52 @@ class StreamingDialogueManager:
                     if self._is_mock:
                         token_stream = self._mock_stream(user_text)
                     elif self.backend == "gemini":
-                        token_stream = self._gemini_stream(messages)
+                        token_stream = self._gemini_stream(messages, audio=user_audio if hear_audio else None)
                     else:
                         token_stream = self._openai_stream(messages)
+
+                    async def _split_transcript(stream):
+                        """Peels the leading 'CALLER: ...' line off an audio-turn stream."""
+                        head = ""
+                        async for token in stream:
+                            if transcript_seen:
+                                yield token
+                                continue
+                            head += token
+                            if "\n" not in head:
+                                if len(head) > 600:            # model ignored the format: treat as reply
+                                    transcript_seen.append("")
+                                    yield head
+                                continue
+                            line, rest = head.split("\n", 1)
+                            m = re.match(r"\s*\**\s*CALLER\s*:\**\s*(.*)$", line, re.I)
+                            transcript = _clean_transcript(m.group(1)) if m else ""
+                            transcript_seen.append(transcript)
+                            if m:
+                                user_msg.content = transcript or "(unintelligible audio)"
+                                if on_transcript:
+                                    res = on_transcript(transcript)
+                                    if asyncio.iscoroutine(res):
+                                        await res
+                            else:                               # no CALLER line: everything is reply
+                                rest = head
+                            if rest.strip():
+                                yield rest.lstrip("\n")
+                        if not transcript_seen and head:
+                            m = re.match(r"\s*\**\s*CALLER\s*:\**\s*(.*)$", head.strip(), re.I | re.S)
+                            if m:                                   # the model stopped after the transcript line
+                                transcript = _clean_transcript(m.group(1))
+                                transcript_seen.append(transcript)
+                                user_msg.content = transcript or "(unintelligible audio)"
+                                if on_transcript:
+                                    res = on_transcript(transcript)
+                                    if asyncio.iscoroutine(res):
+                                        await res
+                            else:
+                                transcript_seen.append("")
+                                yield head
+                    if hear_audio:
+                        token_stream = _split_transcript(token_stream)
 
                     async def _consume(stream):
                         nonlocal first_token_time
@@ -691,6 +774,11 @@ class StreamingDialogueManager:
                                         await res
 
                     await _consume(token_stream)
+
+                    if hear_audio and transcript_seen and transcript_seen[0] and not "".join(accumulated_text).strip() \
+                            and not getattr(self, "_pending_function_calls", None):
+                        # Heard the caller but said nothing back: phrase the reply from the transcript.
+                        await _consume(self._gemini_stream(self.context.get_messages_for_llm(), use_tools=True))
 
                     # Gemini asked for a tool: speak a filler, run it, then let the model phrase the
                     # result. Same callbacks the simulator path uses, so the worker needs no changes.
@@ -723,7 +811,18 @@ class StreamingDialogueManager:
                             follow_up.append({"role": "model", "parts": [part]})
                             follow_up.append({"role": "user", "parts": [{"functionResponse": {"name": tool_name, "response": {"result": tool_res}}}]})
                         self._pending_function_calls = []
-                        await _consume(self._gemini_stream(messages, extra_contents=follow_up, use_tools=True))
+                        if hear_audio and transcript_seen and transcript_seen[0]:
+                            # The model already told us what it heard: phrase the result from the text,
+                            # no audio and no second "CALLER:" line.
+                            follow_stream = self._gemini_stream(self.context.get_messages_for_llm(),
+                                                                extra_contents=follow_up, use_tools=True)
+                        else:
+                            follow_stream = self._gemini_stream(messages, extra_contents=follow_up, use_tools=True,
+                                                                audio=user_audio if hear_audio else None)
+                            if hear_audio:
+                                transcript_seen.clear()
+                                follow_stream = _split_transcript(follow_stream)
+                        await _consume(follow_stream)
                         self._pending_function_calls = []   # no second round of tools in one turn
 
                 # Stream ended cleanly: flush remaining buffer
@@ -760,6 +859,7 @@ class StreamingDialogueManager:
 
         metrics = {
             "text": total_text,
+            "transcript": transcript_seen[0] if transcript_seen else None,
             "ttft_ms": ttft_ms,
             "duration_ms": round(duration * 1000.0, 2),
             "token_count": len(accumulated_text),

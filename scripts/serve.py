@@ -1623,6 +1623,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "speaker": "Customer" if is_caller else (cfg.name if cfg else "AI Agent"),
                     "text": text,
                     "timestamp": float(t.get("at") or 0) / 1000.0 if t.get("at") else started,
+                    "end_timestamp": (float(t.get("end_at")) / 1000.0) if t.get("end_at") else None,
                     "word_count": len(text.split()),
                     "tool": t.get("tool"),
                     "backend": t.get("backend"),
@@ -1655,6 +1656,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "to_number": cfg.name if cfg else "",
                     "voice_id": payload.get("voice_id", ""),
                     "llm_backend": payload.get("backend", ""),
+                    "mic_log": (payload.get("mic_log") or [])[:600],   # browser recogniser events, for diagnosing "it did not hear me"
                     "started_at": started,
                     "ended_at": ended,
                     "duration_seconds": max(0.0, ended - started),

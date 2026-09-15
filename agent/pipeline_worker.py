@@ -273,9 +273,24 @@ class PostCallPipelineWorker:
     def _save_state(self):
         try:
             os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-            with open(STATE_FILE, "w", encoding="utf-8") as f:
-                jobs_data = [j.to_dict() for j in list(self._jobs.values())[-100:]]
+            # The dashboard server and the call worker both keep jobs and share this file, so merge
+            # what is on disk with what this process knows before writing (ours win on conflict).
+            merged: Dict[str, Dict[str, Any]] = {}
+            if os.path.isfile(STATE_FILE):
+                try:
+                    with open(STATE_FILE, "r", encoding="utf-8") as f:
+                        for item in json.load(f).get("jobs", []):
+                            if item.get("job_id"):
+                                merged[item["job_id"]] = item
+                except Exception:
+                    pass
+            for j in self._jobs.values():
+                merged[j.job_id] = j.to_dict()
+            jobs_data = sorted(merged.values(), key=lambda d: d.get("created_at", 0))[-100:]
+            tmp = STATE_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump({"jobs": jobs_data, "updated_at": time.time()}, f, indent=2)
+            os.replace(tmp, STATE_FILE)
             try:
                 from agent import storage
                 # The file keeps the last 100 jobs; the database keeps every job ever completed.
@@ -396,6 +411,7 @@ class PostCallPipelineWorker:
                     "speaker": "Customer" if "user" in role or "caller" in role else "AI Agent",
                     "text": text,
                     "timestamp": t_stamp,
+                    "end_timestamp": turn.get("end_timestamp"),   # real end when the source measured it
                     "word_count": len(text.split()),
                 })
 

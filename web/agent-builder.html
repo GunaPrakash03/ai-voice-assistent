@@ -1904,8 +1904,6 @@
   var testCallActive = false;
   var testCallUtterances = [];
   var testCallAudio = null;
-  var testCallRecognition = null;
-  var isMicListening = false;
 
   function setOrbState(state, label) {
     var orb = $("#testCallOrb");
@@ -1979,14 +1977,15 @@
   // WAV the telephony recorder writes (left = caller, right = agent, 16 kHz) and hand it to the
   // dashboard when the test call ends. No server-side MP3 decoder needed.
   var callRec = { clips: [], micRecorder: null, micChunks: [], micStartedAt: 0, micStream: null, startedAt: 0 };
-  function recStart() {
+  function recStart_rec() {
     recStopMic();
     callRec = { clips: [], micRecorder: null, micChunks: [], micStartedAt: 0, micStream: null, startedAt: Date.now() };
   }
-  function recAddAgentClip(blob, atMs) {
-    if (callRec.startedAt && blob) { callRec.clips.push({ blob: blob, at: atMs }); }
+  function recAddAgentClip(blob, atMs, maxSeconds) {
+    if (callRec.startedAt && blob) { callRec.clips.push({ blob: blob, at: atMs, maxSeconds: maxSeconds || 0 }); }
   }
   function recStartMic(stream) {
+    micLevelStart(stream);
     if (!callRec.startedAt || callRec.micRecorder || typeof MediaRecorder === "undefined") return;
     try {
       var mr = new MediaRecorder(stream);
@@ -2036,7 +2035,8 @@
       return entry.blob.arrayBuffer().then(function (ab) { return decoder.decodeAudioData(ab); }).then(function (decoded) {
         var src = offline.createBufferSource(); src.buffer = decoded;
         var mono = offline.createGain(); src.connect(mono); mono.connect(merger, 0, channel);
-        src.start(Math.max(0, (entry.at - callRec.startedAt) / 1000));
+        var when = Math.max(0, (entry.at - callRec.startedAt) / 1000);
+        if (entry.maxSeconds) src.start(when, 0, entry.maxSeconds); else src.start(when);
       }).catch(function (e) { console.warn("clip skipped in recording:", e); });
     }
     var jobs = callRec.clips.map(function (c) { return place(c, 1); });
@@ -2079,28 +2079,56 @@
   var agentSpeakingUntil = 0;
   var lastAgentLine = "";
   function normForEcho(t) { return (t || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim(); }
-  function looksLikeEcho(text) {
+  function editDistance(x, y) {
+    var prev = [], cur, i, j;
+    for (j = 0; j <= y.length; j++) prev[j] = j;
+    for (i = 1; i <= x.length; i++) {
+      cur = [i];
+      for (j = 1; j <= y.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[y.length];
+  }
+  // The speakers feed the agent's line back into the mic slightly garbled ("things for calling" for
+  // "Thanks for calling"), so words are matched fuzzily against the agent's last line.
+  function looksLikeEcho(text, strict) {
     var a = normForEcho(lastAgentLine), b = normForEcho(text);
-    if (!a || !b || b.length < 12) return false;
+    if (!a || !b || b.length < (strict ? 3 : 12)) return !!strict && !!b;
     if (a.indexOf(b) !== -1) return true;                       // a fragment of the agent's line
-    var bw = b.split(" "), hits = 0; var aw = {}; a.split(" ").forEach(function (w) { aw[w] = 1; });
-    bw.forEach(function (w) { if (aw[w]) hits++; });
-    return bw.length >= 4 && hits / bw.length >= 0.8;           // mostly the agent's own words
+    var aw = a.split(" "), bw = b.split(" "), hits = 0;
+    bw.forEach(function (w) {
+      var tol = w.length <= 3 ? 0 : (w.length <= 6 ? 1 : 2);
+      for (var k = 0; k < aw.length; k++) { if (aw[k] === w || editDistance(aw[k], w) <= tol) { hits++; return; } }
+    });
+    if (strict) return bw.length < 3 || hits / bw.length >= 0.5;   // interrupting takes 3+ words that are clearly not hers
+    return bw.length >= 4 && hits / bw.length >= 0.8;              // mostly the agent's own words
+  }
+  // Caller talked over the agent: cut her off right away and keep listening.
+  function interruptAgentSpeech(heard) {
+    if (!agentSpeaking) return;
+    currentPlayToken = null;
+    stampAgentTurn(null, Date.now());
+    if (testCallAudio) {
+      var a = testCallAudio; testCallAudio = null;
+      var played = a.currentTime || 0;
+      try { a.pause(); } catch (e) {}
+      if (a._clipUrl && a._startedAt && played > 0.2) {   // keep what the caller actually heard
+        fetch(a._clipUrl + "&_t=" + Date.now()).then(function (r) { return r.blob(); }).then(function (blob) { recAddAgentClip(blob, a._startedAt, played); }).catch(function () {});
+      }
+    }
+    if ("speechSynthesis" in window) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+    var metas = document.querySelectorAll("#testCallTranscript .test-msg.agent .test-msg-meta");
+    var el = metas[metas.length - 1];
+    if (el && !el.querySelector(".interrupted")) el.insertAdjacentHTML("beforeend", '<span>•</span><span class="interrupted" title="the caller spoke over the agent">interrupted</span>');
+    console.info("Caller interrupted the agent:", heard);
+    setAgentSpeaking(false);
+    setOrbState("listening", "Listening: \"" + heard + "\"…");
   }
   function setAgentSpeaking(on) {
-    agentSpeaking = on;
-    if (on) {
-      if (micSilenceTimer) { clearTimeout(micSilenceTimer); micSilenceTimer = null; }
-      if ($("#testCallInput")) { $("#testCallInput").value = ""; $("#testCallInput").placeholder = "Mic paused while the agent speaks…"; }
-      try { if (testCallRecognition && isMicListening) testCallRecognition.stop(); } catch (e) {}
-    } else {
-      agentSpeakingUntil = Date.now() + 700;                    // let room echo die down
-      if ($("#testCallInput")) { $("#testCallInput").placeholder = isMicListening ? "Listening to you... (speak now or type)" : "Speak into mic or type a message to your agent…"; }
-      setTimeout(function () {
-        if (isMicListening && testCallActive && testCallRecognition && !agentSpeaking) { try { testCallRecognition.start(); } catch (e) {} }
-      }, 700);
-    }
+    agentSpeaking = !!on;
+    if (!on) agentSpeakingUntil = Date.now() + 250;
   }
+
 
   var testCallTranscriptTurns = [];
   function appendTestCallMessage(speaker, text, meta) {
@@ -2110,7 +2138,8 @@
     var cleanDisplay = (speaker === "agent") ? cleanSpokenSpeechText(text) : (text || "").trim();
     if (!cleanDisplay) cleanDisplay = text;
     testCallTranscriptTurns.push({ speaker: speaker, text: cleanDisplay, tool: meta && meta.tool ? meta.tool : null,
-                                   backend: meta && meta.backend ? meta.backend : null, at: Date.now() });
+                                   backend: meta && meta.backend ? meta.backend : null,
+                                   at: (meta && meta.at) || Date.now(), end_at: (meta && meta.endAt) || null });
 
     var msgDiv = document.createElement("div");
     msgDiv.className = "test-msg " + speaker;
@@ -2189,6 +2218,7 @@
 
     function finish() {
       if (currentPlayToken !== token) { return; }
+      stampAgentTurn(null, Date.now());
       setAgentSpeaking(false);
       setOrbState("listening", "Listening to caller…");
       if (onComplete) onComplete();
@@ -2214,9 +2244,10 @@
       var startedAt = 0;
       a.preload = "auto";
       a.src = urls[i] + "&stream=1&_t=" + Date.now();
+      a._clipUrl = urls[i];
       a.onplaying = function () {
-        if (!startedAt) { startedAt = Date.now(); }
-        if (!firstAudioAt) { firstAudioAt = startedAt; noteVoiceLatency(firstAudioAt - tStart); }
+        if (!startedAt) { startedAt = Date.now(); a._startedAt = startedAt; }
+        if (!firstAudioAt) { firstAudioAt = startedAt; noteVoiceLatency(firstAudioAt - tStart); stampAgentTurn(firstAudioAt, null); }
       };
       a.onended = function () {
         // The finished clip is now cached server-side; fetch it once for the call recording.
@@ -2230,6 +2261,18 @@
     playNext();
   }
 
+  // The newest agent turn gets the wall clock of when its audio actually started / stopped, so the
+  // saved recording's transcript lines up with what is heard.
+  function stampAgentTurn(startedAt, endedAt) {
+    for (var i = testCallTranscriptTurns.length - 1; i >= 0; i--) {
+      if (testCallTranscriptTurns[i].speaker === "agent") {
+        if (startedAt) testCallTranscriptTurns[i].at = startedAt;
+        if (endedAt) testCallTranscriptTurns[i].end_at = endedAt;
+        return;
+      }
+    }
+  }
+
   // Appends "0.9s voice"to the newest agent bubble so text→voice delay is visible.
   function noteVoiceLatency(ms) {
     var metas = document.querySelectorAll("#testCallTranscript .test-msg.agent .test-msg-meta");
@@ -2239,13 +2282,14 @@
     }
   }
 
-  function sendCallerUtterance(text) {
+  function sendCallerUtterance(text, timing) {
     text = (text || "").trim();
     if (!text || !testCallActive) return;
 
-    appendTestCallMessage("caller", text);
+    appendTestCallMessage("caller", text, timing || null);
     testCallUtterances.push(text);
     $("#testCallInput").value = "";
+    if (lkConnected) { setOrbState("thinking", "Agent thinking…"); liveSendText(text); return; }
 
     setOrbState("thinking", "Agent thinking & selecting tools…");
 
@@ -2309,17 +2353,124 @@
       });
   }
 
+  // ── Live test call: a real WebRTC session with the call worker ──────────────────────────────
+  // The builder joins a LiveKit room named test-<agent_id>-<stamp>; the worker answers with this
+  // agent, hears the mic through the same VAD / Gemini path as a phone call, speaks through the
+  // same TTS, handles interruption itself, records both sides and files the call in Call History.
+  // If the room cannot be joined the old text-only sandbox (typed lines over HTTP) is used instead.
+  var lkRoom = null, lkAudioEl = null, lkConnected = false, lkRoomName = "", lkMicOn = false;
+  var liveGreetingShown = false, liveLastTool = "";
+
+  function liveSetMicUi(on) {
+    lkMicOn = !!on;
+    var btn = $("#btnTestCallMic"); if (btn) btn.classList.toggle("active", lkMicOn);
+    if ($("#testCallInput")) $("#testCallInput").placeholder = lkMicOn ? "Listening — just talk (or type)" : "Mic muted — type a message or unmute";
+  }
+
+  function handleLiveData(topic, msg) {
+    if (!testCallActive) return;
+    var now = Date.now();
+    if (topic === "transcript") {
+      if (msg.is_final && (msg.text || "").trim()) {
+        appendTestCallMessage("caller", msg.text.trim(), { at: now - 800, endAt: now });
+        if ($("#testCallInput")) $("#testCallInput").value = "";
+        setOrbState("thinking", "Agent thinking…");
+      } else if (msg.text) {
+        setOrbState("listening", "Listening: \"" + msg.text + "\"…");
+      }
+    } else if (topic === "agent_reply") {
+      var m = msg.metrics || {};
+      if (m.greeting) { if (liveGreetingShown) return; liveGreetingShown = true; }
+      lastAgentLine = msg.text || "";
+      appendTestCallMessage("agent", msg.text, { backend: msg.backend || "", round_trip_ms: m.duration_ms || null, at: now });
+    } else if (topic === "tool_call") {
+      liveLastTool = msg.tool || "tool";
+      setOrbState("thinking", "Running " + liveLastTool + "…");
+    } else if (topic === "filler_speech") {
+      appendTestCallMessage("agent", msg.phrase || msg.text || "", { tool: liveLastTool || "tool", at: now });
+    } else if (topic === "agent_state") {
+      if (msg.type === "call_end" || msg.state === "ended") { showToast("The agent ended the call."); endInPageTestCall(); return; }
+      if (msg.state === "speaking") { setAgentSpeakingUi(true); setOrbState("speaking", "Agent speaking — talk to interrupt"); }
+      else if (msg.state === "thinking") { setOrbState("thinking", "Agent thinking & selecting tools…"); }
+      else { setAgentSpeakingUi(false); setOrbState("listening", "Listening to caller…"); }
+    } else if (topic === "interruption") {
+      setAgentSpeakingUi(false);
+      var metas = document.querySelectorAll("#testCallTranscript .test-msg.agent .test-msg-meta");
+      var el = metas[metas.length - 1];
+      if (el && !el.querySelector(".interrupted")) el.insertAdjacentHTML("beforeend", '<span>•</span><span class="interrupted">interrupted</span>');
+    } else if (topic === "tts_metrics") {
+      if (msg.ttfa_ms) noteVoiceLatency(msg.ttfa_ms);
+    } else if (topic === "agent_config_event" && msg.event === "voice_engine") {
+      reportVoiceEngine(msg.voice_id, { engine: msg.engine || "", fallbackReason: msg.fallback_reason || "" });
+      var badge = $("#testCallVoiceBadge");
+      if (badge && msg.voice_name) badge.textContent = msg.voice_name + (msg.fallback_reason ? " → " + describeEngine(msg.engine) : "");
+    }
+  }
+  function setAgentSpeakingUi(on) { agentSpeaking = !!on; }
+
+  async function startLiveTestCall() {
+    var LK = window.LivekitClient || window.LiveKitClient || window.livekit;
+    if (!LK) throw new Error("livekit-client not loaded");
+    lkRoomName = "test-" + currentLoadedAgentId + "-" + Date.now().toString(36);
+    var res = await fetch("/token?room=" + encodeURIComponent(lkRoomName) + "&identity=builder-" + Date.now().toString(36));
+    if (!res.ok) throw new Error("token HTTP " + res.status);
+    var tok = await res.json();
+    lkRoom = new LK.Room({ adaptiveStream: true, dynacast: true,
+      audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    lkRoom.on(LK.RoomEvent.TrackSubscribed, function (track) {
+      if (track.kind !== "audio") return;
+      if (!lkAudioEl) { lkAudioEl = track.attach(); lkAudioEl.id = "builder-live-audio"; lkAudioEl.autoplay = true; document.body.appendChild(lkAudioEl); }
+      else { track.attach(lkAudioEl); }
+      lkAudioEl.play().catch(function () {});
+    });
+    lkRoom.on(LK.RoomEvent.DataReceived, function (payload, participant, kind, topic) {
+      try { handleLiveData(topic, JSON.parse(new TextDecoder().decode(payload))); } catch (e) {}
+    });
+    lkRoom.on(LK.RoomEvent.Disconnected, function () { if (testCallActive && lkConnected) { lkConnected = false; showToast("Call disconnected."); endInPageTestCall(); } });
+    await lkRoom.connect(tok.url, tok.token);
+    lkConnected = true;
+    try {
+      await lkRoom.localParticipant.setMicrophoneEnabled(true);
+      liveSetMicUi(true);
+    } catch (micErr) {
+      liveSetMicUi(false);
+      showToast("Microphone not available (" + (micErr && micErr.message || "blocked") + ") — you can still type.");
+    }
+  }
+
+  function liveSendText(text) {
+    if (!lkRoom || !lkConnected) return false;
+    try {
+      lkRoom.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ action: "test_prompt", text: text })), { reliable: true });
+      return true;
+    } catch (e) { return false; }
+  }
+
+  async function liveToggleMic() {
+    if (!lkRoom || !lkConnected) return;
+    try { await lkRoom.localParticipant.setMicrophoneEnabled(!lkMicOn); liveSetMicUi(!lkMicOn); showToast(lkMicOn ? "Microphone on" : "Microphone muted"); }
+    catch (e) { showToast("Microphone error: " + (e && e.message || e)); }
+  }
+
+  function liveDisconnect() {
+    lkConnected = false;
+    if (lkRoom) { try { lkRoom.disconnect(); } catch (e) {} lkRoom = null; }
+    if (lkAudioEl) { try { lkAudioEl.pause(); lkAudioEl.remove(); } catch (e) {} lkAudioEl = null; }
+    liveSetMicUi(false);
+  }
+
   function startInPageTestCall() {
     if (!currentLoadedAgentId) {
       // First save creates the agent; the sandbox needs its id.
       saveCurrentAgentForm(true).then(function () { if (currentLoadedAgentId) { startInPageTestCall(); } else { showToast("Give the agent a name and prompt first, then Save."); } });
       return;
     }
-    saveCurrentAgentForm(true);
+    var saved = saveCurrentAgentForm(true);   // the worker reads the saved agent (prompt, voice, first message)
     testCallActive = true;
     testCallUtterances = [];
     testCallTranscriptTurns = [];
-    recStart();
+    liveGreetingShown = false;
+    agentSpeaking = false;
 
     var agentName = $("#agentName").value.trim() || "Intake Agent";
     var vId = ($("#voiceSelect") && $("#voiceSelect").value) ? $("#voiceSelect").value : "studio-calvin";
@@ -2330,6 +2481,7 @@
     $("#testCallVoiceBadge").textContent = vName;
     $("#testCallTranscript").innerHTML = "";
     $("#modalTestCall").classList.add("open");
+    setOrbState("thinking", "Connecting to the call worker…");
 
     // Start Call Timer
     testCallStartTime = Date.now();
@@ -2341,32 +2493,30 @@
       $("#testCallTimer").textContent = (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
     }, 1000);
 
-    // Check Who Speaks First mode
-    var speakMode = $("#speakFirstSelect") ? $("#speakFirstSelect").value : "ai";
-    var promptVal = $("#systemPrompt").value.trim();
-    var firstMsg = $("#firstMessage").value.trim() || deriveFirstMessageFromPrompt(promptVal, agentName);
-
-    if (speakMode === "ai") {
-      appendTestCallMessage("agent", firstMsg, { first_audio_ms: 110 });
-      playAgentVoiceResponse(firstMsg);
-    } else {
-      setOrbState("listening", "Listening for caller to speak first…");
-      var infoDiv = document.createElement("div");
-      infoDiv.style.textAlign = "center";
-      infoDiv.style.padding = "6px 12px";
-      infoDiv.style.fontSize = "11.5px";
-      infoDiv.style.color = "var(--ink-faint)";
-      infoDiv.style.fontFamily = "var(--f-mono)";
-      infoDiv.innerHTML = " <i>User Speaks First mode enabled. Speak into microphone or type below.</i>";
-      $("#testCallTranscript").appendChild(infoDiv);
-    }
-
-    // Setup & start live microphone speech recognition
-    setupSpeechRecognition();
-    startSpeechRecognition();
+    Promise.resolve(saved).then(function () { return startLiveTestCall(); }).then(function () {
+      if (!testCallActive) { liveDisconnect(); return; }
+      setOrbState("listening", "Connected — the agent will greet you");
+    }).catch(function (err) {
+      console.warn("Live test call unavailable, using the text sandbox:", err);
+      if (!testCallActive) return;
+      liveDisconnect();
+      showToast("Live call unavailable (" + (err && err.message || err) + "). Text-only sandbox: type your lines below.", 7000);
+      liveSetMicUi(false);
+      recStart_rec();
+      var speakMode = $("#speakFirstSelect") ? $("#speakFirstSelect").value : "ai";
+      var promptVal = $("#systemPrompt").value.trim();
+      var firstMsg = $("#firstMessage").value.trim() || deriveFirstMessageFromPrompt(promptVal, agentName);
+      if (speakMode === "ai") {
+        appendTestCallMessage("agent", firstMsg, { first_audio_ms: 110 });
+        playAgentVoiceResponse(firstMsg);
+      } else {
+        setOrbState("listening", "Type your first line below…");
+      }
+    });
   }
 
   function endInPageTestCall() {
+    if (!testCallActive) return;
     testCallActive = false;
     currentPlayToken = null;            // stop any queued speech chunks
     var endedAt = Date.now();
@@ -2375,168 +2525,24 @@
       try { testCallAudio.pause(); } catch (e) {}
       testCallAudio = null;
     }
-    stopSpeechRecognition();
     $("#modalTestCall").classList.remove("open");
+    if (lkConnected || lkRoom) {
+      var name = lkRoomName;
+      liveDisconnect();
+      showToast("Call ended — the worker is saving it to Call History as " + name + ".", 6000);
+      setTimeout(function () { if (typeof loadAgentCallStats === "function") { try { loadAgentCallStats(); } catch (e) {} } }, 4000);
+      return;
+    }
     showToast("Call ended — saving to Call History…");
     saveSandboxCall(endedAt);
   }
 
-  var micSilenceTimer = null;
-
-  function startSpeechRecognition() {
-    var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRec) {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({ audio: true }).catch(function (err) {
-          console.warn("Microphone access error:", err);
-        });
-      }
-      return;
-    }
-
-    if (!testCallRecognition) {
-      setupSpeechRecognition();
-    }
-
-    isMicListening = true;
-    window.isMicListening = true;
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !callRec.micRecorder) {
-      navigator.mediaDevices.getUserMedia({ audio: true }).then(recStartMic).catch(function () {});
-    }
-    var btn = $("#btnTestCallMic");
-    if (btn) btn.classList.add("active");
-    if (agentSpeaking) {
-      // The agent is talking right now; setAgentSpeaking(false) starts listening when she stops.
-      if ($("#testCallInput")) $("#testCallInput").placeholder = "Mic paused while the agent speaks…";
-      return;
-    }
-    if ($("#testCallInput")) $("#testCallInput").placeholder = "Listening to you... (speak now or type)";
-
-    try {
-      testCallRecognition.start();
-    } catch (e) {
-      // recognition already active
-    }
-  }
-
-  function setupSpeechRecognition() {
-    var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRec) return;
-
-    try {
-      if (testCallRecognition) {
-        try { testCallRecognition.abort(); } catch (e) {}
-      }
-      testCallRecognition = new SpeechRec();
-      testCallRecognition.continuous = true;
-      testCallRecognition.interimResults = true;
-      testCallRecognition.lang = "en-US";
-
-      testCallRecognition.onstart = function () {
-        isMicListening = true;
-        var btn = $("#btnTestCallMic");
-        if (btn) btn.classList.add("active");
-        if ($("#testCallInput")) $("#testCallInput").placeholder = "Listening to you... (speak now or type)";
-      };
-
-      testCallRecognition.onresult = function (e) {
-        if (!testCallActive) return;
-        if (agentSpeaking || Date.now() < agentSpeakingUntil) { return; }   // that was the agent, not the caller
-        var interimTranscript = "";
-        var finalTranscript = "";
-
-        for (var i = e.resultIndex; i < e.results.length; i++) {
-          var res = e.results[i];
-          if (res.isFinal) {
-            finalTranscript += res[0].transcript;
-          } else {
-            interimTranscript += res[0].transcript;
-          }
-        }
-
-        var inputEl = $("#testCallInput");
-        if (interimTranscript && inputEl) {
-          inputEl.value = interimTranscript;
-          setOrbState("listening", "Listening: \"" + interimTranscript + "\"…");
-        }
-
-        if (finalTranscript.trim()) {
-          if (looksLikeEcho(finalTranscript)) {
-            console.info("Ignored mic echo of the agent's line:", finalTranscript);
-            if (inputEl) inputEl.value = "";
-            return;
-          }
-          if (inputEl) inputEl.value = finalTranscript.trim();
-          if (micSilenceTimer) clearTimeout(micSilenceTimer);
-          micSilenceTimer = setTimeout(function () {
-            if (testCallActive && !agentSpeaking && finalTranscript.trim()) {
-              sendCallerUtterance(finalTranscript.trim());
-            }
-          }, 600);
-        }
-      };
-
-      testCallRecognition.onerror = function (e) {
-        console.warn("Speech recognition event:", e.error);
-        if (e.error === "not-allowed" || e.error === "permission-denied") {
-          isMicListening = false;
-          var btn = $("#btnTestCallMic");
-          if (btn) btn.classList.remove("active");
-          showToast("Microphone access blocked. Please allow mic permissions in your browser.");
-        } else if (e.error === "no-speech") {
-          // Normal silence, keep listening
-        } else if (e.error === "audio-capture") {
-          isMicListening = false;
-          showToast("No microphone device found.");
-        }
-      };
-
-      testCallRecognition.onend = function () {
-        if (isMicListening && testCallActive && !agentSpeaking) {
-          try { testCallRecognition.start(); } catch (e) {}
-        }
-      };
-    } catch (e) {
-      console.warn("Speech recognition setup error:", e);
-    }
-  }
-
   function toggleMic() {
-    var btn = $("#btnTestCallMic");
-    var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRec) {
-      showToast("ℹSpeech recognition is not available in this browser. Please use text chat.");
-      return;
-    }
-
-    if (isMicListening) {
-      isMicListening = false;
-      window.isMicListening = false;
-      if (btn) btn.classList.remove("active");
-      if ($("#testCallInput")) $("#testCallInput").placeholder = "Speak into mic or type a message to your agent…";
-      showToast("Microphone muted");
-      try {
-        if (testCallRecognition) testCallRecognition.stop();
-      } catch (e) {}
-    } else {
-      isMicListening = true;
-      window.isMicListening = true;
-      if (btn) btn.classList.add("active");
-      showToast("Microphone active — listening for speech");
-      startSpeechRecognition();
-    }
+    if (lkConnected) { liveToggleMic(); return; }
+    showToast("The microphone is only available on a live test call.");
   }
 
-  function stopSpeechRecognition() {
-    isMicListening = false;
-    window.isMicListening = false;
-    if ($("#btnTestCallMic")) $("#btnTestCallMic").classList.remove("active");
-    if (testCallRecognition) {
-      try { testCallRecognition.stop(); } catch (e) {}
-    }
-  }
-
-  window.isMicActive = function () { return isMicListening; };
+  window.isMicActive = function () { return lkMicOn; };
 
   // Bind Test Call UI controls
   $("#btnTest").addEventListener("click", startInPageTestCall);
@@ -2830,6 +2836,7 @@
 })();
 </script>
 
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.7/dist/livekit-client.umd.min.js"></script>
 <script src="/profile.js"></script>
 </body>
 </html>

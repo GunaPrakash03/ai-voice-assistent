@@ -314,9 +314,10 @@ class CallHistoryStore:
     def timeline(self, call_id: str) -> List[Dict[str, Any]]:
         """Places each transcript turn on the audio timeline, in seconds.
 
-        Turns carry a wall-clock timestamp and a word count but no audio
-        offsets, so the first turn anchors t=0 and each turn is given the
-        duration its own word count implies.
+        Turns carry a wall-clock timestamp (and, from the sandbox, an end timestamp) and a
+        word count. The call's own start (metadata.started_at, which is also where the
+        recording begins) anchors t=0; without it the first turn does. A turn with an end
+        timestamp keeps its real length, otherwise its word count implies one.
         """
         job = self._raw_jobs.get(call_id) or {}
         turns = job.get("transcript_turns") or []
@@ -329,14 +330,19 @@ class CallHistoryStore:
         }
 
         stamps = [t.get("timestamp") for t in turns if isinstance(t.get("timestamp"), (int, float))]
-        origin = min(stamps) if stamps else 0.0
+        call_start = (job.get("metadata") or {}).get("started_at")
+        origin = float(call_start) if isinstance(call_start, (int, float)) and call_start else (min(stamps) if stamps else 0.0)
 
         timeline, cursor = [], 0.0
         for index, turn in enumerate(turns):
             words = int(turn.get("word_count") or len(str(turn.get("text", "")).split()))
             spoken = max(words / WORDS_PER_SECOND, MIN_TURN_SECONDS)
             stamp = turn.get("timestamp")
+            end_stamp = turn.get("end_timestamp")
+            if isinstance(stamp, (int, float)) and isinstance(end_stamp, (int, float)) and end_stamp > stamp:
+                spoken = max(round(end_stamp - stamp, 2), 0.3)
             start = round(stamp - origin, 2) if isinstance(stamp, (int, float)) and origin else 0.0
+            start = max(start, 0.0)
             # Timestamps written in the same millisecond collapse to 0, so the
             # running cursor keeps turns in order and non-overlapping.
             start = max(start, cursor)

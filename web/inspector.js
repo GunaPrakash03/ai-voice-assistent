@@ -233,6 +233,39 @@
       paint();
     }
 
+    // Recordings are dual-channel (caller left, agent right) so the waveform can show who spoke.
+    // For listening, mix both voices into both ears; refs.split (a checkbox) restores the raw L/R.
+    var mix = null;
+    function ensureMix() {
+      if (mix || !(window.AudioContext || window.webkitAudioContext)) { return; }
+      try {
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        var src = ctx.createMediaElementSource(audio);
+        var splitter = ctx.createChannelSplitter(2);
+        var merger = ctx.createChannelMerger(2);
+        var gL = ctx.createGain(), gR = ctx.createGain();   // caller / agent
+        src.connect(splitter);
+        splitter.connect(gL, 0); splitter.connect(gR, 1);
+        gL.connect(merger, 0, 0); gL.connect(merger, 0, 1);
+        gR.connect(merger, 0, 0); gR.connect(merger, 0, 1);
+        merger.connect(ctx.destination);
+        var raw = ctx.createGain(); src.connect(raw);         // untouched stereo path
+        raw.gain.value = 0;
+        raw.connect(ctx.destination);
+        mix = { ctx: ctx, mixed: [gL, gR], raw: raw };
+        applySplit();
+      } catch (e) { console.warn("Recording downmix unavailable, playing raw stereo:", e); }
+    }
+    function applySplit() {
+      if (!mix) { return; }
+      var split = !!(refs.split && refs.split.checked);
+      mix.mixed[0].gain.value = split ? 0 : 0.7;
+      mix.mixed[1].gain.value = split ? 0 : 0.7;
+      mix.raw.gain.value = split ? 1 : 0;
+    }
+    audio.addEventListener("play", function () { ensureMix(); if (mix && mix.ctx.state === "suspended") { mix.ctx.resume(); } });
+    if (refs.split) { refs.split.addEventListener("change", applySplit); }
+
     audio.addEventListener("timeupdate", paint);
     audio.addEventListener("loadedmetadata", function () {
       if (isFinite(audio.duration) && audio.duration > 0) { state.duration = audio.duration; }

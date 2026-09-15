@@ -62,9 +62,10 @@ services:
       DATABASE_URL: postgresql://${VOICE_DB_USER:-voice}:${VOICE_DB_PASSWORD:-voice_dev_password}@postgres:5432/${VOICE_DB_NAME:-voice_agent}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
-      # Voice only: Deepgram Aura speaks; hearing is done by Gemini (STT_PROVIDER=gemini, agent/gemini_stt.py).
+      # Retell-style streaming pipeline: Deepgram Nova hears the caller (partials while they talk), Aura/ElevenLabs
+      # speak. STT_PROVIDER=gemini makes Gemini hear the audio itself instead (no STT vendor, slower).
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
-      STT_PROVIDER: ${STT_PROVIDER:-gemini}
+      STT_PROVIDER: ${STT_PROVIDER:-deepgram}
       STT_MODEL: ${STT_MODEL:-nova-3}
       GEMINI_STT_MODEL: ${GEMINI_STT_MODEL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

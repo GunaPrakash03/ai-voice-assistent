@@ -112,11 +112,12 @@
 
           <section class="card" id="test">
             <h2>6. Test call</h2>
-            <p>Press <span class="btnlike">Test</span> in the builder. The agent greets you; type or use the microphone. Each reply shows:</p>
+            <p>Press <span class="btnlike">Test</span> in the builder. This is a real call into the same engine that answers the phone: allow the microphone and just talk. The agent hears you through its own voice detection, you can talk over it to interrupt, and it replies with the voice the agent is set to. You can also type a line. Each reply shows:</p>
             <div class="flow"><span>1.3s reply <i>model thinking time</i></span><span>0.5s voice <i>time until you hear it</i></span><span>gemini <i>the model wrote it</i></span></div>
             <ul>
-              <li>The microphone pauses while the agent speaks so it never hears itself. Headphones give the cleanest result.</li>
-              <li>When the agent signs off, the call ends by itself and is saved to <b>Calls</b> with a recording of exactly what you heard.</li>
+              <li>Echo from your speakers is cancelled by the browser; headphones still give the cleanest result.</li>
+              <li>Every test call is recorded by the engine (you on the left channel, the agent on the right) and saved to <b>Calls</b> with its transcript when you hang up or the agent signs off.</li>
+              <li>Studio and Neural voices exist only in the browser preview; on a call the agent falls back to a Deepgram Aura voice and says so in the voice badge.</li>
               <li>If a reply says <b>rule script</b>, no language model is connected; ask your admin to add a Gemini key.</li>
             </ul>
           </section>
@@ -161,8 +162,7 @@
                 <tr><td>Voice chip says fallback</td><td>The voice needs a key or plan the workspace does not have</td><td>Pick a green-chip voice.</td></tr>
                 <tr><td>Agent greets twice</td><td>First message differs from the prompt's greeting</td><td>Make them identical.</td></tr>
                 <tr><td>Slow or missing replies mid-call</td><td>Free-tier rate limit</td><td>Keep Gemini Flash Lite; ask the admin about a paid tier.</td></tr>
-                <tr><td>"Agent not found"</td><td>That agent belongs to another user</td><td>Create your own, or ask an admin.</td></tr>
-                <tr><td>Mic types the agent's words</td><td>Speakers feeding the microphone</td><td>Use headphones.</td></tr>
+                                <tr><td>Test call cannot start</td><td>The call engine or LiveKit is down, or the page is not on localhost / https (no microphone)</td><td>Ask an admin; you can still type lines in the text sandbox.</td></tr>
                 <tr><td>SMS code never arrives</td><td>Your number is not verified with the SMS provider</td><td>Ask an admin to verify it, or remove the phone from your profile to sign in with password only.</td></tr>
               </tbody>
             </table>

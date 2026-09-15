@@ -501,19 +501,118 @@ removed. There are now two roles and everything in the workspace is shared.)*
 
 ### 7.25 Gemini hears the caller; Deepgram is voice-only
 *(2026-09-15, per user: "no need use the tts and stt in the other platform, use our llm for this; only the
-voice is enough for the deepgram". Confirmed: Gemini (current default) listens to the audio directly.)*
+voice is enough for the deepgram". Confirmed: Gemini (current default) listens to the audio directly.
+Then "can reduce the 1-3 s time of response": the two-call design was collapsed into one.)*
 - `agent/gemini_stt.py`: a LiveKit non-streaming `stt.STT`. Silero VAD segments the caller (LiveKit wraps
-  it in `StreamAdapter` automatically); each utterance is resampled to 16 kHz mono WAV and posted inline
-  to Gemini `generateContent` with a transcription-only instruction (temperature 0, thinking minimal,
-  keep-alive HTTP session). Returns one FINAL transcript per utterance; no interim results.
-- `agent/worker.py`: `STT_PROVIDER=gemini` (default) builds `GeminiSTT`; `deepgram` keeps Nova; missing
-  `GEMINI_API_KEY` falls back to Deepgram with a warning. Compose passes `STT_PROVIDER`, `GEMINI_STT_MODEL`.
-- Verified in a real room (`scripts/publish_audio.py` from inside the worker, `samples/caller_test.wav`,
-  6 s of Aura speech): transcript "I'd like to book an appointment for tomorrow morning at 9:30. My name
-  is Priya Sharma." → Gemini reply → Aura TTS (TTFA 263 ms).
-- **Latency trade-off:** Gemini transcription is model-bound at ~1.3-1.8 s for a 1-2 s utterance and
-  ~3.3 s for a 5 s utterance (gemini-3.5-flash-lite; 2.5-flash-lite similar, 3.6-flash slower), versus
-  ~0.3 s for Deepgram Nova streaming. Every caller turn therefore waits roughly 1-3 s longer before the
-  agent starts answering. Set `STT_PROVIDER=deepgram` to get the old behaviour back.
+  it in `StreamAdapter`); each utterance is resampled to 16 kHz mono WAV. Two modes:
+  `hand_off_audio=True` (dialogue backend is Gemini): no transcription call; the clip is parked and a
+  `AUDIO_MARK` handle is returned as the "transcript". `False` (OpenAI dialogue): Gemini transcribes
+  the clip (temperature 0, thinking minimal, keep-alive session) and returns the text.
+- `agent/llm_manager.py` `generate_response(user_audio=..., on_transcript=...)`: the utterance audio is
+  attached to the last user content of the Gemini dialogue call with `HEAR_INSTRUCTION`; the model
+  answers "CALLER: <transcript>\n<reply>" in one round trip. `_split_transcript` peels the first line
+  off the token stream (reported via `on_transcript`, written into the context in place of
+  `AUDIO_PLACEHOLDER`), only the reply reaches the clause splitter / TTS. Tool follow-ups re-use the
+  heard transcript as text (no second CALLER line). `metrics["transcript"]` carries it.
+- `agent/worker.py`: builds the dialogue manager first, `build_stt(hand_off_audio=backend=="gemini")`,
+  intercepts `AUDIO_MARK` transcripts, merges split clips (`concat_wavs`) per turn, and
+  `publish_caller_transcript` sends the heard text to the dashboard + AMD. `STT_PROVIDER=deepgram`
+  restores Nova; missing `GEMINI_API_KEY` falls back to Deepgram with a warning.
+- Verified in real rooms (`scripts/publish_audio.py` inside the worker, `samples/caller_test.wav` 6 s and
+  `samples/caller_short.wav` 2 s): transcripts exact, reply spoken by Aura, tool call path clean.
+- **Latency (Maya, 52k-char prompt, gemini-3.5-flash-lite):** end of caller speech → first spoken clause
+  was ~4.3-4.7 s with transcribe-then-answer; now ~2.8-3.2 s (one call; a tool turn adds ~1.4 s for the
+  follow-up). Gemini's own audio TTFT from this network is ~1.5-2.6 s and the 52k prompt adds ~0.2-0.4 s;
+  Deepgram Nova + Gemini text was ~1.3-1.7 s. Streaming Gemini Live (WebSocket) is the only way below
+  ~1.5 s while keeping Gemini as the ears.
 - Pages: API Keys card is "Deepgram Aura (voice)"; admin guide provider table; cost calculator's
   "Speech-to-text" line became "Hearing the caller" = caller audio tokens (32/s) at the model's input price.
+- **Reverted to vendors 2026-09-15 (user: "now the stt and tts use the vendor like deepgram or 11labs"):**
+  `STT_PROVIDER=deepgram` is the default again (worker, compose, `.env`); Gemini-hears-audio stays
+  available as `STT_PROVIDER=gemini`. Pages describe Deepgram Nova STT again. Verified in a room:
+  interim transcripts back, "What are your office hours?" → first spoken clause 1.6 s after the final
+  transcript, Aura TTFA 163 ms.
+- **Corrected the same day:** the "use the vendor" message was a question, not an instruction. Final
+  state: `STT_PROVIDER=gemini` (default everywhere) — Gemini hears the caller, Deepgram Aura /
+  ElevenLabs supply only the voice; `STT_PROVIDER=deepgram` remains the opt-in for Nova. Pages describe
+  the Gemini-hears setup. Re-verified in a room ("Hello, what are your office hours?" heard exactly).
+
+### 7.26 Sandbox recordings: playback mix and transcript sync
+*(2026-09-15, user: "I can hear my voice in the recording" → the file is caller-left / agent-right and the
+player played it raw; then "check s3://voice-archive/recordings/sandbox-1789464562392_1789465284.wav".)*
+- Player (`web/inspector.js`, Call Desk + home): both channels are now mixed into both ears through a
+  Web Audio splitter/merger; a "split L/R" checkbox restores the raw stereo. File format unchanged.
+- The `s3://voice-archive/...` URL is the pipeline's placeholder archive name (`recordings/archive/`);
+  there is no cloud upload (already stated in the admin guide).
+- Analysis of that recording: caller speech is present and clean (no speaker echo in the mic channel),
+  but the transcript timeline was out of sync: caller turns were stamped when Chrome delivered the
+  final result (after the speech), agent turns when the reply text arrived (before the audio), and
+  t=0 was the first turn instead of the recording start. Clicking a caller line landed in silence.
+- Fix: the builder now stamps each caller turn with the time of its first interim result (−0.6 s
+  recogniser lag) and its final result, and each agent turn with the real audio start/stop
+  (`stampAgentTurn`); the save API carries `end_at` → `end_timestamp` through
+  `pipeline_worker` normalisation; `call_history` anchors t=0 at `metadata.started_at` and uses the
+  real end when present. Existing 59 sandbox jobs were re-timed from their audio (agent clips on the
+  right channel ↔ agent turns matched 42/42 on the call in question).
+
+### 7.27 Test call is now a real LiveKit call; every call is recorded and filed
+*(2026-09-15, user: "give the proper solution" after Chrome's Web Speech recogniser kept going deaf,
+interrupting the greeting on its own echo, and losing the agent's audio from recordings; and "can you
+record the conversation so I can listen to it".)*
+- **Builder test call = WebRTC call into the worker** (`web/agent-builder.html`): joins room
+  `test-<agent_id>-<stamp>` via `/token`, publishes the mic (browser AEC/NS/AGC), plays the agent's
+  track, and renders the worker's data topics (transcript, agent_reply, tool_call/filler_speech,
+  agent_state incl. call_end, interruption, tts_metrics, agent_config_event). Typed lines go over the
+  data channel as `test_prompt`. Chrome's SpeechRecognition code is gone. If the room cannot be joined
+  the old HTTP text sandbox is used (typing only).
+- **Worker** (`agent/worker.py`): `resolve_agent_for_call` loads the agent named in a `test-` room;
+  `session.start(record={"audio": True, ...})` turns on LiveKit's own `RecorderIO` (dual-channel
+  OGG, caller left / agent right, agent placed at real playout time); `call_turns` records every
+  caller turn (VAD start/end), typed line, greeting and reply (with backend/tool/interrupted); when
+  the caller leaves, `finalize_call` closes the session, converts `audio.ogg` → 
+  `recordings/rec-<room>-<ts>.wav` (16 kHz stereo, via `av`), enqueues + runs the post-call pipeline
+  with `direction=sandbox` for test rooms / `inbound` otherwise, then shuts the job down. Applies to
+  real SIP calls too, so phone calls now get recordings and Call History without any client action.
+- `agent/pipeline_worker.py` `_save_state` merges with the on-disk file (dashboard and worker both
+  write `recordings/pipeline_jobs.json`; atomic replace).
+- Verified with headless Chromium using `samples/fake_mic_loop.wav` as the microphone: greeting →
+  caller heard by Gemini ("Hi, I would like to book…", interrupting the greeting) → reply → second
+  question → reply; call filed with 5 turns and a 48 s recording whose channels line up with the
+  timeline (agent 0.9–12.8 s, caller 12.8–19.1 s, …). Player/waveform work unchanged.
+- The user guide's test-call section and troubleshooting rows were rewritten accordingly.
+
+### 7.28 Retell-style pipeline settings
+*(2026-09-15, user: "how was Retell AI configured, check and fix like that".)*
+- Retell: streaming STT partials → LLM streams as soon as the turn ends → streaming TTS, plus a
+  turn-taking model; ~600 ms quoted, with LLM TTFT the dominant remainder.
+- Ours now matches the structure: `STT_PROVIDER=deepgram` (streaming Nova) is the default again;
+  endpointing `min_delay 0.25 s / max_delay 1.2 s` and interruption `min_duration 0.4 s`
+  (env-overridable: ENDPOINT_MIN_DELAY, ENDPOINT_MAX_DELAY, INTERRUPT_MIN_DURATION).
+- Measured in a room: caller stops → turn committed 0.12 s → first LLM clause +1.7 s (Gemini 3.5
+  Flash Lite on Maya's 52k-char prompt) → Aura first audio +0.3-0.5 s ≈ **2.2 s** end-of-speech to
+  first words (was ≈ 3.5 s with Gemini hearing the audio). Gemini TTFT from this network: ~1.0 s with a
+  3k prompt, ~1.4 s with the full prompt; that floor, not the pipeline, is what stands between 2.2 s and
+  Retell's number. Options: shorter prompt (−0.4 s, −90 % model cost), a lower-latency model/region.
+
+### 7.29 Live-call turn taking, noise and choppy voice
+*(2026-09-15, from the user's live test calls `mu2k3hbb`, `mu2kbzze`, `mu2kt8dw`.)*
+- Turns now come from LiveKit's `on_user_turn_completed` (all Deepgram finals of a turn merged,
+  endpointing 0.25-1.2 s applied); the worker no longer commits turns on raw VAD. An unanswered turn
+  cut off by new speech is merged into the next; a barge-in that yields no words is answered after 1 s.
+- The user's mic is hot/noisy (noise floor RMS 250-1200, speech clipping at 32768). The worker's own
+  VAD-triggered barge-in (`session.interrupt(force=True)` on any VAD event) cut the greeting on noise;
+  removed. Interruption is LiveKit's: `min_words 2`, `min_duration 0.4`, `resume_false_interruption`
+  with a 1 s timeout; VAD `activation_threshold 0.6`, `min_speech 0.12 s`. Env: VAD_THRESHOLD,
+  VAD_MIN_SPEECH, INTERRUPT_MIN_WORDS, INTERRUPT_MIN_DURATION, FALSE_INTERRUPT_TIMEOUT.
+- Choppy voice: (1) "flush audio emitter due to slow audio generation" ×7 — Deepgram Aura audio
+  arrived in bursts and the room plays through a 200 ms queue → `agent/audio_buffer.py`
+  `BufferedAudioOutput` holds 400 ms (TTS_PREBUFFER_MS) before playout starts; (2) "resumed false
+  interrupted speech" ×3 — one-word backchannels paused her for 2 s → min_words 2 / 1 s timeout.
+- Recording export (`av` decode → WAV) runs in a thread; the remaining loop block at hang-up is the
+  post-call pipeline's synchronous HTTP calls, after the caller has left.
+- 2026-09-15 call `mu2npjsd` (full intake, ~100 turns): closing readback said "your name is unknown, number
+  unknown, email unknown" and Maya re-asked name/phone/email/address mid-call. Cause: the dialogue
+  context kept only the last 20 turns / 4000 tokens (`ConversationContextBuffer`), so the caller's
+  details fell out of the window. Now 400 turns / 48k tokens. Also `check_availability` fired on
+  "what state" and Gemini invented `submit_retention_agreement(... 'unknown')`: Maya's enabled tools
+  cut to `transfer_call`. Endpointing min raised to 0.8 s (max 2.0) for callers who pause mid-sentence.

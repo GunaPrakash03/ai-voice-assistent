@@ -39,6 +39,7 @@ from agent.llm_manager import (
     StreamingDialogueManager,
 )
 from agent.tts_manager import StreamingTTSManager
+from agent.gemini_stt import AUDIO_MARK, concat_wavs
 from agent import storage as _storage
 _storage.bootstrap("agent worker")
 from agent.telephony_manager import telephony_manager, asdict
@@ -53,9 +54,9 @@ log = logging.getLogger("dialogue-worker")
 amd_manager = AMDManager()
 
 # Model configuration
-# STT_PROVIDER=gemini (default): the Gemini model listens to the caller's audio itself (agent/gemini_stt.py).
-# STT_PROVIDER=deepgram: Deepgram Nova streaming recogniser (legacy).
-STT_PROVIDER = os.getenv("STT_PROVIDER", "gemini").strip().lower()
+# STT_PROVIDER=deepgram (default, Retell-style streaming pipeline: partial transcripts while the caller talks,
+# ~0.3 s to a final). STT_PROVIDER=gemini: the Gemini model hears the audio itself (no STT vendor, ~1.5 s slower).
+STT_PROVIDER = os.getenv("STT_PROVIDER", "deepgram").strip().lower()
 STT_MODEL = os.getenv("STT_MODEL", "nova-3")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 TTS_MODEL = os.getenv("TTS_MODEL", "sonic-3")
@@ -73,6 +74,13 @@ class VoiceAssistantAgent(Agent):
                 "Speak in conversational English without bullet points or emojis."
             )
         )
+        self.turn_hook = None   # set by the entrypoint: async (text) -> None
+
+    async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
+        """LiveKit decided the caller's turn is over (VAD silence + endpointing delay, with every
+        final transcript piece of the turn merged). This is the only place a dialogue turn starts."""
+        if self.turn_hook is not None:
+            await self.turn_hook(new_message.text_content or "")
 
 
 async def tone_speech_frames(secs: float = 6.0, rate: int = 16000) -> AsyncIterable[rtc.AudioFrame]:
@@ -125,6 +133,16 @@ def resolve_agent_for_call(ctx: agents.JobContext):
     except Exception:
         telephony_manager, normalize_phone_number = None, None
 
+    # Agent Builder test calls join a room named test-<agent_id>-<stamp>: that agent takes the call,
+    # whatever is marked live.
+    m = re.match(r"^test-(.+)-[a-z0-9]{6,}$", ctx.room.name or "")
+    if m:
+        cfg = agent_builder.get_agent(m.group(1))
+        if cfg:
+            log.info("Builder test call for agent '%s'", cfg.name)
+            return cfg, ""
+        log.warning("Test room names unknown agent id %s; using the live agent", m.group(1))
+
     dialled = ""
     for p in list(ctx.room.remote_participants.values()):
         attrs = getattr(p, "attributes", {}) or {}
@@ -154,13 +172,19 @@ def resolve_agent_for_call(ctx: agents.JobContext):
     return agent_builder.get_active_agent(), dialled
 
 
-def build_stt():
-    """The caller's ears: Gemini hears the audio directly unless STT_PROVIDER=deepgram."""
+def build_stt(hand_off_audio: bool):
+    """The caller's ears: Deepgram Nova streaming unless STT_PROVIDER=gemini.
+
+    hand_off_audio=True (dialogue backend is Gemini): the utterance audio goes straight into the
+    dialogue call, which transcribes and answers in one round trip. False (OpenAI dialogue): Gemini
+    transcribes first and the text is handed to the dialogue model.
+    """
     from agent.gemini_stt import GeminiSTT, gemini_api_key
-    if STT_PROVIDER != "deepgram":
+    if STT_PROVIDER == "gemini":
         if gemini_api_key():
-            engine = GeminiSTT(language="en")
-            log.info("STT: Gemini listens to the caller directly (%s)", engine.model)
+            engine = GeminiSTT(language="en", hand_off_audio=hand_off_audio)
+            log.info("STT: Gemini listens to the caller directly (%s, %s)", engine.model,
+                     "audio handed to the dialogue call" if hand_off_audio else "transcribe then answer")
             return engine
         log.warning("STT_PROVIDER=%s but no GEMINI_API_KEY; falling back to Deepgram %s", STT_PROVIDER, STT_MODEL)
     log.info("STT: Deepgram %s streaming", STT_MODEL)
@@ -173,9 +197,10 @@ async def entrypoint(ctx: agents.JobContext):
 
     # Local Silero VAD model running on CPU via ONNX Runtime.
     vad = silero.VAD.load(
-        min_speech_duration=0.05,      # 50ms speech triggers start-of-speech
-        min_silence_duration=0.45,     # 450ms silence marks end-of-speech
-        prefix_padding_duration=0.2,   # 200ms audio buffer before speech start
+        min_speech_duration=float(os.getenv("VAD_MIN_SPEECH", "0.12")),   # a click or breath is not speech
+        min_silence_duration=0.45,                                        # 450ms silence marks end-of-speech
+        prefix_padding_duration=0.3,                                      # audio kept from before speech start
+        activation_threshold=float(os.getenv("VAD_THRESHOLD", "0.6")),    # 0.5 default fires on room noise
     )
 
     tts_manager = StreamingTTSManager(
@@ -199,28 +224,38 @@ async def entrypoint(ctx: agents.JobContext):
         log.info("Agent '%s' loaded for this call (dialled=%s): voice=%s engine=%s",
                  active_cfg.name, dialled_number or "n/a", active_cfg.voice_id, tts_manager.provider)
 
+    llm_manager = StreamingDialogueManager(model=(active_cfg.llm_model if active_cfg and active_cfg.llm_model else LLM_MODEL))
+    stt_engine = build_stt(hand_off_audio=(llm_manager.backend == "gemini"))
     session = AgentSession(
         vad=vad,
-        stt=build_stt(),
+        stt=stt_engine,
         tts=tts_manager.tts,
         turn_handling={
             "turn_detection": "vad",
+            # Retell-style turn-taking: commit the caller's turn quickly after they stop, but give a
+            # clearly unfinished sentence ("my name is...") up to 1.2 s before the model answers.
             "endpointing": {
                 "mode": "dynamic",
-                "min_delay": 0.4,
-                "max_delay": 1.8,
+                "min_delay": float(os.getenv("ENDPOINT_MIN_DELAY", "0.8")),
+                "max_delay": float(os.getenv("ENDPOINT_MAX_DELAY", "2.0")),
             },
+            # An interruption needs real words from the recogniser (min_words), not just VAD energy:
+            # room noise, breaths and echo no longer cut her off, and a false interruption resumes.
             "interruption": {
                 "enabled": True,
                 "mode": "vad",
-                "min_duration": 0.3,
+                "min_duration": float(os.getenv("INTERRUPT_MIN_DURATION", "0.4")),
+                # 2 words: "yeah" / "okay" while she talks is a backchannel, not an interruption. If a
+                # pause turns out to be a false alarm she resumes after 1 s instead of the default 2.
+                "min_words": int(os.getenv("INTERRUPT_MIN_WORDS", "2")),
+                "resume_false_interruption": True,
+                "false_interruption_timeout": float(os.getenv("FALSE_INTERRUPT_TIMEOUT", "1.0")),
                 "discard_audio_if_uninterruptible": True,
             },
         },
     )
 
     assistant_agent: Optional[VoiceAssistantAgent] = None
-    llm_manager = StreamingDialogueManager(model=(active_cfg.llm_model if active_cfg and active_cfg.llm_model else LLM_MODEL))
     if active_cfg:
         llm_manager.system_instruction = active_cfg.system_prompt
         llm_manager.context.system_instruction = active_cfg.system_prompt
@@ -228,7 +263,30 @@ async def entrypoint(ctx: agents.JobContext):
         llm_manager.enabled_tools = set(active_cfg.tools or [])
     log.info("Dialogue backend: %s (%s)", llm_manager.backend, llm_manager.model)
     current_turn_texts: list[str] = []
+    current_turn_audio: list[bytes] = []      # WAV clips of this turn when Gemini hears the caller directly
     user_is_speaking = False
+    call_started_at = time.time()
+    user_speech_started_at = 0.0
+    user_speech_ended_at = 0.0
+    call_turns: list[dict] = []               # what was said and when; becomes the Call History transcript
+    in_flight = {"audio": None, "text": "", "heard": False, "replied": False}   # the turn being answered
+    turn_seq = {"n": 0}                        # bumps on every started turn
+    finalized = {"done": False}
+
+    def note_turn(role: str, text: str, start: float, end: float, **extra):
+        text = (text or "").strip()
+        if not text:
+            return
+        turn = {"role": role, "text": text, "timestamp": float(start), "end_timestamp": float(max(end, start))}
+        turn.update({k: v for k, v in extra.items() if v is not None})
+        call_turns.append(turn)
+
+    def caller_turn_window():
+        """When the caller's current utterance was spoken, from the VAD; falls back to 'just now'."""
+        now = time.time()
+        start = user_speech_started_at or (now - 2.0)
+        end = user_speech_ended_at if user_speech_ended_at >= start else now
+        return start, end
     turn_process_task: Optional[asyncio.Task] = None
     pending: set[asyncio.Task] = set()
 
@@ -285,10 +343,25 @@ async def entrypoint(ctx: agents.JobContext):
             "timestamp": time.time(),
         }, topic="agent_config_event", reliable=True)
 
-    async def execute_llm_turn(user_input: str):
-        if not user_input.strip():
+    def publish_caller_transcript(text: str):
+        """What the caller said, as reported by the model that heard the audio."""
+        publish({"type": "transcript", "text": text, "is_final": True, "speaker": "caller",
+                 "timestamp": time.time()}, topic="transcript", reliable=True)
+        log.info("FINAL (heard by Gemini) %s", text)
+        in_flight["heard"] = True
+        st, en = caller_turn_window()
+        note_turn("user", text, st, en)
+        if text.strip():
+            amd_res = amd_manager.process_transcript(ctx.room.name, text)
+            if amd_res.state in (AMDState.MACHINE_GREETING, AMDState.VOICEMAIL_BEEP, AMDState.HUMAN):
+                publish({"type": "amd_event", "call_id": ctx.room.name, "state": amd_res.state.value,
+                         "confidence": amd_res.confidence, "reason": amd_res.reason, "action": amd_res.action.value,
+                         "timestamp": time.time()}, topic="amd_event", reliable=True)
+
+    async def execute_llm_turn(user_input: str, user_audio: Optional[bytes] = None):
+        if (not user_input.strip() and not user_audio) or finalized["done"]:
             return
-        log.info("Starting streaming LLM turn for input: '%s'", user_input)
+        log.info("Starting streaming LLM turn for input: '%s'%s", user_input, " + caller audio" if user_audio else "")
         publish({
             "type": "agent_state",
             "state": "thinking",
@@ -304,6 +377,7 @@ async def entrypoint(ctx: agents.JobContext):
             }, topic="llm_stream", reliable=False)
 
         async def on_clause_cb(clause: str, is_final: bool, index: int):
+            in_flight["replied"] = True
             log.info("LLM Clause [%d%s]: %s", index, " (final)" if is_final else "", clause)
             publish({
                 "type": "llm_clause",
@@ -357,6 +431,8 @@ async def entrypoint(ctx: agents.JobContext):
                 on_tool_call=on_tool_call_cb,
                 on_filler=on_filler_cb,
                 on_tool_result=on_tool_result_cb,
+                user_audio=user_audio,
+                on_transcript=publish_caller_transcript,
             )
 
             if not metrics["interrupted"]:
@@ -382,12 +458,19 @@ async def entrypoint(ctx: agents.JobContext):
 
                 # Streaming TTS speech synthesis via session.say
                 speech_handle = None
+                say_at = time.time()
                 try:
                     speech_handle = session.say(
                         metrics["text"],
                         allow_interruptions=True,
                     )
                     await speech_handle.wait_for_playout()
+                    if speech_handle and speech_handle.interrupted:
+                        publish({"type": "interruption", "interrupted": True, "reason": "user_barge_in",
+                                 "timestamp": time.time()}, topic="interruption", reliable=True)
+                    note_turn("assistant", metrics["text"], say_at + 0.25, time.time(), backend=llm_manager.backend,
+                              interrupted=bool(speech_handle and speech_handle.interrupted),
+                              tool=(metrics.get("tool_calls") or [{}])[0].get("tool") if metrics.get("tool_calls") else None)
                     from agent.agent_builder import looks_like_closing
                     if llm_manager.backend != "mock" and looks_like_closing(metrics["text"]) \
                             and not (speech_handle and speech_handle.interrupted):
@@ -440,20 +523,56 @@ async def entrypoint(ctx: agents.JobContext):
                 "timestamp": time.time(),
             }, topic="agent_state", reliable=True)
 
-    def schedule_turn():
+    async def on_turn_committed(text: str):
+        """LiveKit merged the caller's finals into one turn; answer it (carrying over anything an
+        interrupted previous turn never got to answer)."""
         nonlocal turn_process_task
+        if finalized["done"]:
+            return
+        tokens = text.split()
+        handles = [t for t in tokens if t.startswith(AUDIO_MARK)]
+        words = " ".join(t for t in tokens if not t.startswith(AUDIO_MARK)).strip()
+        for h in handles:
+            parked = stt_engine.take_audio(h) if hasattr(stt_engine, "take_audio") else None
+            if parked:
+                current_turn_audio.append(parked[0])
+        if words:
+            current_turn_texts.append(words)
+        if not current_turn_texts and not current_turn_audio:
+            return
         if turn_process_task and not turn_process_task.done():
-            return
-        if not current_turn_texts:
-            return
-        combined = " ".join(current_turn_texts)
+            if in_flight["replied"]:
+                # She has already started answering the previous turn: this is a new question.
+                llm_manager.cancel_active_generation()
+                try:
+                    turn_process_task.cancel()
+                except Exception:
+                    pass
+            else:
+                # Previous turn was cut off before any reply: fold its words/audio into this one.
+                llm_manager.cancel_active_generation()
+                try:
+                    turn_process_task.cancel()
+                except Exception:
+                    pass
+                if in_flight["text"]:
+                    current_turn_texts.insert(0, in_flight["text"])
+                if in_flight["audio"] and not in_flight["heard"]:
+                    current_turn_audio.insert(0, in_flight["audio"])
+        combined = " ".join(current_turn_texts).strip()
         current_turn_texts.clear()
-        turn_process_task = asyncio.create_task(execute_llm_turn(combined))
+        audio = concat_wavs(current_turn_audio) if current_turn_audio else None
+        current_turn_audio.clear()
+        in_flight.update(audio=audio, text=combined, heard=False, replied=False)
+        turn_seq["n"] += 1
+        turn_process_task = asyncio.create_task(execute_llm_turn(combined, audio))
         pending.add(turn_process_task)
         turn_process_task.add_done_callback(pending.discard)
 
     @session.on("user_input_transcribed")
     def on_transcript(ev):
+        if ev.transcript.startswith(AUDIO_MARK):
+            return   # a handle to utterance audio; collected when LiveKit commits the turn
         publish({
             "type": "transcript",
             "text": ev.transcript,
@@ -477,13 +596,12 @@ async def entrypoint(ctx: agents.JobContext):
                 }, topic="amd_event", reliable=True)
 
         if ev.is_final and ev.transcript.strip():
-            current_turn_texts.append(ev.transcript.strip())
-            if not user_is_speaking:
-                schedule_turn()
+            st, en = caller_turn_window()
+            note_turn("user", ev.transcript.strip(), st, en)
 
     @session.on("user_state_changed")
     def on_user_state(ev):
-        nonlocal user_is_speaking
+        nonlocal user_is_speaking, user_speech_started_at, user_speech_ended_at
         log.info("VAD speech boundary: %s -> %s", ev.old_state, ev.new_state)
         publish({
             "type": "vad",
@@ -509,44 +627,28 @@ async def entrypoint(ctx: agents.JobContext):
 
         if ev.new_state == "speaking":
             user_is_speaking = True
-            # Caller starts speaking: instant barge-in interruption of any active LLM generation & TTS playback
-            interrupted_any = False
-            if llm_manager.cancel_active_generation():
-                interrupted_any = True
-                log.info("Caller barge-in detected via VAD: cancelled in-flight LLM generation.")
-            if tts_manager.interrupt_playback():
-                interrupted_any = True
-                log.info("Caller barge-in detected via VAD: cancelled in-flight TTS playback stream.")
-            try:
-                if session.current_speech and not session.current_speech.done():
-                    session.interrupt(force=True)
-                    interrupted_any = True
-                    log.info("Caller barge-in detected via VAD: interrupted active speech handle.")
-            except Exception as e:
-                log.warning("Could not interrupt session speech: %s", e)
-
-            if interrupted_any:
-                publish({
-                    "type": "interruption",
-                    "interrupted": True,
-                    "reason": "user_barge_in",
-                    "timestamp": time.time(),
-                }, topic="interruption", reliable=True)
-                publish({
-                    "type": "agent_state",
-                    "state": "listening",
-                    "old_state": "speaking",
-                    "timestamp": time.time(),
-                }, topic="agent_state", reliable=True)
+            user_speech_started_at = time.time()
+            # Interruption of her speech is LiveKit's job (turn_handling.interruption: needs words, resumes
+            # if it was a false alarm). A turn she has not answered yet keeps generating; if the caller's
+            # new words commit a new turn, on_turn_committed cancels and merges it.
         elif ev.new_state == "listening":
             user_is_speaking = False
-            # Caller finished speaking: small debounce to collect final transcript packet
-            async def delayed_schedule():
-                await asyncio.sleep(0.12)
-                schedule_turn()
-            t = asyncio.create_task(delayed_schedule())
-            pending.add(t)
-            t.add_done_callback(pending.discard)
+            user_speech_ended_at = time.time()
+            if current_turn_texts or current_turn_audio:
+                # A barge-in parked the caller's words. If that sound turns out to be nothing (no
+                # transcript, so LiveKit commits no turn), answer the parked words ourselves.
+                seq = turn_seq["n"]
+
+                async def answer_parked():
+                    await asyncio.sleep(1.0)
+                    if finalized["done"] or turn_seq["n"] != seq or user_is_speaking:
+                        return
+                    if (current_turn_texts or current_turn_audio) and not (turn_process_task and not turn_process_task.done()):
+                        log.info("No new words after the barge-in; answering what the caller already said")
+                        await on_turn_committed("")
+                t = asyncio.create_task(answer_parked())
+                pending.add(t)
+                t.add_done_callback(pending.discard)
 
     @session.on("agent_state_changed")
     def on_agent_state(ev):
@@ -562,12 +664,10 @@ async def entrypoint(ctx: agents.JobContext):
     def on_overlapping(ev):
         log.info("Overlapping speech detected: is_interruption=%s", ev.is_interruption)
         if ev.is_interruption:
+            # LiveKit judged this a real interruption (words, not noise) and is stopping her itself;
+            # drop any reply still being generated so she does not answer the old turn.
             llm_manager.cancel_active_generation()
             tts_manager.interrupt_playback()
-            try:
-                session.interrupt(force=True)
-            except Exception:
-                pass
             publish({
                 "type": "interruption",
                 "interrupted": True,
@@ -600,6 +700,7 @@ async def entrypoint(ctx: agents.JobContext):
             prompt = data.get("text", "Hello, how can you help me today?")
             participant_id = packet.participant.identity if packet.participant else "caller"
             log.info("Test prompt received from %s: '%s'", participant_id, prompt)
+            note_turn("user", prompt, time.time(), time.time(), typed=True)
             task = asyncio.create_task(execute_llm_turn(prompt))
             pending.add(task)
             task.add_done_callback(pending.discard)
@@ -1256,8 +1357,131 @@ async def entrypoint(ctx: agents.JobContext):
             task.add_done_callback(pending.discard)
 
     assistant_agent = VoiceAssistantAgent()
-    await session.start(agent=assistant_agent, room=ctx.room)
+    assistant_agent.turn_hook = on_turn_committed
+    # LiveKit's own RecorderIO writes a dual-channel OGG (caller left, agent right, agent placed
+    # where it was actually played); it is converted to WAV for Call History when the call ends.
+    record_audio = not ctx.room.name.startswith("verify-")
+    await session.start(agent=assistant_agent, room=ctx.room,
+                        record={"audio": record_audio, "traces": False, "logs": False, "transcript": False})
+    # Jitter buffer in front of the room output: TTS audio arrives in bursts over the network and the
+    # room plays through a 200 ms queue, so late bursts became audible gaps in her voice.
+    try:
+        from agent.audio_buffer import BufferedAudioOutput
+        prebuffer_ms = int(os.getenv("TTS_PREBUFFER_MS", "1000"))
+        if prebuffer_ms > 0 and session.output.audio is not None:
+            session.output.audio = BufferedAudioOutput(session.output.audio, prebuffer_ms=prebuffer_ms)
+            log.info("Playout jitter buffer: %d ms", prebuffer_ms)
+    except Exception as e:
+        log.warning("Playout jitter buffer not installed: %s", e)
     publish_voice_state(active_cfg)
+
+    # ── Call History for every LiveKit call (test rooms and real ones) ─────────────────────────
+    is_test_room = ctx.room.name.startswith("test-")
+
+    def export_recording() -> Optional[str]:
+        """The framework's audio.ogg → recordings/rec-<room>-<ts>.wav (16 kHz stereo) for the dashboard."""
+        src = None
+        try:
+            src = os.path.join(str(ctx.session_directory), "audio.ogg")
+        except Exception:
+            return None
+        if not src or not os.path.isfile(src) or os.path.getsize(src) < 200:
+            return None
+        try:
+            from agent.call_history import call_history as _ch
+            rec_dir = _ch.recordings_dir
+        except Exception:
+            rec_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "recordings")
+        os.makedirs(rec_dir, exist_ok=True)
+        dst = os.path.join(rec_dir, f"rec-{ctx.room.name}-{int(call_started_at)}.wav")
+        try:
+            import av, wave
+            container = av.open(src)
+            stream = next(s for s in container.streams if s.type == "audio")
+            resampler = av.AudioResampler(format="s16", layout="stereo", rate=16000)
+            with wave.open(dst, "wb") as w:
+                w.setnchannels(2); w.setsampwidth(2); w.setframerate(16000)
+                for frame in container.decode(stream):
+                    for out in resampler.resample(frame):
+                        w.writeframes(out.to_ndarray().tobytes())
+                for out in resampler.resample(None):
+                    w.writeframes(out.to_ndarray().tobytes())
+            container.close()
+            try:
+                from agent import storage
+                storage.save_recording(dst, ctx.room.name)
+            except Exception:
+                pass
+            return dst
+        except Exception as e:
+            log.warning("Recording export failed (%s); keeping %s", e, src)
+            return None
+
+    async def finalize_call(reason: str = "caller_left"):
+        """Close the recording and file the call in Call History (runs once)."""
+        if finalized["done"] or ctx.room.name.startswith("verify-"):
+            return
+        finalized["done"] = True
+        ended = time.time()
+        try:
+            await session.aclose()          # flushes the recorder so audio.ogg is complete
+        except Exception as e:
+            log.debug("session close during finalize: %s", e)
+        audio_path = (await asyncio.to_thread(export_recording)) if record_audio else None   # decode/encode off the loop
+        if not call_turns:
+            log.info("Call %s ended with nothing said; not filed", ctx.room.name)
+            return
+        turns = []
+        for i, t in enumerate(sorted(call_turns, key=lambda x: x["timestamp"]), start=1):
+            turns.append({
+                "turn_index": i,
+                "role": t["role"],
+                "speaker": "Customer" if t["role"] == "user" else (active_cfg.name if active_cfg else "AI Agent"),
+                "text": t["text"],
+                "timestamp": t["timestamp"],
+                "end_timestamp": t.get("end_timestamp"),
+                "word_count": len(t["text"].split()),
+                "tool": t.get("tool"),
+                "backend": t.get("backend"),
+            })
+        try:
+            job = pipeline_worker.enqueue_call(
+                call_id=ctx.room.name,
+                room_name=ctx.room.name,
+                transcript_turns=turns,
+                audio_path=audio_path,
+                metadata={
+                    "source": "livekit-test-call" if is_test_room else "livekit",
+                    "agent_name": active_cfg.name if active_cfg else "AI Agent",
+                    "agent_id": active_cfg.agent_id if active_cfg else "",
+                    "direction": "sandbox" if is_test_room else "inbound",
+                    "from_number": "Agent Builder test call" if is_test_room else (dialled_number or ""),
+                    "to_number": active_cfg.name if active_cfg else "",
+                    "voice_id": active_cfg.voice_id if active_cfg else "",
+                    "llm_backend": f"{llm_manager.backend}:{llm_manager.model}",
+                    "stt": getattr(stt_engine, "label", STT_PROVIDER),
+                    "started_at": call_started_at,
+                    "ended_at": ended,
+                    "duration_seconds": max(0.0, ended - call_started_at),
+                    "end_reason": reason,
+                },
+            )
+            await pipeline_worker.execute_job(job.job_id)
+            log.info("Call %s filed in Call History (%d turns, audio=%s)", ctx.room.name, len(turns), bool(audio_path))
+        except Exception as e:
+            log.error("Could not file call %s: %s", ctx.room.name, e)
+
+    @ctx.room.on("participant_disconnected")
+    def on_participant_left(participant):
+        if not [p for p in ctx.room.remote_participants.values() if p.identity != participant.identity]:
+            t = asyncio.create_task(finalize_call("caller_left"))
+            pending.add(t)
+            t.add_done_callback(pending.discard)
+            t.add_done_callback(lambda _t: ctx.shutdown(reason="caller left"))
+
+    async def _on_shutdown():
+        await finalize_call("shutdown")
+    ctx.add_shutdown_callback(_on_shutdown)
 
     # Real callers expect the agent to speak first (Agent Builder "Who speaks first" = AI). Play the
     # configured first message as soon as a caller is in the room; test/verify rooms that drive the
@@ -1272,7 +1496,9 @@ async def entrypoint(ctx: agents.JobContext):
                 await asyncio.sleep(0.6)
                 publish({"type": "agent_reply", "text": greeting, "metrics": {"greeting": True},
                          "backend": llm_manager.backend, "timestamp": time.time()}, topic="agent_reply", reliable=True)
+                say_at = time.time()
                 await session.say(greeting, allow_interruptions=True).wait_for_playout()
+                note_turn("assistant", greeting, say_at + 0.25, time.time(), backend=llm_manager.backend, greeting=True)
             except Exception as e:
                 log.warning("Greeting playback failed: %s", e)
 
