@@ -276,7 +276,6 @@
   <!-- Incoming Call Banner (Shown when an inbound call rings) -->
   <div id="incoming-banner" class="incoming-banner" style="display:none">
     <div style="display:flex;align-items:center;gap:12px">
-      <div style="font-size:26px">&#x1F4DE;</div>
       <div>
         <div style="font-size:11px;text-transform:uppercase;color:var(--faint);font-family:ui-monospace,monospace">Incoming Telephone Call</div>
         <div id="incoming-caller-id" style="font-size:18px;font-weight:700;color:var(--text)">+1 (555) 234-5678</div>
@@ -284,8 +283,8 @@
       </div>
     </div>
     <div style="display:flex;gap:10px">
-      <button id="btn-accept-call" class="success" style="padding:10px 20px;font-size:14px">&#x1F4DE; Accept Call</button>
-      <button id="btn-decline-call" class="danger" style="padding:10px 18px;font-size:14px">&#x2716; Decline</button>
+      <button id="btn-accept-call" class="success" style="padding:10px 20px;font-size:14px">Accept Call</button>
+      <button id="btn-decline-call" class="danger" style="padding:10px 18px;font-size:14px">Decline</button>
     </div>
   </div>
 
@@ -303,7 +302,7 @@
           </div>
           <div class="lcd-number-display">
             <span id="display-number"></span>
-            <span id="cursor" style="color:var(--accent);font-weight:300">&#x258C;</span>
+            <span id="cursor" style="color:var(--accent);font-weight:300">|</span>
           </div>
           <div class="lcd-meta-row">
             <span id="lcd-codec">Opus 16-bit</span>
@@ -333,28 +332,24 @@
         <!-- In-Call Actions (Mute, Hold, Record, Transfer) -->
         <div class="actions-grid">
           <button id="btn-mute" class="action-btn" disabled>
-            <span style="font-size:15px">&#x1F3A4;</span>
             <span id="btn-mute-text">Mute</span>
           </button>
           <button id="btn-hold" class="action-btn" disabled>
-            <span style="font-size:15px">&#x23F8;</span>
             <span id="btn-hold-text">Hold</span>
           </button>
           <button id="btn-rec" class="action-btn" disabled>
-            <span style="font-size:15px">&#x23FA;</span>
             <span id="btn-rec-text">Record</span>
           </button>
           <button id="btn-xfer" class="action-btn" disabled>
-            <span style="font-size:15px">&#x21C6;</span>
             <span>Transfer</span>
           </button>
         </div>
 
         <!-- Dial / End Call Control Buttons -->
         <div style="display:grid;grid-template-columns:1fr 1fr 48px;gap:8px">
-          <button id="btn-dial" class="success" style="height:44px;font-size:15px">&#x1F4DE; Dial</button>
-          <button id="btn-hangup" class="danger" style="height:44px;font-size:15px" disabled>&#x2716; Hang Up</button>
-          <button id="btn-backspace" class="ghost" style="height:44px;font-size:16px;padding:0" title="Backspace">&#x232B;</button>
+          <button id="btn-dial" class="success" style="height:44px;font-size:15px">Dial</button>
+          <button id="btn-hangup" class="danger" style="height:44px;font-size:15px" disabled>Hang Up</button>
+          <button id="btn-backspace" class="ghost" style="height:44px;font-size:16px;padding:0" title="Backspace">Del</button>
         </div>
 
         <!-- Quick Dial Presets -->
@@ -400,9 +395,9 @@
           </div>
         </div>
         <div style="margin-top:10px;display:flex;align-items:center;gap:14px;font-size:12px;color:var(--soft)">
-          <span>&#x2714; Acoustic Echo Cancellation (AEC)</span>
-          <span>&#x2714; Noise Suppression</span>
-          <span>&#x2714; Auto Gain Control (AGC)</span>
+          <span>Acoustic Echo Cancellation (AEC)</span>
+          <span>Noise Suppression</span>
+          <span>Auto Gain Control (AGC)</span>
         </div>
       </div>
 
@@ -422,7 +417,7 @@
             <input id="sim-to-number" type="text" value="+18005550199" />
           </div>
           <button id="btn-trigger-inbound" class="primary" style="font-size:12px;padding:8px 14px;white-space:nowrap">
-            &#x1F514; Simulate Inbound Ring
+            Simulate Inbound Ring
           </button>
         </div>
       </div>
@@ -569,7 +564,7 @@
       updateLCD();
     } else {
       // In-call DTMF transmission
-      log("🔢 In-call DTMF touch-tone sent: '" + digit + "'");
+      log("In-call DTMF touch-tone sent: '" + digit + "'");
       if (room && room.state === "connected") {
         try {
           var payload = new TextEncoder().encode(JSON.stringify({
@@ -629,7 +624,7 @@
   // Dial Outbound Call
   async function dial() {
     var numberToCall = dialedDigits || "+18005550199";
-    log("📞 Dialing destination: " + numberToCall + " via LiveKit SIP Gateway...");
+    log("Dialing destination: " + numberToCall + " via LiveKit SIP Gateway...");
 
     $("lcd-state").textContent = "DIALING...";
     $("btn-dial").disabled = true;
@@ -645,7 +640,7 @@
       var tokenData = await res.json();
 
       stopRingbackTone();
-      log("🌐 Connecting WebRTC media session to room " + roomName + "...");
+      log("Connecting WebRTC media session to room " + roomName + "...");
 
       room = new LK.Room({
         adaptiveStream: true,
@@ -653,13 +648,13 @@
       });
 
       room.on(LK.RoomEvent.ParticipantConnected, function (p) {
-        log("👤 Participant joined call: " + p.identity);
+        log("Participant joined call: " + p.identity);
       });
 
       room.on(LK.RoomEvent.TrackSubscribed, function (track) {
         if (track.kind === "audio") {
           document.body.appendChild(track.attach());
-          log("🔊 Audio stream subscribed from remote participant");
+          log("Audio stream subscribed from remote participant");
         }
       });
 
@@ -667,35 +662,35 @@
         try {
           var msg = JSON.parse(new TextDecoder().decode(payload));
           if (topic === "agent_reply") {
-            log("🤖 Agent: " + msg.text);
+            log("Agent: " + msg.text);
           } else if (topic === "recording_event") {
-            log("🎙️ Recording status: " + msg.event);
+            log("Recording status: " + msg.event);
           } else if (topic === "agent_config_event" && msg.event === "voice_engine") {
-            log("🎙️ Agent voice: " + (msg.voice_name || msg.voice_id) + " via " + msg.engine + (msg.fallback_reason ? " (fallback: " + msg.fallback_reason + ")" : ""));
+            log("Agent voice: " + (msg.voice_name || msg.voice_id) + " via " + msg.engine + (msg.fallback_reason ? " (fallback: " + msg.fallback_reason + ")" : ""));
           } else if (topic === "agent_state" && msg.type === "call_end") {
-            log("📞 Agent ended the call");
+            log("Agent ended the call");
             setTimeout(hangup, 800);
           }
         } catch (e) {}
       });
 
       room.on(LK.RoomEvent.Disconnected, function () {
-        if (isCallActive) { log("🔌 Media session closed"); hangup(); }
+        if (isCallActive) { log("Media session closed"); hangup(); }
       });
 
       // Join the LiveKit room. This was missing, so the microphone had nothing to publish to
       // ("engine not connected within timeout") and no agent was ever dispatched to talk.
       await room.connect(tokenData.url, tokenData.token);
-      log("🔗 Joined media room; waiting for the AI agent to pick up…");
+      log("Joined media room; waiting for the AI agent to pick up…");
 
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           await room.localParticipant.setMicrophoneEnabled(true);
         } else {
-          log("⚠️ Microphone unavailable: Insecure context. Please use HTTPS (ngrok) for speaking. Connected in listen-only mode.");
+          log("Microphone unavailable: Insecure context. Please use HTTPS (ngrok) for speaking. Connected in listen-only mode.");
         }
       } catch (micErr) {
-        log("⚠️ Microphone permission failed: " + micErr.message + ". Connected in listen-only mode.");
+        log("Microphone permission failed: " + micErr.message + ". Connected in listen-only mode.");
       }
 
       isCallActive = true;
@@ -722,11 +717,11 @@
       // Simulate VU meter activity
       simulateVUMeter();
 
-      log("✅ Call connected successfully to " + numberToCall);
+      log("Call connected successfully to " + numberToCall);
 
     } catch (err) {
       stopRingbackTone();
-      log("❌ Dialing failed: " + err.message);
+      log("Dialing failed: " + err.message);
       hangup();
     }
   }
@@ -760,7 +755,7 @@
     $("btn-hold-text").textContent = "Hold";
     $("btn-rec-text").textContent = "Record";
     $("vu-bar").style.width = "0%";
-    log("📴 Call terminated / disconnected");
+    log("Call terminated / disconnected");
   }
 
   // Toggle Mute
@@ -773,12 +768,12 @@
         $("btn-mute").classList.add("active");
         $("btn-mute-text").textContent = "Unmute";
         $("lcd-state").textContent = "MUTED";
-        log("🔇 Microphone muted");
+        log("Microphone muted");
       } else {
         $("btn-mute").classList.remove("active");
         $("btn-mute-text").textContent = "Mute";
         $("lcd-state").textContent = "CONNECTED (TALKING)";
-        log("🎙️ Microphone unmuted");
+        log("Microphone unmuted");
       }
     } catch (e) {}
   }
@@ -793,14 +788,14 @@
       $("lcd-state").textContent = "ON HOLD";
       $("lcd-hold-status").textContent = "HELD";
       $("lcd-hold-status").style.color = "var(--warn)";
-      log("⏸️ Call placed on hold (Hold Music playing)");
+      log("Call placed on hold (Hold Music playing)");
     } else {
       $("btn-hold").classList.remove("active");
       $("btn-hold-text").textContent = "Hold";
       $("lcd-state").textContent = "CONNECTED (TALKING)";
       $("lcd-hold-status").textContent = "ACTIVE";
       $("lcd-hold-status").style.color = "var(--ok)";
-      log("▶️ Call resumed from hold");
+      log("Call resumed from hold");
     }
     fetch("/api/telephony/hold", {
       method: "POST",
@@ -816,7 +811,7 @@
     if (isRecording) {
       $("btn-rec").classList.add("active");
       $("btn-rec-text").textContent = "Stop Rec";
-      log("🎙️ Real-time dual-channel call recording started");
+      log("Real-time dual-channel call recording started");
       fetch("/api/telephony/recording/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -825,7 +820,7 @@
     } else {
       $("btn-rec").classList.remove("active");
       $("btn-rec-text").textContent = "Record";
-      log("💾 Call recording stopped & WAV container saved");
+      log("Call recording stopped & WAV container saved");
       fetch("/api/telephony/recording/stop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -838,7 +833,7 @@
   function transferCall() {
     var target = prompt("Enter telephone number or department to transfer this call:", "+18885550142");
     if (!target) return;
-    log("🔄 Executing warm attended call transfer to " + target + "...");
+    log("Executing warm attended call transfer to " + target + "...");
     fetch("/api/telephony/transfer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -850,7 +845,7 @@
         reason: "Transferred from Softphone"
       })
     }).then(function (res) {
-      if (res.ok) log("✅ Transfer initiated successfully to " + target);
+      if (res.ok) log("Transfer initiated successfully to " + target);
     }).catch(function (e) {
       log("Transfer failed: " + e);
     });
@@ -862,7 +857,7 @@
     var fromNum = $("sim-from-number").value || "+15559876543";
     $("incoming-caller-id").textContent = fromNum;
     $("incoming-banner").style.display = "flex";
-    log("🔔 INCOMING CALL from " + fromNum + " on trunk +18005550199...");
+    log("INCOMING CALL from " + fromNum + " on trunk +18005550199...");
 
     playInboundRingtone();
     if (inboundInterval) clearInterval(inboundInterval);
@@ -872,7 +867,7 @@
   $("btn-accept-call").addEventListener("click", function () {
     if (inboundInterval) clearInterval(inboundInterval);
     $("incoming-banner").style.display = "none";
-    log("📞 Inbound call answered by softphone operator");
+    log("Inbound call answered by softphone operator");
     dialedDigits = $("incoming-caller-id").textContent;
     updateLCD();
     dial();
@@ -881,7 +876,7 @@
   $("btn-decline-call").addEventListener("click", function () {
     if (inboundInterval) clearInterval(inboundInterval);
     $("incoming-banner").style.display = "none";
-    log("🚫 Inbound call declined (SIP 486 Busy Here)");
+    log("Inbound call declined (SIP 486 Busy Here)");
   });
 
   // VU Meter Audio Simulation

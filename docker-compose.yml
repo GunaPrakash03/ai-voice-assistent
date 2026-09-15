@@ -62,8 +62,11 @@ services:
       DATABASE_URL: postgresql://${VOICE_DB_USER:-voice}:${VOICE_DB_PASSWORD:-voice_dev_password}@postgres:5432/${VOICE_DB_NAME:-voice_agent}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      # Voice only: Deepgram Aura speaks; hearing is done by Gemini (STT_PROVIDER=gemini, agent/gemini_stt.py).
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
+      STT_PROVIDER: ${STT_PROVIDER:-gemini}
       STT_MODEL: ${STT_MODEL:-nova-3}
+      GEMINI_STT_MODEL: ${GEMINI_STT_MODEL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       # Gemini drives the live dialogue when the agent's model is gemini-* (key from the API Keys page / .env).
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}

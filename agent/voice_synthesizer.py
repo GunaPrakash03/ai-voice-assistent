@@ -5,10 +5,7 @@ Fetches genuine authentic human speech audio directly from:
 2. Deepgram Aura Official TTS API (https://api.deepgram.com/v1/speak) with DEEPGRAM_API_KEY
 3. Cartesia Sonic Official WebSocket / REST API with CARTESIA_API_KEY
 4. OpenAI TTS Official API (https://api.openai.com/v1/audio/speech) with OPENAI_API_KEY
-5. Retell AI platform voice library (https://api.retellai.com/list-voices) with RETELL_API_KEY:
-   official Retell preview MP3s for sample playback, and custom text routed through the
-   voice's underlying engine (ElevenLabs / OpenAI / Deepgram), since Retell has no TTS endpoint.
-6. High-Definition Neural TTS fallback for voices when third-party keys are unconfigured.
+5. High-Definition Neural TTS fallback for voices when third-party keys are unconfigured.
 """
 
 import asyncio
@@ -50,7 +47,6 @@ def _load_dotenv_once(path: str = os.path.join(_ROOT_DIR, ".env")) -> None:
 
 _load_dotenv_once()
 
-from agent import retell_voices as _retell
 
 # Global in-memory cache for ultra-fast instant audio playback (<5ms response)
 _AUDIO_CACHE: Dict[str, bytes] = {}
@@ -132,9 +128,9 @@ def voice_engine_readiness(voice_id: str, provider: str, gender: str = "female")
     """
     provider = (provider or "").lower()
     fb = _spread_fallback_voice(voice_id, gender).replace("Neural", "")
-    fallback_label = f"Neural HD fallback ({fb.split('-')[-1]})"
+    fallback_label = f"Neural Voice fallback ({fb.split('-')[-1]})"
     if provider in ("studio", "neural"):
-        return {"ready": True, "engine": "Neural HD (free)", "note": ""}
+        return {"ready": True, "engine": "Neural Voice", "note": ""}
     if provider == "elevenlabs":
         key = os.getenv("ELEVEN_API_KEY") or os.getenv("ELEVENLABS_API_KEY") or os.getenv("XI_API_KEY")
         if not key:
@@ -155,11 +151,6 @@ def voice_engine_readiness(voice_id: str, provider: str, gender: str = "female")
     if provider == "cartesia":
         ok = bool(os.getenv("CARTESIA_API_KEY"))
         return {"ready": ok, "engine": "Cartesia Sonic" if ok else fallback_label, "note": "" if ok else "CARTESIA_API_KEY not configured"}
-    if provider == "retell":
-        # Retell has no text-to-speech API. Its voices are ElevenLabs/OpenAI/Cartesia voices under the
-        # hood; the bundled entries are demo sample clips, so custom sentences always fall back.
-        return {"ready": False, "engine": fallback_label,
-                "note": "Retell AI is a call platform, not a speech engine: this is a demo sample clip, so your own sentences are spoken by the free neural voice. Pick the same voice under ElevenLabs or Deepgram to hear it for real"}
     return {"ready": False, "engine": fallback_label, "note": f"No engine for provider '{provider}'"}
 _ELEVEN_PREVIEW_MAP: Dict[str, str] = {}
 
@@ -280,7 +271,7 @@ OFFICIAL_ELEVENLABS_CDN_PREVIEWS = {
 
 # Neural Voice mappings (Zero-cost High-Definition Neural Edge TTS & Provider fallbacks)
 NEURAL_VOICE_MAP = {
-    # Zero-Cost High-Definition Neural Edge Voices (100% Free · No Key Needed)
+    # Neural Edge voices (no key needed)
     "neural-jenny":       {"neural": "en-US-JennyNeural",       "rate": "+0%", "pitch": "+0Hz"},
     "neural-guy":         {"neural": "en-US-GuyNeural",         "rate": "+0%", "pitch": "+0Hz"},
     "neural-aria":        {"neural": "en-US-AriaNeural",        "rate": "+4%", "pitch": "+2Hz"},
@@ -361,25 +352,6 @@ NEURAL_VOICE_MAP = {
     "pqHfZKP75CvOlQylNhV4": {"neural": "en-US-ChristopherNeural", "rate": "+0%", "pitch": "-2Hz"},  # Bill
     "wBXNqKUATyqu0RtYt25i": {"neural": "en-US-GuyNeural",         "rate": "+0%", "pitch": "+0Hz"},  # Adam Custom
 
-    # Legacy / Retell aliases
-    "retell-cimo":       {"neural": "en-US-AvaNeural",         "rate": "+0%", "pitch": "-1Hz"},
-    "retell-kate":       {"neural": "en-US-JennyNeural",       "rate": "+3%", "pitch": "+1Hz"},
-    "retell-marissa":    {"neural": "en-US-MichelleNeural",    "rate": "+3%", "pitch": "+0Hz"},
-    "retell-nico":       {"neural": "en-US-ChristopherNeural", "rate": "+1%", "pitch": "-3Hz"},
-    "retell-sloane":     {"neural": "en-US-AvaNeural",         "rate": "+4%", "pitch": "+1Hz"},
-    "retell-brynne":     {"neural": "en-US-EmmaNeural",        "rate": "+3%", "pitch": "+2Hz"},
-    "retell-grace":      {"neural": "en-US-JennyNeural",       "rate": "+1%", "pitch": "-1Hz"},
-    "retell-lily":       {"neural": "en-US-AriaNeural",        "rate": "+5%", "pitch": "+3Hz"},
-    "retell-rita":       {"neural": "en-US-AvaNeural",         "rate": "+3%", "pitch": "+2Hz"},
-    "retell-willa":      {"neural": "en-GB-SoniaNeural",       "rate": "+2%", "pitch": "+0Hz"},
-    "retell-ashley":     {"neural": "en-GB-LibbyNeural",       "rate": "+4%", "pitch": "+1Hz"},
-    "retell-chloe":      {"neural": "en-US-AriaNeural",        "rate": "+6%", "pitch": "+2Hz"},
-    "retell-leland":     {"neural": "en-US-EricNeural",        "rate": "+2%", "pitch": "-1Hz"},
-    "retell-della":      {"neural": "en-US-MichelleNeural",    "rate": "+2%", "pitch": "-2Hz"},
-    "retell-merritt":    {"neural": "en-US-AnaNeural",         "rate": "+2%", "pitch": "+0Hz"},
-    "retell-maren":      {"neural": "en-GB-RyanNeural",        "rate": "+2%", "pitch": "-2Hz"},
-    "retell-andrea":     {"neural": "es-US-PalomaNeural",      "rate": "+3%", "pitch": "+0Hz"},
-    "retell-andrea-es":  {"neural": "es-US-PalomaNeural",      "rate": "+3%", "pitch": "+0Hz"},
 
     # OpenAI TTS (Distinct tone personas)
     "openai-alloy":   {"neural": "en-US-JennyNeural",   "rate": "+0%", "pitch": "-2Hz"},
@@ -541,55 +513,6 @@ def _fetch_elevenlabs_tts(raw_voice_id: str, text: str, api_key: str) -> Optiona
         return None
 
 
-def _synthesize_retell_voice(voice_id: str, phrase: str, custom_text: str, gender: str) -> Optional[bytes]:
-    """
-    Retell AI has no text-to-speech endpoint. Strategy:
-      * sample preview (no custom text)  -> official Retell preview MP3 (authentic voice)
-      * custom text                      -> underlying engine named by the Retell record
-                                            (ElevenLabs by voice name, OpenAI by voice name,
-                                             Deepgram Aura by model name)
-      * anything else                    -> None, caller falls back to neural map
-    """
-    record = _retell.get_retell_voice(voice_id)
-    if not custom_text:
-        preview = _retell.get_retell_preview_audio(voice_id)
-        if preview:
-            return preview
-    engine = _retell.underlying_engine(record) if record else (_retell.RETELL_ID_PATTERN.match(voice_id).group(1).lower() if _retell.RETELL_ID_PATTERN.match(voice_id) else "")
-    name = _retell.plain_voice_name(record) if record else _retell.RETELL_ID_PATTERN.sub("", voice_id)
-    if engine in ("elevenlabs", "11labs"):
-        xi_key = os.getenv("ELEVEN_API_KEY") or os.getenv("ELEVENLABS_API_KEY") or os.getenv("XI_API_KEY")
-        if xi_key:
-            raw = _resolve_elevenlabs_voice_id_by_name(name, xi_key)
-            if raw:
-                audio = _fetch_elevenlabs_tts(raw, phrase, xi_key)
-                if audio:
-                    return audio
-            else:
-                log.info("Retell voice %s (%s) is not in this ElevenLabs library; using neural fallback", voice_id, name)
-    elif engine == "openai":
-        oa_key = os.getenv("OPENAI_API_KEY")
-        if oa_key:
-            audio = _fetch_openai_tts(name.lower(), phrase, oa_key)
-            if audio:
-                return audio
-    elif engine == "deepgram":
-        dg_key = os.getenv("DEEPGRAM_API_KEY")
-        if dg_key:
-            audio = _fetch_deepgram_tts(f"aura-{name.lower()}-en", phrase, dg_key)
-            if audio:
-                return audio
-    return None
-
-
-def _retell_neural_fallback_key(voice_id: str) -> str:
-    """11labs-Cimo -> retell-cimo (matches the tuned entries in NEURAL_VOICE_MAP)."""
-    if voice_id.lower().startswith("retell-"):
-        return voice_id.lower()
-    name = _retell.RETELL_ID_PATTERN.sub("", voice_id).lower()
-    return f"retell-{name}"
-
-
 MAX_SPOKEN_SENTENCES = 5
 
 _FALLBACK_POOL = {
@@ -710,32 +633,17 @@ async def generate_speech_audio_bytes(
 
     provider_labels = {
         "studio": "Studio Pro Ultra-Realistic",
-        "neural": "Free Neural TTS",
+        "neural": "Neural Voice",
         "cartesia": "Cartesia Sonic",
         "deepgram": "Deepgram Aura",
         "openai": "OpenAI TTS",
         "elevenlabs": "ElevenLabs Turbo",
-        "retell": "Retell AI",
     }
-    clean_name = name.replace("(Studio Pro)", "").replace("(Free Neural)", "").replace("(Spanish Studio Pro)", "").replace("(Retell AI)", "").replace("(British Free)", "").replace("(Indian English Free)", "").replace("(Aussie Free)", "").strip() or "Assistant"
+    clean_name = name.replace("(Studio Pro)", "").replace("(Neural HD)", "").replace("(Spanish Studio Pro)", "").replace("(British Free)", "").replace("(Indian English Free)", "").replace("(Aussie Free)", "").strip() or "Assistant"
     
     phrase = cleaned_input or f"Hello! I am {clean_name}, your AI voice assistant. How can I help you today?"
     fallback_reason = ""
-    requested_voice_id = voice_id  # retell voices may be remapped to a neural profile below
-
-    # 0. Retell AI platform voice library
-    if provider == "retell" or _retell.is_retell_voice_id(voice_id):
-        retell_audio = _synthesize_retell_voice(voice_id, phrase, cleaned_input, gender)
-        if retell_audio:
-            _AUDIO_CACHE[cache_key] = retell_audio
-            _note_engine(requested_voice_id, "retell")
-            return retell_audio
-        fallback_reason = ("Retell AI is a call platform, not a speech engine: this entry is a demo sample clip, "
-                           "so your own sentences are spoken by the free neural voice")
-        # Route the neural fallback through the tuned retell-<name> profile if we have one.
-        fb_key = _retell_neural_fallback_key(voice_id)
-        if fb_key in NEURAL_VOICE_MAP and voice_id not in NEURAL_VOICE_MAP:
-            voice_id = fb_key
+    requested_voice_id = voice_id
 
     # 1. ElevenLabs Official Portal Audio
     if provider == "elevenlabs" or voice_id.startswith("eleven-"):
@@ -1025,10 +933,8 @@ def stream_voice_audio(voice_id: str, name: str = "", gender: str = "female", st
         plan = ("deepgram", "")
     elif provider in ("studio", "neural"):
         plan = ("neural", "")
-    elif provider in ("retell", "elevenlabs", "cartesia", "openai"):
-        reason = ("Retell AI is a call platform, not a speech engine: this is a demo sample clip, so your own sentences are spoken by the free neural voice" if provider == "retell"
-                  else _PLAN_LOCKED_VOICES.get(voice_id) or f"{provider} engine unavailable (no API key)")
-        plan = ("neural", reason)
+    elif provider in ("elevenlabs", "cartesia", "openai"):
+        plan = ("neural", _PLAN_LOCKED_VOICES.get(voice_id) or f"{provider} engine unavailable (no API key)")
     if plan is None:
         yield get_voice_audio(voice_id, name, gender, style, provider, text)
         return

@@ -11,7 +11,6 @@ Flows covered
   F5  Rapid double Play must NOT trigger the Web Speech fallback (AbortError bug)
   F6  Test Call: send a caller utterance, wait for the agent reply, capture the
       synthesized reply audio for that voice
-  F7  Retell tab: sample-backed voices present, preview plays the original recording
 
 Recordings are written to web/audio/ (served at http://localhost:8091/audio/...).
 Exit code is non-zero if any assertion fails.
@@ -44,8 +43,6 @@ TEST_VOICES = [
      "What information should I provide about my case?", "test_call_4_nathan"),
     ("elevenlabs", "EXAVITQu4vr4xnSDxMaL", "Sarah (ElevenLabs Turbo)",
      "Hi, I am calling about a personal injury claim.", "test_call_5_sarah"),
-    ("retell", "retell-cimo", "Cimo (Retell AI)",
-     "Can someone call me back tomorrow morning?", "test_call_6_cimo"),
 ]
 
 REPLY_SEL = ".test-msg.agent .test-msg-bubble"
@@ -223,16 +220,6 @@ async def run() -> int:
             if await end_btn.count() and await end_btn.is_visible():
                 await end_btn.click()
                 await asyncio.sleep(0.4)
-
-        # ── F7: Retell sample-backed previews ──────────────────────────
-        print("\nF7  Retell AI sample-backed voices")
-        retell = [v for v in api_voices if v["provider"] == "retell"]
-        check(len(retell) >= 18, "at least 18 Retell voices in catalogue", f"{len(retell)}")
-        with urllib.request.urlopen(f"{BASE}/api/agents/voice-audio?voice_id=retell-cimo") as r:
-            cimo = r.read()
-            ctype = r.headers.get("Content-Type")
-        check(audio_kind(cimo) in ("wav", "mpeg") and len(cimo) > 100000,
-              "retell-cimo preview is the original recording", f"{len(cimo)} bytes, {ctype}")
 
         # ── wrap-up ────────────────────────────────────────────────────
         print("\nSession diagnostics")

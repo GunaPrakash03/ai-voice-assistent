@@ -3,7 +3,8 @@
 Provides:
 1. Multi-Tenant Workspace Model & Data Isolation (workspaces, users, memberships).
 2. API Key Management (rotatable live/test API keys, hashed storage, granular scopes).
-3. Role-Based Access Control (RBAC): Admin, Operator, Analyst roles with permission matrices.
+3. Role-Based Access Control (RBAC): two roles — admin and user. Users get the whole dashboard
+   (all agents, calls, webhooks); only admins manage provider keys, API keys and members.
 4. Token-Bucket & Sliding-Window Rate Limiter with standard HTTP headers (X-RateLimit-*).
 5. JWT-style signed authentication tokens for session/programmatic access.
 6. Programmatic Call Dispatch & Webhook Trigger Authorization.
@@ -40,9 +41,17 @@ JWT_SECRET = os.getenv("AUTH_JWT_SECRET", "voice-agent-jwt-secret-key-prod-2026"
 # ---------------------------------------------------------------------------
 
 class UserRole(str, Enum):
-    ADMIN    = "admin"     # Full access to workspace, users, keys, billing, agents, calls
-    OPERATOR = "operator"  # Dial, transfer, agent edit/test, live call monitoring
-    ANALYST  = "analyst"   # Read-only access to calls, analytics, exports, transcript inspections
+    ADMIN = "admin"  # Everything: agents, calls, webhooks, provider keys, API keys, members
+    USER  = "user"   # Everything in the dashboard except provider keys, API keys and members
+
+
+# Roles from earlier builds; stored users and incoming payloads are folded into "user".
+LEGACY_ROLES = {"operator": UserRole.USER.value, "analyst": UserRole.USER.value, "member": UserRole.USER.value}
+
+
+def normalize_role(role: Optional[str]) -> str:
+    r = (role or "").strip().lower()
+    return LEGACY_ROLES.get(r, r or UserRole.USER.value)
 
 
 class ApiScope(str, Enum):
@@ -61,7 +70,7 @@ class ApiScope(str, Enum):
 # Role-to-Scope Permissions Mapping
 ROLE_SCOPES: Dict[UserRole, Set[str]] = {
     UserRole.ADMIN: {s.value for s in ApiScope},
-    UserRole.OPERATOR: {
+    UserRole.USER: {
         ApiScope.CALLS_READ.value,
         ApiScope.CALLS_WRITE.value,
         ApiScope.CALLS_DISPATCH.value,
@@ -69,11 +78,7 @@ ROLE_SCOPES: Dict[UserRole, Set[str]] = {
         ApiScope.AGENTS_WRITE.value,
         ApiScope.ANALYTICS_READ.value,
         ApiScope.TELEPHONY_DIAL.value,
-    },
-    UserRole.ANALYST: {
-        ApiScope.CALLS_READ.value,
-        ApiScope.AGENTS_READ.value,
-        ApiScope.ANALYTICS_READ.value,
+        ApiScope.WEBHOOKS_ADMIN.value,
     },
 }
 
@@ -235,42 +240,84 @@ class AuthManager:
         )
         self._users[admin_user.user_id] = admin_user
 
+    # Users, workspaces, API keys and sessions live in PostgreSQL (app_documents collections below)
+    # whenever DATABASE_URL is set. The JSON file is only used when no database is configured
+    # (local tests); an existing file is imported once into the database and then removed.
+    COLLECTIONS = (("workspaces", "workspace_id"), ("users", "user_id"), ("api_keys", "key_id"), ("sessions", "token_hash"))
+
+    def _db_backed(self) -> bool:
+        try:
+            from agent import storage
+            return bool(storage.database_url()) and storage.available()
+        except Exception:
+            return False
+
+    def _absorb(self, data: Dict[str, Any]) -> None:
+        for w in data.get("workspaces", []) or []:
+            self._workspaces[w["workspace_id"]] = Workspace(**w)
+        for u in data.get("users", []) or []:
+            u["role"] = normalize_role(u.get("role"))
+            self._users[u["user_id"]] = AuthUser(**u)
+        for k in data.get("api_keys", []) or []:
+            key = ApiKey(**k)
+            self._api_keys[key.key_id] = key
+            self._key_hash_index[key.key_hash] = key.key_id
+        now = time.time()
+        for sdoc in data.get("sessions", []) or []:
+            if float(sdoc.get("expires_at", 0)) > now:
+                self._sessions[sdoc["token_hash"]] = sdoc
+
     def _load_store(self):
+        if self._db_backed():
+            from agent import storage
+            self._absorb({name: storage.load_collection(name) for name, _ in self.COLLECTIONS})
+            self._migrate_file_to_db()
+            return
+        if os.getenv("DATABASE_URL"):
+            log.error("DATABASE_URL is set but PostgreSQL is unreachable; auth store starts with defaults only")
+            return
         if os.path.isfile(self.store_path):
             try:
                 with open(self.store_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                for w in data.get("workspaces", []):
-                    self._workspaces[w["workspace_id"]] = Workspace(**w)
-                for u in data.get("users", []):
-                    self._users[u["user_id"]] = AuthUser(**u)
-                for k in data.get("api_keys", []):
-                    key = ApiKey(**k)
-                    self._api_keys[key.key_id] = key
-                    self._key_hash_index[key.key_hash] = key.key_id
-                now = time.time()
-                for sdoc in data.get("sessions", []):
-                    if float(sdoc.get("expires_at", 0)) > now:
-                        self._sessions[sdoc["token_hash"]] = sdoc
+                    self._absorb(json.load(f))
             except Exception as e:
                 log.warning("Failed to load auth store from %s: %s", self.store_path, e)
 
+    def _migrate_file_to_db(self) -> None:
+        """One-time import of a legacy config/auth_store.json into PostgreSQL, then drop the file."""
+        if not os.path.isfile(self.store_path):
+            return
+        try:
+            with open(self.store_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self._absorb(data)          # file entries win for the documents they contain
+            self._save_store()
+            os.remove(self.store_path)
+            log.info("Imported %s into PostgreSQL (%d users) and removed the file", self.store_path, len(self._users))
+        except Exception as e:
+            log.warning("Could not migrate %s into PostgreSQL: %s", self.store_path, e)
+
+    def _snapshot(self) -> Dict[str, Any]:
+        return {
+            "workspaces": [w.to_dict() for w in self._workspaces.values()],
+            "users": [u.to_dict() for u in self._users.values()],
+            "api_keys": [k.to_dict(include_hash=True) for k in self._api_keys.values()],
+            "sessions": [s for s in self._sessions.values() if float(s.get("expires_at", 0)) > time.time()],
+            "updated_at": time.time(),
+        }
+
     def _save_store(self):
+        snap = self._snapshot()
+        if os.getenv("DATABASE_URL"):
+            from agent import storage
+            ok = all(storage.save_collection(name, snap[name], id_field, snap["updated_at"]) for name, id_field in self.COLLECTIONS)
+            if not ok:
+                log.error("Auth store not saved: PostgreSQL write failed")
+            return
         try:
             os.makedirs(os.path.dirname(self.store_path), exist_ok=True)
             with open(self.store_path, "w", encoding="utf-8") as f:
-                json.dump({
-                    "workspaces": [w.to_dict() for w in self._workspaces.values()],
-                    "users": [u.to_dict() for u in self._users.values()],
-                    "api_keys": [k.to_dict(include_hash=True) for k in self._api_keys.values()],
-                    "sessions": [s for s in self._sessions.values() if float(s.get("expires_at", 0)) > time.time()],
-                    "updated_at": time.time(),
-                }, f, indent=2)
-            try:
-                from agent import storage
-                storage.sync_file(self.store_path)
-            except Exception as e:
-                log.debug("storage sync skipped: %s", e)
+                json.dump(snap, f, indent=2)
         except Exception as e:
             log.warning("Failed to save auth store: %s", e)
 
@@ -372,6 +419,7 @@ class AuthManager:
     def create_user(self, workspace_id: str, email: str, role: str) -> AuthUser:
         if workspace_id not in self._workspaces:
             raise KeyError(f"Workspace '{workspace_id}' not found")
+        role = normalize_role(role)
         if role not in [r.value for r in UserRole]:
             raise ValueError(f"Invalid role '{role}'. Allowed: {[r.value for r in UserRole]}")
 
@@ -384,7 +432,7 @@ class AuthManager:
     def get_user(self, user_id: str) -> Optional[AuthUser]:
         return self._users.get(user_id)
 
-    def add_member(self, workspace_id: str, email: str, password: str, role: str = "operator",
+    def add_member(self, workspace_id: str, email: str, password: str, role: str = "user",
                    name: str = "", phone: str = "") -> AuthUser:
         """Admin creates a teammate who can sign in (password, optional phone for the SMS step)."""
         email = (email or "").strip()
@@ -689,7 +737,7 @@ class AuthManager:
     def role_has_permission(self, role_str: str, required_scope: str) -> bool:
         """Checks if a user role possesses the required permission scope."""
         try:
-            role = UserRole(role_str)
+            role = UserRole(normalize_role(role_str))
         except ValueError:
             return False
         allowed = ROLE_SCOPES.get(role, set())
@@ -701,11 +749,12 @@ class AuthManager:
         self,
         workspace_id: str,
         subject: str,
-        role: str = "operator",
+        role: str = "user",
         scopes: Optional[List[str]] = None,
         ttl_seconds: int = 3600,
     ) -> str:
         """Issues a signed JWT-like Bearer token: base64(header).base64(payload).signature."""
+        role = normalize_role(role)
         now = int(time.time())
         payload = {
             "sub": subject,
@@ -769,7 +818,7 @@ class AuthManager:
 
             ws_id = payload.get("ws", "ws-default")
             scopes = payload.get("scopes", [])
-            role = payload.get("role", "operator")
+            role = normalize_role(payload.get("role", "user"))
 
             # Check Rate Limit
             rate_res = self.rate_limiter.check(f"user:{payload['sub']}")
@@ -830,7 +879,7 @@ class AuthManager:
                 "workspace_id": ws.workspace_id,
                 "auth_type": "workspace_header",
                 "identity": f"anon-{ws.workspace_id}",
-                "role": UserRole.OPERATOR.value,
+                "role": UserRole.USER.value,
                 "scopes": [ApiScope.ALL.value],
             }
             return True, ctx, None

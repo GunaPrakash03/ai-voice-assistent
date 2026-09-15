@@ -117,7 +117,7 @@
         <span id="agent-badge" class="badge" style="background:var(--rule);color:var(--soft)">Idle</span>
       </div>
       <div id="barge-banner" style="display:none;padding:3px 9px;border-radius:4px;font-size:12px;font-weight:600;background:color-mix(in srgb,var(--warn) 20%,transparent);border:1px solid var(--warn);color:var(--warn)">
-        ⚡ Instant Barge-In Cut-Off!
+        Instant Barge-In Cut-Off!
       </div>
     </div>
     <label style="margin-top:16px">Participants in room</label>
@@ -419,10 +419,10 @@
       </div>
 
       <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-        <button id="btn-start-rec" style="flex:1;min-width:130px;font-size:11.5px;background:var(--danger);color:#fff">&#x23FA; Start Recording</button>
-        <button id="btn-pause-rec" class="ghost" style="flex:1;min-width:140px;font-size:11.5px" disabled>&#x23F8; Pause (PCI Redact)</button>
-        <button id="btn-resume-rec" class="ghost" style="flex:1;min-width:120px;font-size:11.5px" disabled>&#x25B6; Resume</button>
-        <button id="btn-stop-rec" class="ghost" style="flex:1;min-width:130px;font-size:11.5px" disabled>&#x23F9; Stop &amp; Save</button>
+        <button id="btn-start-rec" style="flex:1;min-width:130px;font-size:11.5px;background:var(--danger);color:#fff">Start Recording</button>
+        <button id="btn-pause-rec" class="ghost" style="flex:1;min-width:140px;font-size:11.5px" disabled>Pause (PCI Redact)</button>
+        <button id="btn-resume-rec" class="ghost" style="flex:1;min-width:120px;font-size:11.5px" disabled>Resume</button>
+        <button id="btn-stop-rec" class="ghost" style="flex:1;min-width:130px;font-size:11.5px" disabled>Stop &amp; Save</button>
       </div>
     </div>
   </div>
@@ -471,7 +471,7 @@
     </div>
 
     <div style="margin-top:10px;background:var(--ground);border:1px solid var(--rule);border-radius:4px;padding:10px 12px;font-size:12px;display:none" id="pipe-summary-card">
-      <div style="font-weight:600;margin-bottom:4px;font-size:12.5px">📋 Executive Summary &amp; CRM Entities</div>
+      <div style="font-weight:600;margin-bottom:4px;font-size:12.5px">Executive Summary &amp; CRM Entities</div>
       <div id="pipe-exec-summary" style="color:var(--soft);line-height:1.5">—</div>
       <div style="margin-top:6px;display:flex;gap:12px;flex-wrap:wrap">
         <span style="font-size:11px"><b>Intent:</b> <span id="pipe-intent">—</span></span>
@@ -680,7 +680,7 @@
         } else if (topic === "vad") {
           var badge = $("vad-badge");
           if (msg.state === "speaking") {
-            badge.textContent = "🗣️ Speaking (Active)";
+            badge.textContent = "Speaking (Active)";
             badge.style.background = "var(--ok)";
             badge.style.color = "#fff";
             log("VAD: caller started speaking");
@@ -697,7 +697,7 @@
           ab.textContent = msg.state.toUpperCase();
           if (msg.state === "thinking") {
             ab.style.background = "var(--warn)"; ab.style.color = "#fff";
-            ls.textContent = "🧠 Thinking / Generating...";
+            ls.textContent = "Thinking / Generating...";
             ls.style.background = "var(--warn)"; ls.style.color = "#fff";
             ttsBadge.textContent = "Awaiting LLM clauses...";
             ttsBadge.style.background = "var(--rule)"; ttsBadge.style.color = "var(--soft)";
@@ -706,9 +706,9 @@
             $("clause-box").innerHTML = "";
           } else if (msg.state === "speaking") {
             ab.style.background = "var(--ok)"; ab.style.color = "#fff";
-            ls.textContent = "🗣️ Streaming response...";
+            ls.textContent = "Streaming response...";
             ls.style.background = "var(--ok)"; ls.style.color = "#fff";
-            ttsBadge.textContent = "🗣️ Streaming Audio Frames...";
+            ttsBadge.textContent = "Streaming Audio Frames...";
             ttsBadge.style.background = "var(--ok)"; ttsBadge.style.color = "#fff";
           } else {
             ab.style.background = "var(--rule)"; ab.style.color = "var(--soft)";
@@ -745,11 +745,11 @@
           if (msg.provider) $("m-tts-engine").textContent = msg.provider + (msg.model ? " (" + msg.model + ")" : "");
           var tb = $("tts-status");
           if (msg.interrupted) {
-            tb.textContent = "⚡ Truncated (Barge-in)";
+            tb.textContent = "Truncated (Barge-in)";
             tb.style.background = "var(--warn)";
             tb.style.color = "#fff";
           } else {
-            tb.textContent = "✓ Playout Complete";
+            tb.textContent = "Playout Complete";
             tb.style.background = "var(--ok)";
             tb.style.color = "#fff";
           }
@@ -760,20 +760,20 @@
           var banner = $("barge-banner");
           banner.style.display = "inline-block";
           var tb = $("tts-status");
-          tb.textContent = "⚡ Audio Cut-off (<50ms)";
+          tb.textContent = "Audio Cut-off (<50ms)";
           tb.style.background = "var(--warn)";
           tb.style.color = "#fff";
-          log("⚡ Barge-in cut-off triggered! Reason: " + msg.reason);
+          log("Barge-in cut-off triggered! Reason: " + msg.reason);
           setTimeout(function () { banner.style.display = "none"; }, 3500);
         } else if (topic === "tool_call") {
           $("m-tool-name").textContent = msg.tool;
           $("m-tool-status").textContent = "Executing...";
           $("m-tool-status").style.color = "var(--warn)";
-          log("🔧 Tool call dispatched: " + msg.tool + " args=" + JSON.stringify(msg.arguments));
+          log("Tool call dispatched: " + msg.tool + " args=" + JSON.stringify(msg.arguments));
         } else if (topic === "filler_speech") {
           $("m-filler-status").textContent = msg.phrase;
           $("m-filler-status").style.color = "var(--ok)";
-          log("🗣️ Filler phrase emitted: \"" + msg.phrase + "\"");
+          log("Filler phrase emitted: \"" + msg.phrase + "\"");
         } else if (topic === "tool_result") {
           $("m-tool-dur").textContent = (msg.duration_ms != null ? msg.duration_ms.toFixed(1) + "ms" : "—");
           if (msg.status === "success") {
@@ -783,9 +783,9 @@
             $("m-tool-status").textContent = "Fallback (" + (msg.error || "error") + ")";
             $("m-tool-status").style.color = "var(--err)";
           }
-          log("✅ Tool result for " + msg.tool + " (" + (msg.duration_ms != null ? msg.duration_ms.toFixed(1) : 0) + "ms): " + JSON.stringify(msg.result));
+          log("Tool result for " + msg.tool + " (" + (msg.duration_ms != null ? msg.duration_ms.toFixed(1) : 0) + "ms): " + JSON.stringify(msg.result));
         } else if (topic === "telephony_event") {
-          log("📞 Telephony event: " + msg.event + (msg.call ? " [" + msg.call.call_id + " -> " + msg.call.destination_number + "]" : ""));
+          log("Telephony event: " + msg.event + (msg.call ? " [" + msg.call.call_id + " -> " + msg.call.destination_number + "]" : ""));
           if (msg.event === "outbound_call_initiated" && msg.call) {
             currentActiveCallId = msg.call.call_id;
             $("m-call-id").textContent = msg.call.call_id;
@@ -794,7 +794,7 @@
             $("m-call-dest").textContent = msg.call.destination_number;
             $("m-call-room").textContent = msg.call.room_name;
             var tb = $("tel-status-badge");
-            tb.textContent = "📞 Call Active";
+            tb.textContent = "Call Active";
             tb.style.background = "var(--ok)";
             tb.style.color = "#fff";
             $("btn-hangup-phone").disabled = false;
@@ -803,10 +803,10 @@
             tb.textContent = "Call Failed";
             tb.style.background = "var(--err)";
             tb.style.color = "#fff";
-            log("❌ Telephony error: " + msg.error);
+            log("Telephony error: " + msg.error);
           }
         } else if (topic === "transfer_event") {
-          log("🔀 Transfer event: " + msg.event + (msg.transfer ? " [" + msg.transfer.mode + " -> " + msg.transfer.target_number + "]" : ""));
+          log("Transfer event: " + msg.event + (msg.transfer ? " [" + msg.transfer.mode + " -> " + msg.transfer.target_number + "]" : ""));
           var xb = $("xfer-badge");
           if (msg.event === "transfer_initiated") {
             xb.textContent = "Transferring...";
@@ -814,7 +814,7 @@
             xb.style.color = "#fff";
             $("xfer-state-text").textContent = "Initiated (" + (msg.mode || "blind") + ")";
           } else if (msg.event === "transfer_completed") {
-            xb.textContent = "✓ Transferred";
+            xb.textContent = "Transferred";
             xb.style.background = "var(--ok)";
             xb.style.color = "#fff";
             $("xfer-state-text").textContent = "Completed (" + (msg.transfer ? msg.transfer.mode : "done") + ")";
@@ -832,9 +832,9 @@
           $("xfer-hold-text").textContent = isHeld ? "ON HOLD (Music Playing)" : "Active (Talking)";
           $("xfer-hold-text").style.color = isHeld ? "var(--warn)" : "var(--ok)";
           $("btn-toggle-hold").textContent = isHeld ? "Resume Call" : "Hold Call";
-          log("⏸️ Hold state changed: " + (isHeld ? "ON HOLD (" + msg.reason + ")" : "RESUMED"));
+          log("Hold state changed: " + (isHeld ? "ON HOLD (" + msg.reason + ")" : "RESUMED"));
         } else if (topic === "dtmf_event") {
-          log("🔢 DTMF Keypad: '" + msg.digit + "' -> " + msg.status + (msg.action ? " (" + msg.action + ")" : ""));
+          log("DTMF Keypad: '" + msg.digit + "' -> " + msg.status + (msg.action ? " (" + msg.action + ")" : ""));
           if (msg.buffered_digits) {
             $("dtmf-display").textContent = msg.buffered_digits;
           }
@@ -884,7 +884,7 @@
           $("amd-action-text").textContent = action.replace(/_/g, " ").toUpperCase();
           if (reason) $("amd-reason-text").textContent = reason;
 
-          log("🤖 AMD: state=" + state + " conf=" + conf + "% (" + reason + ")");
+          log("AMD: state=" + state + " conf=" + conf + "% (" + reason + ")");
         } else if (topic === "recording_event" || topic === "recording_state") {
           var rec = msg.recording || {};
           var status = (rec.status || (msg.event ? msg.event.replace("recording_", "") : "idle")).toLowerCase();
@@ -898,21 +898,21 @@
 
           if (status === "recording") {
             $("rec-badge").style.background = "var(--danger)";
-            $("rec-badge").textContent = "● REC: Recording (Stereo)";
+            $("rec-badge").textContent = "REC: Recording (Stereo)";
             $("btn-start-rec").disabled = true;
             $("btn-pause-rec").disabled = false;
             $("btn-resume-rec").disabled = true;
             $("btn-stop-rec").disabled = false;
           } else if (status === "paused") {
             $("rec-badge").style.background = "var(--warn)";
-            $("rec-badge").textContent = "⏸ REC: Paused (PCI Masking)";
+            $("rec-badge").textContent = "REC: Paused (PCI Masking)";
             $("btn-start-rec").disabled = true;
             $("btn-pause-rec").disabled = true;
             $("btn-resume-rec").disabled = false;
             $("btn-stop-rec").disabled = false;
           } else if (status === "stopped") {
             $("rec-badge").style.background = "var(--ok)";
-            $("rec-badge").textContent = "✓ REC: Saved (" + dur.toFixed(1) + "s)";
+            $("rec-badge").textContent = "REC: Saved (" + dur.toFixed(1) + "s)";
             $("btn-start-rec").disabled = false;
             $("btn-pause-rec").disabled = true;
             $("btn-resume-rec").disabled = true;
@@ -921,11 +921,11 @@
               $("rec-path-text").textContent = rec.file_path + " (" + (rec.file_size_bytes ? (rec.file_size_bytes / 1024).toFixed(1) + " KB" : "") + ")";
             }
           }
-          log("🎙️ Recording: " + status.toUpperCase() + (rec.recording_id ? " [" + rec.recording_id + "]" : ""));
+          log("Recording: " + status.toUpperCase() + (rec.recording_id ? " [" + rec.recording_id + "]" : ""));
         } else if (topic === "pipeline_event") {
           var pEv = msg.event || "unknown";
           var job = msg.job || {};
-          log("📦 Pipeline: " + pEv + " (job=" + (job.job_id || msg.job_id || "unknown") + " status=" + (job.status || msg.status || "unknown") + ")");
+          log("Pipeline: " + pEv + " (job=" + (job.job_id || msg.job_id || "unknown") + " status=" + (job.status || msg.status || "unknown") + ")");
           if (typeof updatePipelineUI === "function") {
             updatePipelineUI(job);
           }
@@ -1178,19 +1178,19 @@
         $("m-call-state").style.color = "var(--ok)";
         $("m-call-dest").textContent = data.call.destination_number;
         $("m-call-room").textContent = data.call.room_name;
-        tb.textContent = "📞 Call Active (" + data.call.state + ")";
+        tb.textContent = "Call Active (" + data.call.state + ")";
         tb.style.background = "var(--ok)";
         $("btn-hangup-phone").disabled = false;
-        log("✅ Outbound call placed! Call ID: " + data.call.call_id + " -> room: " + data.call.room_name);
+        log("Outbound call placed! Call ID: " + data.call.call_id + " -> room: " + data.call.room_name);
       } else {
         tb.textContent = "Dial Error";
         tb.style.background = "var(--err)";
-        log("❌ Dialing failed: " + (data.error || "Unknown error"));
+        log("Dialing failed: " + (data.error || "Unknown error"));
       }
     } catch (err) {
       tb.textContent = "Connection Error";
       tb.style.background = "var(--err)";
-      log("❌ Telephony server connection error: " + err);
+      log("Telephony server connection error: " + err);
     }
   }
 
@@ -1207,7 +1207,7 @@
       });
       var data = await resp.json();
       if (resp.ok && data.route) {
-        log("📞 Inbound DID routed! Trunk: " + data.route.trunk + " -> Room: " + data.route.room);
+        log("Inbound DID routed! Trunk: " + data.route.trunk + " -> Room: " + data.route.room);
         $("m-call-id").textContent = "inbound-did-" + Date.now().toString().slice(-4);
         $("m-call-state").textContent = "ROUTED";
         $("m-call-state").style.color = "var(--ok)";
@@ -1218,10 +1218,10 @@
         tb.style.background = "var(--ok)";
         tb.style.color = "#fff";
       } else {
-        log("❌ Inbound simulation failed: " + (data.error || "Unknown error"));
+        log("Inbound simulation failed: " + (data.error || "Unknown error"));
       }
     } catch (err) {
-      log("❌ Failed to simulate inbound: " + err);
+      log("Failed to simulate inbound: " + err);
     }
   }
 
@@ -1293,23 +1293,23 @@
       });
       var data = await resp.json();
       if (resp.ok && data.transfer) {
-        xb.textContent = "✓ Transferred";
+        xb.textContent = "Transferred";
         xb.style.background = "var(--ok)";
         $("xfer-state-text").textContent = "Completed (" + data.transfer.mode + ")";
         if (data.transfer.briefing_summary) {
           $("xfer-briefing-text").textContent = data.transfer.briefing_summary;
         }
-        log("✅ Transfer completed successfully! ID: " + data.transfer.transfer_id + " (dur=" + data.transfer.duration_seconds + "s)");
+        log("Transfer completed successfully! ID: " + data.transfer.transfer_id + " (dur=" + data.transfer.duration_seconds + "s)");
       } else {
         xb.textContent = "Transfer Failed";
         xb.style.background = "var(--err)";
         $("xfer-state-text").textContent = "Error: " + (data.error || "Unknown");
-        log("❌ Transfer failed: " + (data.error || "Unknown error"));
+        log("Transfer failed: " + (data.error || "Unknown error"));
       }
     } catch (err) {
       xb.textContent = "Transfer Error";
       xb.style.background = "var(--err)";
-      log("❌ Failed to reach transfer service: " + err);
+      log("Failed to reach transfer service: " + err);
     }
   }
 
@@ -1346,9 +1346,9 @@
           reason: isCallOnHold ? "manual_hold" : "resumed"
         })
       });
-      log("✅ Call hold state updated: " + (isCallOnHold ? "HELD" : "RESUMED"));
+      log("Call hold state updated: " + (isCallOnHold ? "HELD" : "RESUMED"));
     } catch (err) {
-      log("❌ Failed to update hold state: " + err);
+      log("Failed to update hold state: " + err);
     }
   }
 
@@ -1391,7 +1391,7 @@
 
   async function sendDTMFDigit(digit) {
     playDTMFTone(digit);
-    log("🔢 Keypad pressed: '" + digit + "'");
+    log("Keypad pressed: '" + digit + "'");
 
     // 1. Send via WebRTC Data Channel if connected
     if (room && room.state === "connected") {
@@ -1463,7 +1463,7 @@
       $("ivr-badge").textContent = "IVR: Main Menu";
       $("ivr-prompt-text").textContent = "Thanks for calling Northgate Support. Press 1 for Sales, 2 for Technical Support, 3 for Billing, or 9 for a live operator.";
       $("dtmf-display").textContent = "—";
-      log("🔄 IVR Phone tree reset to Main Menu");
+      log("IVR Phone tree reset to Main Menu");
     } catch (e) {
       log("Failed to reset IVR: " + e);
     }
@@ -1533,7 +1533,7 @@
   $("btn-drop-voicemail").addEventListener("click", async function () {
     var callId = currentActiveCallId || $("room").value || "web-call";
     var msg = $("amd-drop-msg").value || "Hello, please call us back.";
-    log("📞 Executing voicemail drop message...");
+    log("Executing voicemail drop message...");
 
     if (room && room.state === "connected") {
       try {
@@ -1558,10 +1558,10 @@
         $("amd-state-text").textContent = "VOICEMAIL_COMPLETED";
         $("amd-action-text").textContent = "CALL HUNG UP";
         $("amd-reason-text").textContent = "Voicemail audio streamed successfully (" + (data.drop ? data.drop.audio_duration_s + "s" : "") + ")";
-        log("✅ Voicemail drop completed (" + (data.drop ? data.drop.audio_duration_s + "s" : "") + "). Call disconnected.");
+        log("Voicemail drop completed (" + (data.drop ? data.drop.audio_duration_s + "s" : "") + "). Call disconnected.");
       }
     } catch (e) {
-      log("❌ Failed to drop voicemail: " + e);
+      log("Failed to drop voicemail: " + e);
     }
   });
 
@@ -1572,7 +1572,7 @@
 
   $("btn-start-rec").addEventListener("click", async function () {
     var callId = currentActiveCallId || $("room").value || "web-call";
-    log("🎙️ Initiating dual-channel stereo call recording...");
+    log("Initiating dual-channel stereo call recording...");
 
     if (room && room.state === "connected") {
       try {
@@ -1593,7 +1593,7 @@
       if (res.ok) {
         var data = await res.json();
         $("rec-badge").style.background = "var(--danger)";
-        $("rec-badge").textContent = "● REC: Recording (Stereo)";
+        $("rec-badge").textContent = "REC: Recording (Stereo)";
         $("rec-status-text").textContent = "RECORDING";
         $("btn-start-rec").disabled = true;
         $("btn-pause-rec").disabled = false;
@@ -1612,10 +1612,10 @@
           }
         }, 1000);
 
-        log("✅ Recording started [" + (data.recording ? data.recording.recording_id : "") + "] (Stereo, 2-party compliance)");
+        log("Recording started [" + (data.recording ? data.recording.recording_id : "") + "] (Stereo, 2-party compliance)");
       }
     } catch (e) {
-      log("❌ Failed to start recording: " + e);
+      log("Failed to start recording: " + e);
     }
   });
 
@@ -1637,11 +1637,11 @@
         body: JSON.stringify({ call_id: callId, reason: "pci_compliance" })
       });
       $("rec-badge").style.background = "var(--warn)";
-      $("rec-badge").textContent = "⏸ REC: Paused (PCI Masking)";
+      $("rec-badge").textContent = "REC: Paused (PCI Masking)";
       $("rec-status-text").textContent = "PAUSED";
       $("btn-pause-rec").disabled = true;
       $("btn-resume-rec").disabled = false;
-      log("⏸️ Recording paused (silence padding active for PCI/HIPAA redaction)");
+      log("Recording paused (silence padding active for PCI/HIPAA redaction)");
     } catch (e) {}
   });
 
@@ -1660,11 +1660,11 @@
         body: JSON.stringify({ call_id: callId })
       });
       $("rec-badge").style.background = "var(--danger)";
-      $("rec-badge").textContent = "● REC: Recording (Stereo)";
+      $("rec-badge").textContent = "REC: Recording (Stereo)";
       $("rec-status-text").textContent = "RECORDING";
       $("btn-pause-rec").disabled = false;
       $("btn-resume-rec").disabled = true;
-      log("▶️ Recording resumed");
+      log("Recording resumed");
     } catch (e) {}
   });
 
@@ -1688,7 +1688,7 @@
         var data = await res.json();
         var rec = data.recording || {};
         $("rec-badge").style.background = "var(--ok)";
-        $("rec-badge").textContent = "✓ REC: Saved (" + (rec.duration_s || 0).toFixed(1) + "s)";
+        $("rec-badge").textContent = "REC: Saved (" + (rec.duration_s || 0).toFixed(1) + "s)";
         $("rec-status-text").textContent = "STOPPED";
         $("btn-start-rec").disabled = false;
         $("btn-pause-rec").disabled = true;
@@ -1697,10 +1697,10 @@
         if (rec.file_path) {
           $("rec-path-text").textContent = rec.file_path + " (" + ((rec.file_size_bytes || 0) / 1024).toFixed(1) + " KB)";
         }
-        log("💾 Recording stopped and saved to " + rec.file_path + " (" + (rec.duration_s || 0).toFixed(1) + "s)");
+        log("Recording stopped and saved to " + rec.file_path + " (" + (rec.duration_s || 0).toFixed(1) + "s)");
       }
     } catch (e) {
-      log("❌ Failed to stop recording: " + e);
+      log("Failed to stop recording: " + e);
     }
   });
 
@@ -1752,15 +1752,15 @@
     var crmPayloads = meta.crm_payloads || {};
 
     if (sentiment.overall_polarity) {
-      var polarityEmoji = sentiment.overall_polarity === "positive" ? "😊" :
-                          sentiment.overall_polarity === "negative" ? "😞" : "😐";
+      var polarityEmoji = sentiment.overall_polarity === "positive" ? "" :
+                          sentiment.overall_polarity === "negative" ? "" : "";
       $("pipe-sentiment-polarity").textContent = polarityEmoji + " " + sentiment.overall_polarity.toUpperCase();
       $("pipe-sentiment-polarity").style.color = sentiment.overall_polarity === "positive" ? "var(--ok)" :
                                                    (sentiment.overall_polarity === "negative" ? "var(--bad)" : "var(--soft)");
     }
     if (sentiment.trajectory_trend) {
-      var trendEmoji = sentiment.trajectory_trend === "improving" ? "↗" :
-                       sentiment.trajectory_trend === "declining" ? "↘" : "→";
+      var trendEmoji = sentiment.trajectory_trend === "improving" ? "" :
+                       sentiment.trajectory_trend === "declining" ? "" : "→";
       $("pipe-sentiment-trend").textContent = trendEmoji + " " + sentiment.trajectory_trend;
     }
 
@@ -1782,7 +1782,7 @@
             var payload = crmPayloads[sName];
             crmTexts.push("<b>[" + sName + "]</b> " + JSON.stringify(payload));
           }
-          crmEl.innerHTML = "🎯 <b>CRM Extracted Data:</b><br>" + crmTexts.join("<br>");
+          crmEl.innerHTML = " <b>CRM Extracted Data:</b><br>" + crmTexts.join("<br>");
         }
       }
     }
@@ -1794,7 +1794,7 @@
 
   $("btn-trigger-pipeline").addEventListener("click", async function () {
     var callId = $("room").value || ("call-" + Date.now());
-    log("🚀 Triggering post-call processing pipeline for " + callId + "...");
+    log("Triggering post-call processing pipeline for " + callId + "...");
     $("pipeline-badge").textContent = "Processing...";
     $("pipeline-badge").style.background = "var(--warn)";
     try {
@@ -1813,10 +1813,10 @@
       if (res.ok) {
         var data = await res.json();
         updatePipelineUI(data.job);
-        log("✅ Post-call pipeline completed for " + callId + " in " + (data.job.total_duration_ms || 0).toFixed(1) + "ms");
+        log("Post-call pipeline completed for " + callId + " in " + (data.job.total_duration_ms || 0).toFixed(1) + "ms");
       }
     } catch (e) {
-      log("❌ Pipeline trigger failed: " + e);
+      log("Pipeline trigger failed: " + e);
     }
   });
 
@@ -1826,7 +1826,7 @@
       if (res.ok) {
         var data = await res.json();
         var s = data.stats || {};
-        log("📊 Pipeline Queue Stats: Total=" + s.total_jobs + ", Done=" + s.completed + ", Avg=" + s.avg_processing_time_ms + "ms");
+        log("Pipeline Queue Stats: Total=" + s.total_jobs + ", Done=" + s.completed + ", Avg=" + s.avg_processing_time_ms + "ms");
       }
     } catch (e) {}
   });

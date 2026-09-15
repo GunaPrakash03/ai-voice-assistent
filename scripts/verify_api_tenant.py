@@ -115,23 +115,21 @@ check("revoked key fails validation",    mgr.validate_api_key(raw_secret) is Non
 # ─── Check 3: RBAC & User Management ────────────────────────────────────────
 print("\n- Check 3: Role-Based Access Control (RBAC) -")
 u_admin = mgr.create_user(ws1.workspace_id, "admin@acme.com", UserRole.ADMIN.value)
-u_op = mgr.create_user(ws1.workspace_id, "op@acme.com", UserRole.OPERATOR.value)
-u_an = mgr.create_user(ws1.workspace_id, "analyst@acme.com", UserRole.ANALYST.value)
+u_user = mgr.create_user(ws1.workspace_id, "user@acme.com", UserRole.USER.value)
+u_legacy = mgr.create_user(ws1.workspace_id, "legacy@acme.com", "operator")
 
 check("admin user created",              u_admin.role == "admin")
-check("operator user created",           u_op.role == "operator")
-check("analyst user created",            u_an.role == "analyst")
+check("user created",                    u_user.role == "user")
+check("legacy operator folded to user",  u_legacy.role == "user")
 
 # RBAC Permissions
 check("admin has calls:dispatch",        mgr.role_has_permission(u_admin.role, ApiScope.CALLS_DISPATCH.value))
-check("admin has webhooks:admin",        mgr.role_has_permission(u_admin.role, ApiScope.WEBHOOKS_ADMIN.value))
-check("operator has calls:dispatch",     mgr.role_has_permission(u_op.role, ApiScope.CALLS_DISPATCH.value))
-check("operator has telephony:dial",     mgr.role_has_permission(u_op.role, ApiScope.TELEPHONY_DIAL.value))
-check("operator lacks webhooks:admin",   not mgr.role_has_permission(u_op.role, ApiScope.WEBHOOKS_ADMIN.value))
-check("analyst has calls:read",          mgr.role_has_permission(u_an.role, ApiScope.CALLS_READ.value))
-check("analyst has analytics:read",      mgr.role_has_permission(u_an.role, ApiScope.ANALYTICS_READ.value))
-check("analyst lacks calls:dispatch",    not mgr.role_has_permission(u_an.role, ApiScope.CALLS_DISPATCH.value))
-check("analyst lacks telephony:dial",    not mgr.role_has_permission(u_an.role, ApiScope.TELEPHONY_DIAL.value))
+check("admin has workspaces:admin",      mgr.role_has_permission(u_admin.role, ApiScope.WORKSPACES_ADMIN.value))
+check("user has calls:dispatch",         mgr.role_has_permission(u_user.role, ApiScope.CALLS_DISPATCH.value))
+check("user has telephony:dial",         mgr.role_has_permission(u_user.role, ApiScope.TELEPHONY_DIAL.value))
+check("user has webhooks:admin",         mgr.role_has_permission(u_user.role, ApiScope.WEBHOOKS_ADMIN.value))
+check("user lacks workspaces:admin",     not mgr.role_has_permission(u_user.role, ApiScope.WORKSPACES_ADMIN.value))
+check("legacy analyst maps to user",     mgr.role_has_permission("analyst", ApiScope.CALLS_DISPATCH.value))
 
 
 # ─── Check 4: Rate Limiting ─────────────────────────────────────────────────
@@ -159,7 +157,7 @@ print("\n- Check 5: JWT Session Token Security -")
 token = mgr.issue_token(
     workspace_id=ws1.workspace_id,
     subject="usr-1234",
-    role="operator",
+    role="user",
     ttl_seconds=300,
 )
 check("token has 3 dot-separated parts", len(token.split(".")) == 3)
@@ -168,7 +166,7 @@ payload = mgr.verify_token(token)
 check("token verifies cleanly",          payload is not None)
 check("payload sub matches",             payload.get("sub") == "usr-1234")
 check("payload workspace matches",       payload.get("ws") == ws1.workspace_id)
-check("payload role matches",            payload.get("role") == "operator")
+check("payload role matches",            payload.get("role") == "user")
 
 # Tamper Detection
 tampered = token[:-4] + "ABCD"
@@ -222,9 +220,9 @@ check("GET /api/v1/calls with X-API-Key -> 200", code == 200)
 check("calls workspace_id returned",     data.get("workspace_id") == new_ws_id)
 
 # 8. POST /api/v1/users
-code, data, _ = http_req("/api/v1/users", method="POST", data={"workspace_id": new_ws_id, "email": "operator1@clinic.com", "role": "operator"}, headers={"Authorization": f"Bearer {jwt_token}"})
+code, data, _ = http_req("/api/v1/users", method="POST", data={"workspace_id": new_ws_id, "email": "user1@clinic.com", "role": "user"}, headers={"Authorization": f"Bearer {jwt_token}"})
 check("POST /api/v1/users -> 201",       code == 201)
-check("user role is operator",           data.get("user", {}).get("role") == "operator")
+check("user role is user",               data.get("user", {}).get("role") == "user")
 
 # 9. POST /api/v1/api-keys/revoke
 code, data, _ = http_req("/api/v1/api-keys/revoke", method="POST", data={"key_id": created_key_id}, headers={"Authorization": f"Bearer {jwt_token}"})

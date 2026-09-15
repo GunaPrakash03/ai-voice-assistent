@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cost Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/guide.css">
+<style>
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:0 0 16px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .kpi .l{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.08em;text-transform:uppercase}
+  .kpi .v{font-size:24px;font-weight:700;margin-top:4px}
+  .kpi .s{font-size:12px;color:var(--ink-soft)}
+  .kpi.ours{border-color:var(--accent-border);background:var(--accent-soft)}
+  .ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+  .ctl label{display:block;font-size:11.5px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+  .ctl input,.ctl select{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13px;font-family:var(--f-ui)}
+  .ctl .hint{font-size:11px;color:var(--ink-faint);margin-top:3px}
+  td.num,th.num{text-align:right;font-family:var(--f-mono);font-size:12px}
+  td.num{color:var(--ink)}
+  .win{color:var(--pos);font-weight:700} .lose{color:var(--neg);font-weight:700}
+  .bar{height:6px;border-radius:3px;background:var(--sunk);overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+  .src{font-size:11.5px;color:var(--ink-faint)} .src a{color:var(--ink-soft)}
+  .stack>.card:last-child{margin-bottom:0}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div class="nav">
+      <a href="/">Overview</a>
+      <a href="/#agents">Agents</a>
+      <a href="/webhooks.html">Webhooks &amp; Data</a>
+      <a href="/profile.html">My Profile</a>
+      <a href="/cost-comparison.html" class="active" data-admin-only>Cost Calculator</a>
+      <a href="/competitor-analysis.html">Competitors &amp; Features</a>
+      <a href="/admin-guide.html" data-admin-only>Admin Guide</a>
+      <a href="/user-guide.html">User Guide</a>
+    </div>
+    <div class="rail-foot"><!-- profile card injected by /profile.js --></div>
+  </nav>
+  <div>
+    <main>
+      <div class="page-header">
+        <div><div class="crumb">ADMIN · COSTS</div><h1>What a call minute costs</h1></div>
+        <a class="btnlike" href="/admin-guide.html">← Admin guide</a>
+      </div>
+      <p class="lead">Call Desk pays each provider directly (the language model, which also hears the caller; the voice; telephony) plus a server you run. Pick the model and voice below; the tables recompute. List prices were read from the providers' pricing pages on <b>14 Sep 2026</b> and are shown per source at the bottom. Free tiers and credits are ignored.</p>
+
+      <div class="kpis">
+        <div class="kpi ours"><div class="l">Call Desk · per minute</div><div class="v" id="kOurs">—</div><div class="s" id="kOursS"></div></div>
+        <div class="kpi ours"><div class="l">Call Desk · per month</div><div class="v" id="kOursM">—</div><div class="s" id="kOursMS"></div></div>
+      </div>
+
+      <section class="card">
+        <h2>Assumptions (edit them)</h2>
+        <div class="ctl">
+          <div><label for="model">Language model</label><select id="model"></select><div class="hint">Token prices are the provider list prices shown at the bottom.</div></div>
+          <div><label for="tts">Voice</label><select id="tts">
+            <option value="aura2">Deepgram Aura-2 ($0.030 / 1k chars)</option>
+            <option value="aura1">Deepgram Aura-1 ($0.015 / 1k chars)</option>
+            <option value="xi">ElevenLabs Turbo, plan credits ($0.10 / 1k chars)</option>
+            <option value="xio">ElevenLabs Turbo, overage ($0.05 / 1k chars)</option>
+          </select></div>
+          <div><label for="tel">Telephony</label><select id="tel">
+            <option value="twin">Twilio inbound local ($0.0085/min)</option>
+            <option value="twout">Twilio outbound US ($0.014/min)</option>
+            <option value="sip">Twilio SIP trunk / BYOC ($0.004/min)</option>
+            <option value="none">None (web calls only)</option>
+          </select></div>
+          <div><label for="prompt">System prompt size (tokens)</label><input id="prompt" type="number" value="2500" min="200" step="100"><div class="hint">Maya's prompt is ~13,000 tokens (51k characters). Typical intake prompts are 1,500–3,000.</div></div>
+          <div><label for="turns">Agent turns per minute</label><input id="turns" type="number" value="4" min="1" max="12"><div class="hint">Each turn re-sends the prompt + history to the model.</div></div>
+          <div><label for="cache">Prompt caching</label><select id="cache"><option value="1">On (cached input ≈ 10% price)</option><option value="0">Off</option></select><div class="hint">OpenAI and Gemini bill repeated prompt tokens at roughly a tenth of the price.</div></div>
+          <div><label for="talk">Agent talk share</label><input id="talk" type="number" value="55" min="10" max="90"><div class="hint">% of the minute the agent is speaking; drives voice characters (150 wpm ≈ 800 chars/min).</div></div>
+          <div><label for="mins">Call minutes per month</label><input id="mins" type="number" value="5000" min="0" step="500"></div>
+          <div><label for="numbers">Phone numbers</label><input id="numbers" type="number" value="2" min="0"><div class="hint">Twilio $1.15/mo each.</div></div>
+          <div><label for="server">Your server per month ($)</label><input id="server" type="number" value="60" min="0" step="10"><div class="hint">VPS running LiveKit, Postgres, the worker and the dashboard.</div></div>
+          <div><label for="xiplan">ElevenLabs plan per month ($)</label><input id="xiplan" type="number" value="22" min="0" step="1"><div class="hint">Only counted when an ElevenLabs voice is selected (Creator $22, Pro $99).</div></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Per-minute breakdown for the selected options</h2>
+        <table>
+          <thead><tr><th>Cost line</th><th class="num">Per minute</th><th>Notes</th></tr></thead>
+          <tbody id="breakdown"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>All models side by side</h2>
+        <p>Per call minute with the voice, telephony and prompt settings above; the per-minute column is what the providers bill us.</p>
+        <table>
+          <thead><tr><th>Model</th><th class="num">Model tokens $/min</th><th class="num">Call Desk $/min</th><th class="num" id="mHead">$/month</th></tr></thead>
+          <tbody id="models"></tbody>
+        </table>
+        <p class="src" style="margin-top:8px">Model token cost per minute = turns × (prompt + history ≈ 600 tokens) × input price + turns × 45 output tokens × output price; with caching, the prompt part is billed at ~10%.</p>
+      </section>
+
+      <section class="card">
+        <h2>Where the money goes</h2>
+        <div id="shares"></div>
+      </section>
+
+      <section class="card">
+        <h2>What the numbers do and do not include</h2>
+        <ul>
+          <li><b>Run on your server, not per minute:</b> media hosting (LiveKit), turn-taking and interruption handling, the worker, Postgres, the dashboard and call storage. That is the "server per month" line, so it gets cheaper per minute as volume grows.</li>
+          <li><b>Not counted:</b> engineering and maintenance time, and optional extras such as knowledge bases or PII redaction services.</li>
+          <li><b>Rate limits:</b> free-tier Gemini keys throttle busy lines; the figures assume paid API tiers.</li>
+          <li><b>Real phone calls</b> additionally need the LiveKit SIP gateway on a public address; the telephony line above is the carrier's charge once that exists.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Sources (list prices, 14 Sep 2026)</h2>
+        <ul class="src">
+                  <li><a href="https://deepgram.com/pricing" target="_blank" rel="noopener">Deepgram pricing</a> — Aura-2 $0.030 / 1k chars, Aura-1 $0.015 / 1k chars.</li>
+          <li><a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noopener">Gemini API pricing</a> — audio input is billed as tokens (32 per second of caller speech) at the model input price; 3.5 Flash Lite $0.30/$2.50, 3.6 Flash $0.75/$3.75 (2026 promo), 3.5 Flash $1.50/$9.00, 2.5 Flash-Lite $0.10/$0.40 per 1M tokens.</li>
+          <li><a href="https://benchlm.ai/openai/api-pricing" target="_blank" rel="noopener">OpenAI API prices (table dated 11 Sep 2026)</a> — GPT-5.4 $2.50/$15, GPT-5.4 mini $0.75/$4.50, GPT-5.2 $1.75/$14, GPT-5.1 $1.25/$10, GPT-4.1 $2/$8, GPT-4.1 mini $0.40/$1.60, GPT-4o mini $0.15/$0.60, GPT-5.6 Luna $0.20/$1.20.</li>
+          <li>Anthropic list prices — Claude Sonnet 4.5 $3/$15, Claude Haiku 4.5 $1/$5 per 1M tokens.</li>
+          <li><a href="https://elevenlabs.io/pricing/api" target="_blank" rel="noopener">ElevenLabs API pricing</a> — Creator $22/mo (220k chars ≈ $0.10/1k), Pro $99/mo (990k chars), overage ≈ $0.05/1k for Turbo/Flash.</li>
+          <li><a href="https://www.twilio.com/en-us/voice/pricing/us" target="_blank" rel="noopener">Twilio US voice pricing</a> — inbound local $0.0085/min, outbound $0.014/min, SIP trunking $0.004/min, local number $1.15/mo.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+</div>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  // [id, label, input $/1M, output $/1M]
+  var MODELS = [
+    ["gpt-4o-mini",  "OpenAI GPT-4o mini",          0.15, 0.60],
+    ["gpt-4.1-mini", "OpenAI GPT-4.1 mini",         0.40, 1.60],
+    ["gpt-5.6-luna", "OpenAI GPT-5.6 Luna",         0.20, 1.20],
+    ["gpt-4.1",      "OpenAI GPT-4.1",              2.00, 8.00],
+    ["gpt-5.1",      "OpenAI GPT-5.1",              1.25, 10.00],
+    ["gpt-5.2",      "OpenAI GPT-5.2",              1.75, 14.00],
+    ["gpt-5.4-mini", "OpenAI GPT-5.4 mini",         0.75, 4.50],
+    ["gpt-5.4",      "OpenAI GPT-5.4",              2.50, 15.00],
+    ["gem-2.5-lite", "Gemini 2.5 Flash-Lite",       0.10, 0.40],
+    ["gem-3.5-lite", "Gemini 3.5 Flash Lite (our default)", 0.30, 2.50],
+    ["gem-3.6",      "Gemini 3.6 Flash",            0.75, 3.75],
+    ["gem-3.5",      "Gemini 3.5 Flash",            1.50, 9.00],
+    ["haiku-4.5",    "Claude Haiku 4.5",            1.00, 5.00],
+    ["sonnet-4.5",   "Claude Sonnet 4.5",           3.00, 15.00]
+  ];
+  var TTS = { aura2: 0.030, aura1: 0.015, xi: 0.10, xio: 0.05 };
+  var TEL = { twin: 0.0085, twout: 0.014, sip: 0.004, none: 0 };
+  var AUDIO_TOKENS_PER_SEC = 32, HISTORY_TOKENS = 600, OUT_TOKENS = 45, CHARS_PER_MIN_SPEECH = 800, TW_NUMBER = 1.15;
+
+  $("model").innerHTML = MODELS.map(function (m) { return '<option value="' + m[0] + '"' + (m[0] === "gpt-4.1" ? " selected" : "") + ">" + m[1] + "</option>"; }).join("");
+  var fmt = function (v, d) { return "$" + v.toFixed(d === undefined ? 4 : d); };
+  var money = function (v) { return "$" + Math.round(v).toLocaleString(); };
+
+  function read() {
+    return { model: $("model").value, tts: $("tts").value, tel: $("tel").value, prompt: +$("prompt").value || 0, turns: +$("turns").value || 1,
+             cache: $("cache").value === "1", talk: (+$("talk").value || 50) / 100, mins: +$("mins").value || 0, numbers: +$("numbers").value || 0,
+             server: +$("server").value || 0, xiplan: +$("xiplan").value || 0 };
+  }
+  function llmPerMin(m, a) {
+    var promptCost = a.prompt * (a.cache ? 0.10 : 1) * m[2] / 1e6;
+    var histCost = HISTORY_TOKENS * m[2] / 1e6;
+    var outCost = OUT_TOKENS * m[3] / 1e6;
+    return a.turns * (promptCost + histCost + outCost);
+  }
+  function ttsPerMin(a) { return a.talk * CHARS_PER_MIN_SPEECH / 1000 * TTS[a.tts]; }
+  function sttPerMin(m, a) { return (1 - a.talk) * 60 * AUDIO_TOKENS_PER_SEC * m[2] / 1e6; }   // caller audio sent to Gemini as audio tokens
+  function oursPerMin(m, a) { return sttPerMin(m, a) + ttsPerMin(a) + llmPerMin(m, a) + TEL[a.tel]; }
+  function oursFixed(a) { return a.server + a.numbers * TW_NUMBER + ((a.tts === "xi" || a.tts === "xio") ? a.xiplan : 0); }
+
+  function render() {
+    var a = read(); var m = MODELS.find(function (x) { return x[0] === a.model; });
+    var ours = oursPerMin(m, a);
+    var oursM = ours * a.mins + oursFixed(a);
+    $("kOurs").textContent = fmt(ours); $("kOursS").textContent = "providers billed directly + server amortised separately";
+    $("kOursM").textContent = money(oursM); $("kOursMS").textContent = a.mins.toLocaleString() + " min · incl. " + money(oursFixed(a)) + " fixed";
+
+    var ttsName = { aura2: "Deepgram Aura-2", aura1: "Deepgram Aura-1", xi: "ElevenLabs (plan credits)", xio: "ElevenLabs (overage)" }[a.tts];
+    var rows = [
+      ["Hearing the caller", sttPerMin(m, a), Math.round((1 - a.talk) * 60 * AUDIO_TOKENS_PER_SEC) + " audio tokens of caller speech at the model's input price"],
+      ["Voice engine / media", 0, "LiveKit, the worker and Postgres run on the server line below, not per minute"],
+      ["Text-to-speech · " + ttsName, ttsPerMin(a), Math.round(a.talk * CHARS_PER_MIN_SPEECH) + " characters of agent speech per minute"],
+      ["Language model · " + m[1], llmPerMin(m, a), a.turns + " turns × (" + a.prompt.toLocaleString() + " prompt + " + HISTORY_TOKENS + " history) tokens in, " + OUT_TOKENS + " out" + (a.cache ? ", prompt cached" : "")],
+      ["Telephony", TEL[a.tel], a.tel === "none" ? "web calls only" : "carrier minute"],
+      ["Total per minute", ours, ""]
+    ];
+    $("breakdown").innerHTML = rows.map(function (r, i) {
+      var last = i === rows.length - 1;
+      return "<tr" + (last ? ' style="font-weight:700"' : "") + "><td>" + r[0] + '</td><td class="num">' + (typeof r[1] === "number" ? fmt(r[1]) : r[1]) + "</td><td>" + r[2] + "</td></tr>";
+    }).join("");
+
+    $("mHead").textContent = "Call Desk $/mo (" + (a.mins / 1000).toFixed(a.mins % 1000 ? 1 : 0) + "k min)";
+    $("models").innerHTML = MODELS.map(function (x) {
+      var o = oursPerMin(x, a);
+      return "<tr" + (x[0] === a.model ? ' style="background:var(--accent-soft)"' : "") + "><td>" + x[1] + '</td><td class="num">' + fmt(llmPerMin(x, a)) + '</td><td class="num">' + fmt(o) + '</td><td class="num">' + money(o * a.mins + oursFixed(a)) + "</td></tr>";
+    }).join("");
+
+    var parts = [["Hearing the caller", sttPerMin(m, a)], ["Voice", ttsPerMin(a)], ["Model", llmPerMin(m, a)], ["Telephony", TEL[a.tel]]];
+    var total = parts.reduce(function (s, p) { return s + p[1]; }, 0) || 1;
+    $("shares").innerHTML = parts.map(function (p) {
+      var pct = p[1] / total * 100;
+      return '<div style="margin:6px 0"><div style="display:flex;justify-content:space-between;font-size:12.5px"><span>' + p[0] + '</span><span class="num">' + fmt(p[1]) + " · " + pct.toFixed(0) + '%</span></div><div class="bar"><i style="width:' + pct + '%"></i></div></div>';
+    }).join("") + '<p class="src" style="margin-top:8px">Plus ' + money(oursFixed(a)) + '/month fixed (server' + (a.numbers ? ", " + a.numbers + " number" + (a.numbers > 1 ? "s" : "") : "") + ((a.tts === "xi" || a.tts === "xio") ? ", ElevenLabs plan" : "") + ") = " + fmt(a.mins ? oursFixed(a) / a.mins : 0) + " per minute at " + a.mins.toLocaleString() + " minutes.</p>";
+  }
+  ["model", "tts", "tel", "prompt", "turns", "cache", "talk", "mins", "numbers", "server", "xiplan"].forEach(function (id) { $(id).addEventListener("input", render); $(id).addEventListener("change", render); });
+  render();
+})();
+</script>
+<script src="/profile.js"></script>
+</body>
+</html>

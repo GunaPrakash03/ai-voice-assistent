@@ -234,7 +234,7 @@ class StreamingTTSManager:
 
     # ── Voice-aware engine selection ─────────────────────────────────────────
     # Deepgram Aura models used when the picked voice has no streaming engine here
-    # (Studio / Neural / Retell sample voices) or its engine refused the request.
+    # (Studio / Neural sample voices) or its engine refused the request.
     _AURA_FALLBACK = {"female": "aura-asteria-en", "male": "aura-orion-en", "unisex": "aura-asteria-en"}
 
     @staticmethod

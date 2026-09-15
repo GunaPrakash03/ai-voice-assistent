@@ -96,7 +96,7 @@
 <body>
 <header class="top-app-bar">
   <div class="app-dropdown"><span>Call Desk</span><span style="color:var(--ink-faint)">/</span><span>Webhooks &amp; Data</span></div>
-  <div><a class="btn btn-ghost" href="/api-keys.html">🔑 API Keys &amp; Providers</a></div>
+  <div><a class="btn btn-ghost" href="/api-keys.html">API Keys &amp; Providers</a></div>
 </header>
 <div class="app">
   <nav class="rail">
@@ -105,10 +105,12 @@
       <a href="/">Overview</a>
       <a href="/#calls">Calls</a>
       <a href="/#agents">Agents</a>
-      <a href="/api-keys.html">API Keys &amp; Providers<span class="ct">🔑</span></a>
-      <a href="/webhooks.html" class="active">Webhooks &amp; Data<span class="ct">⚡</span></a>
-      <a href="/profile.html">My Profile<span class="ct">👤</span></a>
-      <a href="/user-guide.html">How to use<span class="ct">📘</span></a>
+      <a href="/api-keys.html">API Keys &amp; Providers</a>
+      <a href="/webhooks.html" class="active">Webhooks &amp; Data</a>
+      <a href="/cost-comparison.html" data-admin-only>Cost Calculator</a>
+      <a href="/competitor-analysis.html">Competitors &amp; Features</a>
+      <a href="/admin-guide.html" data-admin-only>Admin Guide</a>
+      <a href="/user-guide.html">User Guide</a>
     </div>
     <div class="rail-foot"><!-- profile card injected by /profile.js --></div>
   </nav>
@@ -150,14 +152,14 @@
                       <label><input type="checkbox" class="ev" value="call.failed"> call.failed</label>
                     </div></div>
                 </div>
-                <div class="actions"><button type="submit" class="btn btn-primary" id="epAdd">＋ Add endpoint</button><span class="msg" id="epMsg"></span></div>
+                <div class="actions"><button type="submit" class="btn btn-primary" id="epAdd">Add endpoint</button><span class="msg" id="epMsg"></span></div>
               </form>
             </div>
           </div>
 
           <!-- Deliveries -->
           <div class="card">
-            <div class="card-h"><h2>Recent deliveries</h2><button class="btn btn-ghost btn-sm" id="dlRefresh" type="button">↻ Refresh</button></div>
+            <div class="card-h"><h2>Recent deliveries</h2><button class="btn btn-ghost btn-sm" id="dlRefresh" type="button">Refresh</button></div>
             <div class="card-b" style="padding:0 6px 6px">
               <table id="dlTable"><thead><tr><th>When</th><th>Event</th><th>Endpoint</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
               <div class="empty" id="dlEmpty" hidden>No deliveries yet. Use "Test" on an endpoint or finish a call.</div>
@@ -174,10 +176,10 @@
             </div>
             <div class="card-b" style="padding:0 6px 6px">
               <div class="actions" style="padding:10px 10px 4px">
-                <button class="btn btn-primary btn-sm" id="btnSuggest" type="button">✨ Suggest from prompt (AI)</button>
-                <button class="btn btn-ghost btn-sm" id="btnAddField" type="button">＋ Add field</button>
-                <button class="btn btn-ghost btn-sm" id="btnSaveFields" type="button">💾 Save fields</button>
-                <button class="btn btn-ghost btn-sm" id="btnPreview" type="button">▶ Preview on latest call</button>
+                <button class="btn btn-primary btn-sm" id="btnSuggest" type="button">Suggest from prompt (AI)</button>
+                <button class="btn btn-ghost btn-sm" id="btnAddField" type="button">Add field</button>
+                <button class="btn btn-ghost btn-sm" id="btnSaveFields" type="button">Save fields</button>
+                <button class="btn btn-ghost btn-sm" id="btnPreview" type="button">Preview on latest call</button>
                 <span class="msg" id="fieldsMsg"></span>
               </div>
               <table id="fieldsTable"><thead><tr><th style="width:26%">Field</th><th style="width:14%">Type</th><th>Description / question the agent asks</th><th style="width:8%">Req.</th><th></th></tr></thead><tbody></tbody></table>
@@ -241,7 +243,7 @@
       }).join("");
       Array.prototype.forEach.call(document.querySelectorAll(".ep-test"), function (b) { b.addEventListener("click", function () { testEndpoint(b.dataset.id, b); }); });
       Array.prototype.forEach.call(document.querySelectorAll(".ep-del"), function (b) { b.addEventListener("click", function () {
-        api("/api/webhooks/delete", { endpoint_id: b.dataset.id }).then(function (d) { toast(d.status === "ok" ? "Endpoint deleted" : "❌ " + (d.error || "failed")); loadEndpoints(); });
+        api("/api/webhooks/delete", { endpoint_id: b.dataset.id }).then(function (d) { toast(d.status === "ok" ? "Endpoint deleted" : (d.error || "failed")); loadEndpoints(); });
       }); });
     });
   }
@@ -255,7 +257,7 @@
         var dl = d.delivery || {}; var status = dl.status || d.status; var last = (dl.attempts || []).slice(-1)[0] || {}; var code = last.status_code || dl.response_status;
         var okay = status === "delivered" || (code >= 200 && code < 300);
         box.className = "test-result " + (okay ? "ok" : "bad");
-        box.innerHTML = (okay ? "✅ <b>Connected.</b> " : "❌ <b>Not reachable.</b> ") +
+        box.innerHTML = (okay ? " <b>Connected.</b> " : " <b>Not reachable.</b> ") +
           "HTTP " + esc(code || "—") + " · " + (Date.now() - t0) + " ms round trip · attempts " + esc(dl.attempts ? dl.attempts.length : (dl.attempt_count || 1)) +
           (dl.last_error || dl.error ? "<div class='mono' style='margin-top:4px'>" + esc(dl.last_error || dl.error) + "</div>" : "") +
           (dl.delivery_id ? "<div class='mono' style='color:var(--ink-faint);margin-top:4px'>delivery " + esc(dl.delivery_id) + "</div>" : "");
@@ -288,7 +290,7 @@
                "<td><button class='btn btn-ghost btn-sm dl-replay' data-id='" + esc(r.delivery_id) + "'>Replay</button></td></tr>";
       }).join("");
       Array.prototype.forEach.call(document.querySelectorAll(".dl-replay"), function (b) { b.addEventListener("click", function () {
-        api("/api/webhooks/replay", { delivery_id: b.dataset.id }).then(function (d) { toast(d.status === "ok" ? "Replayed" : "❌ " + (d.error || "failed")); loadDeliveries(); });
+        api("/api/webhooks/replay", { delivery_id: b.dataset.id }).then(function (d) { toast(d.status === "ok" ? "Replayed" : (d.error || "failed")); loadDeliveries(); });
       }); });
     });
   }
@@ -307,7 +309,7 @@
              "<td><input class='f-desc' value='" + esc(f.description || "") + "' placeholder='what it is'>" +
              "<input class='f-q' style='margin-top:4px' value='" + esc(f.question || "") + "' placeholder='how the agent asks for it (optional)'></td>" +
              "<td style='text-align:center'><input type='checkbox' class='f-req'" + (f.required ? " checked" : "") + "></td>" +
-             "<td><button class='btn btn-ghost btn-sm f-del' type='button'>✕</button></td></tr>";
+             "<td><button class='btn btn-ghost btn-sm f-del' type='button'></button></td></tr>";
     }).join("");
     Array.prototype.forEach.call(document.querySelectorAll(".f-del"), function (b) { b.addEventListener("click", function () { readFields(); fields.splice(parseInt(b.closest("tr").dataset.i, 10), 1); renderFields(); }); });
     Array.prototype.forEach.call(document.querySelectorAll(".f-type"), function (s) { s.addEventListener("change", function () { readFields(); renderFields(); }); });
@@ -344,7 +346,7 @@
   $("btnSaveFields").addEventListener("click", function () {
     var a = currentAgent(); if (!a) return; readFields();
     api("/api/agents/update", { agent_id: a.agent_id, changes: { extraction_fields: fields }, note: "Data fields updated" }).then(function (d) {
-      if (d.status === "ok") { a.extraction_fields = fields.slice(); setMsg($("fieldsMsg"), "Saved " + fields.length + " field(s)", true); toast("✅ Fields saved"); }
+      if (d.status === "ok") { a.extraction_fields = fields.slice(); setMsg($("fieldsMsg"), "Saved " + fields.length + " field(s)", true); toast("Fields saved"); }
       else { setMsg($("fieldsMsg"), d.error || "Save failed", false); }
     });
   });

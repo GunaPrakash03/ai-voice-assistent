@@ -125,8 +125,8 @@
     <p class="lead">A comprehensive, section-by-section and line-by-line guide explaining what has been built across Phase 1 and how <code>web/index.html</code> works under the hood.</p>
     <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
       <a href="/index.html" style="background:var(--accent);color:#fff;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;font-size:14px">Live Console &rarr;</a>
-      <a href="/softphone.html" style="background:var(--panel);border:1px solid var(--panel-border);color:var(--ink);text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;font-size:14px">&#x1F4DE; Web Softphone &rarr;</a>
-      <a href="/task-plan.html" style="background:var(--panel);border:1px solid var(--panel-border);color:var(--ink);text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;font-size:14px">&#x1F4CB; Task Plan &rarr;</a>
+      <a href="/softphone.html" style="background:var(--panel);border:1px solid var(--panel-border);color:var(--ink);text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;font-size:14px">Web Softphone &rarr;</a>
+      <a href="/task-plan.html" style="background:var(--panel);border:1px solid var(--panel-border);color:var(--ink);text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:600;font-size:14px">Task Plan &rarr;</a>
     </div>
   </header>
 
@@ -271,12 +271,12 @@
     <pre><code>&lt;div class="meter"&gt;&lt;div id="level"&gt;&lt;/div&gt;&lt;/div&gt;
 &lt;span id="vad-badge" class="badge"&gt;Silent (Listening)&lt;/span&gt;
 &lt;span id="agent-badge" class="badge"&gt;Idle&lt;/span&gt;
-&lt;div id="barge-banner" style="display:none"&gt;⚡ Instant Barge-In Cut-Off!&lt;/div&gt;
+&lt;div id="barge-banner" style="display:none"&gt;Instant Barge-In Cut-Off!&lt;/div&gt;
 &lt;ul id="people"&gt;&lt;li&gt;nobody yet&lt;/li&gt;&lt;/ul&gt;</code></pre>
     <p><span class="line-ref">Line 104:</span> The <code>#level</code> div is dynamically resized in width from <code>0%</code> to <code>100%</code> 60 times per second to visualize your microphone volume.</p>
     <p><span class="line-ref">Lines 108–112:</span> Live status badges updated by WebRTC data channel events:
       <ul>
-        <li><code>#vad-badge</code>: Turns green (<em>"🗣️ Speaking"</em>) when Silero VAD detects human speech, and grey (<em>"Silent (Listening)"</em>) when you pause.</li>
+        <li><code>#vad-badge</code>: Turns green (<em>"Speaking"</em>) when Silero VAD detects human speech, and grey (<em>"Silent (Listening)"</em>) when you pause.</li>
         <li><code>#agent-badge</code>: Shows what the assistant is doing (<em>IDLE</em>, <em>THINKING</em>, or <em>SPEAKING</em>).</li>
       </ul>
     </p>

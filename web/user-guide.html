@@ -3,82 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>How to use Call Desk — Voice Agent Service</title>
+<title>User Guide — Call Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
-<style>
-  :root{
-    --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
-    --rail-ink:#A8AEC4; --rail-on:#FFFFFF;
-    --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
-    --line:#DDE0E9; --line-soft:#EBEDF3;
-    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
-    --pos:#2F7A4F; --pos-soft:#E6F2EA; --neu:#5A6480; --neu-soft:#EDEFF4; --neg:#A32F26; --neg-soft:#FAEAE8;
-    --f-ui:"Archivo",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
-    --f-mono:"DM Mono","SF Mono",Menlo,Consolas,monospace;
-  }
-  @media (prefers-color-scheme:dark){
-    :root:not([data-theme="light"]){
-      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
-      --rail-ink:#767D96; --rail-on:#FFFFFF;
-      --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
-      --line:#262B3A; --line-soft:#1C2130;
-      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
-      --pos:#5FBF88; --pos-soft:#12251A; --neu:#8891AB; --neu-soft:#1A1F2C; --neg:#E0776C; --neg-soft:#2A1513;
-    }
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
-  .app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:100vh}
-  .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
-  .brand{padding:0 18px 18px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
-  .brand b{color:var(--rail-on);font-size:15px;font-weight:700;display:block}
-  .brand span{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
-  .nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
-  .nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
-  .nav a:hover{background:rgba(255,255,255,.06);color:var(--rail-on)}
-  .nav .active{background:var(--accent);color:#fff;font-weight:600}
-  .nav .ct{font-family:var(--f-mono);font-size:11px;opacity:.85}
-  .rail-foot{margin-top:auto;padding:14px 18px 0;border-top:1px solid rgba(255,255,255,.07)}
-  .rail-foot div{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;line-height:1.7}
-  main{padding:22px 26px 60px;max-width:1180px}
-  .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:12px}
-  .crumb{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.09em;text-transform:uppercase;margin-bottom:2px}
-  h1{margin:0;font-size:22px;font-weight:700}
-  .layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px;align-items:start}
-  @media (max-width:1000px){.layout{grid-template-columns:1fr}.toc{position:static}}
-  @media (max-width:900px){.app{grid-template-columns:1fr}.rail{display:none}}
-  .toc{position:sticky;top:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 10px}
-  .toc a{display:block;padding:6px 10px;border-radius:6px;color:var(--ink-soft);text-decoration:none;font-size:13px}
-  .toc a:hover{background:var(--sunk);color:var(--ink)}
-  .toc .h{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.08em;text-transform:uppercase;padding:6px 10px 4px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px 22px;margin-bottom:16px;scroll-margin-top:16px}
-  .card h2{margin:0 0 6px;font-size:17px;font-weight:700;display:flex;align-items:center;gap:10px}
-  .card h3{margin:16px 0 6px;font-size:14px;font-weight:700}
-  .card p{margin:6px 0 10px;color:var(--ink-soft)}
-  .lead{color:var(--ink-soft);font-size:14.5px;margin:0 0 14px}
-  ol,ul{margin:6px 0 10px;padding-left:22px;color:var(--ink-soft)} li{margin:4px 0}
-  li b,p b{color:var(--ink)}
-  code{font-family:var(--f-mono);font-size:12px;background:var(--sunk);padding:1px 6px;border-radius:4px;color:var(--ink)}
-  .pill{display:inline-block;padding:2px 9px;border-radius:10px;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;vertical-align:middle}
-  .pill.accent{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-border)}
-  .pill.pos{background:var(--pos-soft);color:var(--pos)} .pill.neu{background:var(--neu-soft);color:var(--neu)} .pill.neg{background:var(--neg-soft);color:var(--neg)}
-  .note{border-left:3px solid var(--accent-border);background:var(--accent-soft);padding:10px 14px;border-radius:0 8px 8px 0;margin:10px 0;color:var(--ink-soft)}
-  .note b{color:var(--ink)}
-  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0 6px}
-  th{text-align:left;font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.06em;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line)}
-  td{padding:8px 10px;border-bottom:1px solid var(--line-soft);vertical-align:top;color:var(--ink-soft)} td:first-child{color:var(--ink);font-weight:600}
-  tr:last-child td{border-bottom:none}
-  .steps{counter-reset:s;list-style:none;padding:0;margin:8px 0}
-  .steps li{counter-increment:s;position:relative;padding:8px 0 8px 40px;border-bottom:1px dashed var(--line-soft)}
-  .steps li:last-child{border-bottom:none}
-  .steps li::before{content:counter(s);position:absolute;left:0;top:8px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font:700 12px/26px var(--f-mono);text-align:center}
-  .btnlike{display:inline-block;padding:1px 8px;border:1px solid var(--line);border-radius:5px;background:var(--panel);font-size:12px;color:var(--ink);white-space:nowrap}
-  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 12px}
-  .flow span{background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px}
-  .flow i{color:var(--ink-faint);font-style:normal}
-</style>
+<link rel="stylesheet" href="/guide.css">
 </head>
 <body>
 <div class="app">
@@ -88,169 +17,153 @@
       <a href="/">Overview</a>
       <a href="/#calls">Calls</a>
       <a href="/#agents">Agents</a>
-      <a href="/webhooks.html">Webhooks &amp; Data<span class="ct">⚡</span></a>
-      <a href="/api-keys.html" data-admin-only>API Keys &amp; Providers<span class="ct">🔑</span></a>
-      <a href="/profile.html">My Profile<span class="ct">👤</span></a>
-      <a href="/user-guide.html" class="active">How to use<span class="ct">📘</span></a>
+      <a href="/webhooks.html">Webhooks &amp; Data</a>
+      <a href="/api-keys.html" data-admin-only>API Keys &amp; Providers</a>
+      <a href="/profile.html">My Profile</a>
+      <a href="/cost-comparison.html" data-admin-only>Cost Calculator</a>
+      <a href="/competitor-analysis.html">Competitors &amp; Features</a>
+      <a href="/admin-guide.html" data-admin-only>Admin Guide</a>
+      <a href="/user-guide.html" class="active">User Guide</a>
     </div>
     <div class="rail-foot"><!-- profile card injected by /profile.js --></div>
   </nav>
   <div>
     <main>
       <div class="page-header">
-        <div><div class="crumb">HELP</div><h1>How to use this dashboard</h1></div>
+        <div><div class="crumb">HELP · FOR OPERATORS AND ANALYSTS</div><h1>User guide</h1></div>
         <a class="btnlike" href="/">← Back to Call Desk</a>
       </div>
-      <p class="lead">Call Desk runs AI phone agents: a caller speaks, the agent listens, thinks with a language model, answers in a chosen voice, and afterwards the call is summarised, the important details are extracted and can be posted to your systems. This page walks through every screen in the order you will use them.</p>
+      <p class="lead">This guide is for everyone who signs in to build and run AI phone agents. You get the whole dashboard — every agent in the workspace, all call history, webhooks — except the API Keys &amp; Providers page and member management. Setup topics (keys, phone numbers for the workspace, adding users, storage) are in the <a href="/admin-guide.html" style="color:var(--accent)">Admin guide</a>.</p>
 
       <div class="layout">
         <aside class="toc">
-          <div class="h">Getting started</div>
+          <div class="h">Start</div>
           <a href="#signin">1. Sign in</a>
-          <a href="#keys">2. Provider keys</a>
-          <a href="#agents">3. Build an agent</a>
-          <a href="#test">4. Test call</a>
-          <a href="#voices">5. Voices</a>
-          <div class="h">Operating</div>
-          <a href="#live">6. Go live &amp; numbers</a>
-          <a href="#calls">7. Calls &amp; recordings</a>
-          <a href="#webhooks">8. Webhooks &amp; data</a>
-          <a href="#softphone">9. Softphone</a>
-          <div class="h">Admin</div>
-          <a href="#users">10. Users &amp; roles</a>
-          <a href="#storage">11. Where data lives</a>
-          <a href="#trouble">12. Troubleshooting</a>
+          <a href="#profile">2. Your profile</a>
+          <div class="h">Your agent</div>
+          <a href="#build">3. Build an agent</a>
+          <a href="#prompt">4. Writing the prompt</a>
+          <a href="#voice">5. Choose a voice</a>
+          <a href="#test">6. Test call</a>
+          <a href="#live">7. Set live &amp; numbers</a>
+          <div class="h">After calls</div>
+          <a href="#calls">8. Calls &amp; recordings</a>
+          <a href="#data">9. Extracted data &amp; webhook</a>
+          <a href="#softphone">10. Softphone</a>
+          <a href="#trouble">11. Troubleshooting</a>
         </aside>
 
         <div>
           <section class="card" id="signin">
-            <h2>1. Sign in <span class="pill neu">first run</span></h2>
-            <p>Open the site and you land on <b>Sign in</b>. The very first visit asks you to create the admin sign-in: your email and a password of at least 8 characters.</p>
+            <h2>1. Sign in</h2>
             <ol class="steps">
-              <li><b>Email &amp; password.</b> Tick <span class="btnlike">Keep me signed in</span> for a 30-day session; otherwise it lasts 12 hours.</li>
-              <li><b>SMS code (optional).</b> If a phone number is saved on your profile, a 6-digit code is texted to it and must be entered before you are in. No phone means password alone signs you in.</li>
-              <li><b>Sign out</b> from the profile card at the bottom of the sidebar or from My Profile.</li>
+              <li>Open the site. Enter the <b>email and temporary password</b> your admin gave you.</li>
+              <li>If a phone number is saved on your profile, a <b>6-digit code</b> is texted to you. Type it in; it expires after 5 minutes and you can resend after 30 seconds.</li>
+              <li>Tick <span class="btnlike">Keep me signed in</span> to stay signed in for 30 days; otherwise the session lasts 12 hours.</li>
             </ol>
-            <div class="note"><b>Twilio trial accounts</b> can only text numbers verified in the Twilio console. Verify your mobile there (or upgrade) before adding a phone to your profile, or the code cannot be delivered.</div>
+            <p>Sign out from the profile card at the bottom of the sidebar or from My Profile.</p>
           </section>
 
-          <section class="card" id="keys">
-            <h2>2. Provider keys <span class="pill accent">admin only</span></h2>
-            <p>Open <b>API Keys &amp; Providers</b>. Each card is one service; paste the key, press <span class="btnlike">Save</span>, and the status turns green when the key is accepted. Keys are stored in the server's <code>.env</code> file and are never shown to non-admins.</p>
-            <table>
-              <thead><tr><th>Provider</th><th>What it does</th><th>Needed for</th></tr></thead>
-              <tbody>
-                <tr><td>Deepgram</td><td>Speech-to-text, and the Aura voices</td><td>Every live call</td></tr>
-                <tr><td>Google Gemini</td><td>The language model that writes the agent's replies and extracts data</td><td>Real conversations (without it a fixed script answers)</td></tr>
-                <tr><td>ElevenLabs</td><td>Premium voices</td><td>Optional; premade voices work on the free plan</td></tr>
-                <tr><td>Twilio / Telnyx</td><td>Phone numbers, SIP trunks, SMS sign-in codes</td><td>Phone numbers and SMS</td></tr>
-                <tr><td>OpenAI, Cartesia, Retell</td><td>Alternative models and voices</td><td>Optional</td></tr>
-              </tbody>
-            </table>
-            <div class="note"><b>Free-tier limits.</b> Gemini 3.5 Flash Lite is the default because it allows more requests per minute on the free tier; Gemini 3.6 Flash is smarter but limited to 5 per minute, which is too few for a live call.</div>
+          <section class="card" id="profile">
+            <h2>2. Your profile</h2>
+            <p>Open <b>My Profile</b> to set your name, title, email and phone, and to change the temporary password (Security card). Adding a phone turns on the SMS code step for your sign-in. The Members card shows only you; admins manage the team.</p>
           </section>
 
-          <section class="card" id="agents">
+          <section class="card" id="build">
             <h2>3. Build an agent</h2>
-            <p>Go to <b>Agents</b> on the Call Desk and press <span class="btnlike">＋ New agent</span>, or <span class="btnlike">Edit</span> an existing one. The Agent Builder has everything an agent needs.</p>
+            <p>Go to <b>Agents</b> and press <span class="btnlike">New agent</span>. If you have no agents yet the builder opens in "Create your first agent" mode: give it a name and a prompt and press <span class="btnlike">Save changes</span>. The agent belongs to you; other members cannot see it.</p>
             <table>
               <thead><tr><th>Setting</th><th>What to put there</th></tr></thead>
               <tbody>
                 <tr><td>Name</td><td>How the agent appears in lists and call history.</td></tr>
-                <tr><td>System prompt</td><td>The agent's instructions: who it is, what to ask, what never to say. The AI follows this on every turn.</td></tr>
-                <tr><td>First message</td><td>The exact opening line. Keep it identical to the greeting your prompt mandates, otherwise the AI will say the greeting again.</td></tr>
-                <tr><td>Who speaks first</td><td>AI (the agent greets on pick-up) or the caller.</td></tr>
-                <tr><td>Voice</td><td>Open the voice picker; see section 5.</td></tr>
-                <tr><td>Model</td><td>Which language model answers. Gemini 3.5 Flash Lite is the safe default.</td></tr>
-                <tr><td>Function tools</td><td>Actions the agent may take mid-call: check availability, book, look up an order, transfer the call.</td></tr>
-                <tr><td>Webhook &amp; data extraction</td><td>Optional. Turn it on to have the AI pull details out of every transcript and post them to your systems; see section 8.</td></tr>
+                <tr><td>System prompt</td><td>The agent's instructions. See section 4.</td></tr>
+                <tr><td>First message</td><td>The exact opening line. Keep it identical to the greeting your prompt mandates, or the AI will say the greeting a second time.</td></tr>
+                <tr><td>Who speaks first</td><td>AI (greets on pick-up) or the caller.</td></tr>
+                <tr><td>Voice</td><td>Pick from the voice picker; see section 5.</td></tr>
+                <tr><td>Model</td><td>Gemini 3.5 Flash Lite is the safe default for live calls.</td></tr>
+                <tr><td>Function tools</td><td>Actions the agent may take mid-call: check availability, book an appointment, look up an order, transfer the call.</td></tr>
+                <tr><td>Webhook &amp; data extraction</td><td>Optional; see section 9.</td></tr>
               </tbody>
             </table>
-            <p>Press <span class="btnlike">Save changes</span>. Every save keeps a revision, so you can roll back. Each user owns the agents they create; admins see all agents.</p>
+            <p>Every save keeps a revision so you can roll back. Use <span class="btnlike">Edit</span> on the Agents tab to reopen an agent later.</p>
+          </section>
+
+          <section class="card" id="prompt">
+            <h2>4. Writing the prompt</h2>
+            <ul>
+              <li><b>Identity first:</b> who the agent is, which business, what it must never do (no legal or medical advice, no pricing promises).</li>
+              <li><b>One question per turn.</b> Say it explicitly; the model follows it.</li>
+              <li><b>List the data to collect</b> in order: name spelled letter by letter, callback number with country code, email, address, the matter itself. The webhook feature can read this list back out of the prompt.</li>
+              <li><b>Confirmations:</b> tell the agent to read back names, numbers and emails before moving on.</li>
+              <li><b>Closing line:</b> include a sign-off such as "Thank you, take care". The call ends automatically when the agent says it.</li>
+            </ul>
+            <div class="note"><b>Tip:</b> the first message field must contain the same greeting the prompt asks for. If they differ, the agent greets twice.</div>
+          </section>
+
+          <section class="card" id="voice">
+            <h2>5. Choose a voice</h2>
+            <p>Every voice in the picker shows a chip that tells you what will actually speak:</p>
+            <ul>
+              <li><span class="pill pos">ElevenLabs Turbo / Deepgram Aura / Neural Voice</span> — this exact voice plays in tests and live calls.</li>
+              <li><span class="pill neg">Neural Voice fallback</span> — this voice cannot be synthesised with the workspace's current keys or plan, so a neural voice speaks instead. The reason is in the tooltip and in a warning when you pick it.</li>
+            </ul>
+            <p>Tick <span class="btnlike">Real voices only</span> to hide fallback voices. ElevenLabs premade voices start speaking fastest (about half a second); Deepgram Aura takes about one second.</p>
           </section>
 
           <section class="card" id="test">
-            <h2>4. Test call</h2>
-            <p>Press <span class="btnlike">Test</span> in the Agent Builder. A call window opens, the agent greets you, and you can type or speak through the microphone. Each reply shows three things:</p>
-            <div class="flow"><span>⏱ 1.3s reply <i>time for the model to answer</i></span><span>🔊 0.5s voice <i>time until you hear it</i></span><span>🧠 gemini <i>or 📜 rule script if no model key</i></span></div>
+            <h2>6. Test call</h2>
+            <p>Press <span class="btnlike">Test</span> in the builder. The agent greets you; type or use the microphone. Each reply shows:</p>
+            <div class="flow"><span>1.3s reply <i>model thinking time</i></span><span>0.5s voice <i>time until you hear it</i></span><span>gemini <i>the model wrote it</i></span></div>
             <ul>
-              <li>The microphone pauses while the agent speaks so it never transcribes her own voice.</li>
-              <li>When the agent signs off ("Take care"), the call ends by itself.</li>
-              <li>On hang-up the call is saved to <b>Call History</b> with a recording made from exactly what you heard, plus your microphone if you used it.</li>
+              <li>The microphone pauses while the agent speaks so it never hears itself. Headphones give the cleanest result.</li>
+              <li>When the agent signs off, the call ends by itself and is saved to <b>Calls</b> with a recording of exactly what you heard.</li>
+              <li>If a reply says <b>rule script</b>, no language model is connected; ask your admin to add a Gemini key.</li>
             </ul>
-          </section>
-
-          <section class="card" id="voices">
-            <h2>5. Voices</h2>
-            <p>Open the picker from the Voice card. Every voice shows a chip telling you what will actually speak:</p>
-            <ul>
-              <li><span class="pill pos">✅ ElevenLabs Turbo / Deepgram Aura / Neural HD</span> — this exact voice plays in tests and on live calls.</li>
-              <li><span class="pill neg">⚠️ Neural HD fallback</span> — this voice cannot be synthesised here (no key, a paid-plan voice, or a sample-only Retell voice), so a free neural voice speaks instead. The reason is in the tooltip and in a warning when you pick it.</li>
-            </ul>
-            <p>Tick <span class="btnlike">Real voices only</span> to hide the fallback ones. <span class="btnlike">↻ Sync accounts</span> pulls in any voice you added to your ElevenLabs account. The fastest voices are ElevenLabs premade voices (about half a second to first sound); Deepgram Aura is about one second.</p>
           </section>
 
           <section class="card" id="live">
-            <h2>6. Go live &amp; phone numbers</h2>
+            <h2>7. Set live &amp; phone numbers</h2>
             <ol class="steps">
-              <li><b>Set live.</b> On the Agents tab press <span class="btnlike">📞 Set live</span>. The live agent answers any call that has no specific routing.</li>
-              <li><b>Buy a number.</b> <b>Buy Phone Numbers</b> lists Telnyx and Twilio inventory; buying assigns the number to a trunk and an agent.</li>
-              <li><b>Route per number.</b> On <b>SIP Trunks &amp; DIDs</b> each owned number has an agent dropdown. Several agents can each answer their own number.</li>
+              <li>On the <b>Agents</b> tab press <span class="btnlike">Set live</span> on your agent. The live agent answers any call without specific routing. Only one agent is live at a time.</li>
+              <li>On <b>SIP Trunks &amp; DIDs</b> each owned phone number has an agent dropdown. Assign a number to your agent and it answers that line regardless of which agent is live.</li>
+              <li>Need a new number? <b>Buy Phone Numbers</b> shows the available inventory, or ask your admin.</li>
             </ol>
-            <div class="note"><b>Real phone calls need a SIP gateway.</b> The current stack does not run a LiveKit SIP service, so dialling from the softphone and inbound calls to your Twilio number are simulated. Talking to an agent in the browser (test call or softphone) is fully real.</div>
+            <div class="note"><b>Real phone calls</b> reach the agent only once the admin has connected a SIP gateway. Until then, hear the live agent through the <b>Softphone</b> page or a test call.</div>
           </section>
 
           <section class="card" id="calls">
-            <h2>7. Calls &amp; recordings</h2>
-            <p>The <b>Overview</b> shows counts, recent calls, sentiment and hourly volume. <b>Calls</b> is the full history with filters and search; click a row for <b>Call detail</b>: transcript, sentiment, summary, extracted fields, waveform and a playable recording (left channel caller, right channel agent). <span class="btnlike">Export CSV</span> downloads the filtered list. You see the calls handled by your own agents; admins see all.</p>
+            <h2>8. Calls &amp; recordings</h2>
+            <p><b>Overview</b> shows counts, recent calls, sentiment and hourly volume for your agents. <b>Calls</b> is the full list with filters and search. Click a call for <b>Call detail</b>: transcript, sentiment, summary, extracted fields, waveform and a playable recording (caller on the left channel, agent on the right). <span class="btnlike">Export CSV</span> downloads the filtered list.</p>
           </section>
 
-          <section class="card" id="webhooks">
-            <h2>8. Webhooks &amp; extracted data</h2>
-            <p>Two parts: <b>what to extract</b> (per agent) and <b>where to send it</b> (workspace endpoints).</p>
+          <section class="card" id="data">
+            <h2>9. Extracted data &amp; webhook</h2>
+            <p>Optional per agent. In the builder open <b>Webhook &amp; data extraction</b> and switch <span class="btnlike">Enable</span> on.</p>
             <ol class="steps">
-              <li>In the Agent Builder open <b>Webhook &amp; data extraction</b> and switch <span class="btnlike">Enable</span> on.</li>
-              <li>Press <span class="btnlike">✨ Suggest from prompt</span>. The AI reads the agent's prompt and proposes fields (name, callback phone, email, matter…). Edit them, mark required ones, then Save changes.</li>
-              <li>Press <span class="btnlike">▶ Preview on latest call</span> to see what the AI pulls out of a real transcript.</li>
-              <li>On <b>Webhooks &amp; Data</b> add an endpoint URL and press <span class="btnlike">Test</span>; a green "Connected · HTTP 200" means your system received the signed test event.</li>
+              <li>Press <span class="btnlike">Suggest from prompt</span>. The AI reads your prompt and proposes the fields to capture (name, callback phone, email, matter…). Edit them, tick the required ones, save.</li>
+              <li>Press <span class="btnlike">Preview on latest call</span> to see what the AI pulls out of a real transcript.</li>
+              <li>After every call, the fields are filled from the transcript and posted to the workspace's webhook endpoints (set up by an admin on <b>Webhooks &amp; Data</b>) together with the summary and transcript.</li>
             </ol>
-            <p>After every call of an enabled agent your endpoint receives a JSON POST with <code>call</code>, <code>extracted</code> (flat key/value), <code>summary</code>, <code>sentiment</code> and <code>transcript</code>, signed with <code>X-Signature-256</code> (HMAC-SHA256 of the body with your endpoint secret). Deliveries and retries are listed on the page with a Replay button.</p>
+            <p>With the toggle off, nothing is extracted or sent for that agent.</p>
           </section>
 
           <section class="card" id="softphone">
-            <h2>9. Softphone</h2>
-            <p>The <b>Softphone</b> page dials into the live agent through your browser: press the number, dial, allow the microphone, and the agent greets you. The log shows which voice engine is speaking and when the agent ends the call. It is the quickest way to hear the live configuration exactly as a caller would.</p>
-          </section>
-
-          <section class="card" id="users">
-            <h2>10. Users &amp; roles <span class="pill accent">admin</span></h2>
-            <p>On <b>My Profile</b> an admin adds members with a name, email, optional phone (for the SMS step), a role and a temporary password they can change later.</p>
-            <table>
-              <thead><tr><th>Role</th><th>Can do</th></tr></thead>
-              <tbody>
-                <tr><td>Admin</td><td>Everything, including API keys and members; sees all agents and calls.</td></tr>
-                <tr><td>Operator</td><td>Full dashboard except API keys; sees and edits only the agents they created and those agents' calls; can set their own agent live.</td></tr>
-                <tr><td>Analyst</td><td>Same visibility as operator, intended for read-only review.</td></tr>
-              </tbody>
-            </table>
-          </section>
-
-          <section class="card" id="storage">
-            <h2>11. Where the data lives</h2>
-            <p>Agents, revisions, phone numbers, trunks, users, sessions, call jobs and every recording are written to <b>PostgreSQL</b> (the <code>voice-postgres</code> container) as well as to the working files on disk. If a file or recording goes missing it is restored from the database at the next start. The Data &amp; storage panel on My Profile shows the connection and counts.</p>
+            <h2>10. Softphone</h2>
+            <p>Dial from your browser to hear the live agent exactly as a caller would: press the number, dial, allow the microphone. The log shows the voice engine in use and when the agent ends the call.</p>
           </section>
 
           <section class="card" id="trouble">
-            <h2>12. Troubleshooting</h2>
+            <h2>11. Troubleshooting</h2>
             <table>
-              <thead><tr><th>You see</th><th>Why</th><th>Fix</th></tr></thead>
+              <thead><tr><th>You see</th><th>Why</th><th>What to do</th></tr></thead>
               <tbody>
-                <tr><td>Replies say "📜 rule script"</td><td>No language-model key</td><td>Add a Gemini key on API Keys &amp; Providers and restart the worker.</td></tr>
-                <tr><td>"⚠️ … → Neural HD fallback" on a voice</td><td>That voice cannot be synthesised with the current keys or plan</td><td>Pick a green-chip voice, or upgrade the provider plan.</td></tr>
-                <tr><td>Slow or missing replies mid-call</td><td>Free-tier rate limit hit</td><td>Use Gemini Flash Lite, or move to a paid tier.</td></tr>
-                <tr><td>SMS code never arrives</td><td>Twilio trial can only text verified numbers</td><td>Verify the number in the Twilio console or upgrade.</td></tr>
-                <tr><td>"Agent not found" for a colleague's agent</td><td>Agents are private per user</td><td>Ask an admin, or create your own agent.</td></tr>
-                <tr><td>Test call mic types the agent's words</td><td>Mic picked up the speakers</td><td>Use headphones; the mic already pauses while the agent speaks.</td></tr>
+                <tr><td>"rule script" on replies</td><td>No language-model key in the workspace</td><td>Ask an admin to add a Gemini key.</td></tr>
+                <tr><td>Voice chip says fallback</td><td>The voice needs a key or plan the workspace does not have</td><td>Pick a green-chip voice.</td></tr>
+                <tr><td>Agent greets twice</td><td>First message differs from the prompt's greeting</td><td>Make them identical.</td></tr>
+                <tr><td>Slow or missing replies mid-call</td><td>Free-tier rate limit</td><td>Keep Gemini Flash Lite; ask the admin about a paid tier.</td></tr>
+                <tr><td>"Agent not found"</td><td>That agent belongs to another user</td><td>Create your own, or ask an admin.</td></tr>
+                <tr><td>Mic types the agent's words</td><td>Speakers feeding the microphone</td><td>Use headphones.</td></tr>
+                <tr><td>SMS code never arrives</td><td>Your number is not verified with the SMS provider</td><td>Ask an admin to verify it, or remove the phone from your profile to sign in with password only.</td></tr>
               </tbody>
             </table>
           </section>

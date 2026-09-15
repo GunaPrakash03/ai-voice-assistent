@@ -232,7 +232,7 @@
     display:none;z-index:999;align-items:center;gap:10px}
   #toast.show{display:flex}
 
-  /* Retell-Style In-Page Right-Side Slide-Over Test Call Drawer & Orb */
+  /* In-page Right-Side Slide-Over Test Call Drawer & Orb */
   #modalTestCall.modal-overlay{position:fixed;inset:0;z-index:9999;display:none;justify-content:flex-end;align-items:stretch;padding:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);pointer-events:none}
   #modalTestCall.modal-overlay.open{display:flex !important;pointer-events:auto}
   #modalTestCall .test-call-card{max-width:480px;width:100%;height:100vh;max-height:100vh;display:flex;flex-direction:column;border-radius:0;background:var(--panel);border-left:1px solid var(--line);border-top:none;border-right:none;border-bottom:none;box-shadow:-8px 0 40px rgba(0,0,0,.45);transform:translateX(100%);transition:transform .28s cubic-bezier(0.16,1,0.3,1);pointer-events:auto}
@@ -243,15 +243,15 @@
   @keyframes pulseDot{0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.4);opacity:0.6}}
   
   .orb-stage{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px 18px;background:radial-gradient(circle at center, rgba(37,99,235,0.08) 0%, transparent 70%);border-bottom:1px solid var(--line);position:relative}
-  .retell-orb{width:82px;height:82px;border-radius:50%;background:linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 30px rgba(59,130,246,0.4);transition:all .3s ease;position:relative}
-  .retell-orb::before{content:'';position:absolute;inset:-6px;border-radius:50%;border:2px solid rgba(59,130,246,0.4);animation:orbSpin 6s linear infinite}
-  .retell-orb::after{content:'';position:absolute;inset:-14px;border-radius:50%;border:1px dashed rgba(139,92,246,0.3);animation:orbSpinReverse 10s linear infinite}
+  .test-call-orb{width:82px;height:82px;border-radius:50%;background:linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 30px rgba(59,130,246,0.4);transition:all .3s ease;position:relative}
+  .test-call-orb::before{content:'';position:absolute;inset:-6px;border-radius:50%;border:2px solid rgba(59,130,246,0.4);animation:orbSpin 6s linear infinite}
+  .test-call-orb::after{content:'';position:absolute;inset:-14px;border-radius:50%;border:1px dashed rgba(139,92,246,0.3);animation:orbSpinReverse 10s linear infinite}
   @keyframes orbSpin{0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)}}
   @keyframes orbSpinReverse{0%{transform:rotate(360deg)} 100%{transform:rotate(0deg)}}
   
-  .retell-orb.speaking{transform:scale(1.08);background:linear-gradient(135deg, #10b981 0%, #3b82f6 50%, #6366f1 100%);box-shadow:0 0 45px rgba(16,185,129,0.6);animation:orbPulse 1.2s ease-in-out infinite alternate}
-  .retell-orb.listening{transform:scale(1.02);background:linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);box-shadow:0 0 35px rgba(6,182,212,0.5);animation:orbBreathe 2s ease-in-out infinite alternate}
-  .retell-orb.thinking{transform:scale(0.96);background:linear-gradient(135deg, #f59e0b 0%, #ec4899 100%);box-shadow:0 0 35px rgba(245,158,11,0.5);animation:orbSpin 2s linear infinite}
+  .test-call-orb.speaking{transform:scale(1.08);background:linear-gradient(135deg, #10b981 0%, #3b82f6 50%, #6366f1 100%);box-shadow:0 0 45px rgba(16,185,129,0.6);animation:orbPulse 1.2s ease-in-out infinite alternate}
+  .test-call-orb.listening{transform:scale(1.02);background:linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);box-shadow:0 0 35px rgba(6,182,212,0.5);animation:orbBreathe 2s ease-in-out infinite alternate}
+  .test-call-orb.thinking{transform:scale(0.96);background:linear-gradient(135deg, #f59e0b 0%, #ec4899 100%);box-shadow:0 0 35px rgba(245,158,11,0.5);animation:orbSpin 2s linear infinite}
   @keyframes orbPulse{0%{transform:scale(1.02)} 100%{transform:scale(1.14)}}
   @keyframes orbBreathe{0%{transform:scale(0.98)} 100%{transform:scale(1.04)}}
 
@@ -295,7 +295,13 @@
       <a href="/#calls">Calls<span class="ct" id="navCtCalls">0</span></a>
       <a href="/#detail">Call detail</a>
       <a href="/agent-builder.html" class="active">Agents<span class="ct" id="navCtAgents">1</span></a>
-      <a href="/api-keys.html">API Keys &amp; Providers<span class="ct">🔑</span></a>
+      <a href="/api-keys.html" data-admin-only>API Keys &amp; Providers</a>
+      <a href="/webhooks.html">Webhooks &amp; Data</a>
+      <a href="/profile.html">My Profile</a>
+      <a href="/cost-comparison.html" data-admin-only>Cost Calculator</a>
+      <a href="/competitor-analysis.html">Competitors &amp; Features</a>
+      <a href="/admin-guide.html" data-admin-only>Admin Guide</a>
+      <a href="/user-guide.html">User Guide</a>
     </div>
     <div class="rail-foot">
       <!-- profile card is injected here by /profile.js -->
@@ -318,7 +324,7 @@
           <button id="btnNewAgent" type="button" hidden></button>
           <button id="btnSetLive" type="button" hidden></button>
           <span id="liveStateChip" class="livechip" hidden style="background:#DCFCE7;color:#166534;border-color:#22C55E"><span class="pulse"></span><span>this agent answers live calls</span></span>
-          <a class="btn ghost" href="/index.html#agents" title="All agents: switch, create, set live" style="text-decoration:none">☰ All agents</a>
+          <a class="btn ghost" href="/index.html#agents" title="All agents: switch, create, set live" style="text-decoration:none">All agents</a>
           <span class="livechip"><span class="pulse"></span><span id="callStatus">0 calls in progress</span></span>
         </div>
       </div>
@@ -361,11 +367,11 @@
                 </optgroup>
               </select>
               <div id="llmModelStats" style="display:flex;align-items:center;gap:14px;margin-top:8px;font-size:11.5px;color:var(--ink-soft);flex-wrap:wrap;background:var(--panel);padding:6px 10px;border-radius:6px;border:1px solid var(--line)">
-                <span id="statModelTTFT">⚡ TTFT: <b style="color:var(--ink);font-family:var(--f-mono)">180 ms</b></span>
-                <span id="statModelCost">💰 LLM: <b style="color:var(--ink);font-family:var(--f-mono)">$0.00010 / 1k tokens</b></span>
-                <span id="statVoiceLatency">🎙️ Voice TTFA: <b style="color:var(--ink);font-family:var(--f-mono)">110 ms</b></span>
-                <span id="statVoiceCost">🏷️ Voice Cost: <b style="color:var(--ink);font-family:var(--f-mono)">$0.000 / 1k chars</b></span>
-                <span id="statTotalCost">💵 Est. Turn: <b style="color:var(--accent);font-family:var(--f-mono)">$0.0008</b></span>
+                <span id="statModelTTFT">TTFT: <b style="color:var(--ink);font-family:var(--f-mono)">180 ms</b></span>
+                <span id="statModelCost">LLM: <b style="color:var(--ink);font-family:var(--f-mono)">$0.00010 / 1k tokens</b></span>
+                <span id="statVoiceLatency">Voice TTFA: <b style="color:var(--ink);font-family:var(--f-mono)">110 ms</b></span>
+                <span id="statVoiceCost">Voice Cost: <b style="color:var(--ink);font-family:var(--f-mono)">$0.000 / 1k chars</b></span>
+                <span id="statTotalCost">Est. Turn: <b style="color:var(--accent);font-family:var(--f-mono)">$0.0008</b></span>
                 <span style="color:var(--ink-faint)">Speech pacing: ~150 wpm</span>
               </div>
             </div>
@@ -383,8 +389,8 @@
             <div class="field">
               <label for="speakFirstSelect">SPEAKER INITIALIZATION / WHO SPEAKS FIRST?</label>
               <select id="speakFirstSelect" style="width:100%;font-weight:600;font-size:13px;padding:9px 12px;border-radius:6px;background:var(--ground);color:var(--ink);border:1px solid var(--line)">
-                <option value="ai">🤖 AI Speaks First (Agent initiates with First Message)</option>
-                <option value="user">👤 User Speaks First (AI waits silently for caller)</option>
+                <option value="ai">AI Speaks First (Agent initiates with First Message)</option>
+                <option value="user">User Speaks First (AI waits silently for caller)</option>
               </select>
             </div>
 
@@ -402,7 +408,7 @@
             <div class="card-h">
               <h2>Voice &amp; Persona</h2>
               <button class="btn btn-outline" id="btnOpenVoiceModal" style="padding:4px 10px;font-size:12px">
-                🎙️ Change Voice…
+                Change Voice…
               </button>
             </div>
             <div class="card-b">
@@ -433,7 +439,7 @@
               </div>
 
               <button class="btn btn-outline" id="btnPreviewVoice" style="width:100%;margin-top:10px">
-                🔊 Play Voice Sample
+                Play Voice Sample
               </button>
             </div>
           </div>
@@ -452,9 +458,9 @@
             <div class="card-b" id="whBody" hidden>
               <p style="margin:0 0 10px;font-size:12.5px;color:var(--ink-soft)">After each call the AI reads the transcript, fills these fields and posts them (signed) to your workspace webhook endpoints as <code>extracted</code>. Endpoints are managed by an admin on <a href="/webhooks.html" style="color:var(--accent)">Webhooks &amp; Data</a>.</p>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-                <button class="btn ghost sm" id="btnSuggestFields" type="button" style="color:var(--accent);border-color:var(--accent-border)">✨ Suggest from prompt (AI)</button>
-                <button class="btn ghost sm" id="btnAddField" type="button">＋ Add field</button>
-                <button class="btn ghost sm" id="btnPreviewFields" type="button">▶ Preview on latest call</button>
+                <button class="btn ghost sm" id="btnSuggestFields" type="button" style="color:var(--accent);border-color:var(--accent-border)">Suggest from prompt (AI)</button>
+                <button class="btn ghost sm" id="btnAddField" type="button">Add field</button>
+                <button class="btn ghost sm" id="btnPreviewFields" type="button">Preview on latest call</button>
                 <span id="fieldsMsg" style="font-size:12px;color:var(--ink-faint)"></span>
               </div>
               <div style="overflow-x:auto">
@@ -477,7 +483,7 @@
                 <span class="meta" id="toolCount">Loading tools…</span>
               </div>
               <button class="btn ghost sm" id="btnOpenAddCustomToolModal" style="font-size:12px;padding:4px 10px">
-                ➕ Custom Tool
+                Custom Tool
               </button>
             </div>
             <div class="card-b" id="toolList">
@@ -496,29 +502,29 @@
 <div class="modal-overlay" id="modalVoicePicker">
   <div class="modal-card">
     <div class="modal-h">
-      <h3><span>🎙️</span> Choose AI Voice &amp; Provider</h3>
-      <button class="btn ghost sm" id="btnCloseVoiceModal">✕</button>
+      <h3><span></span> Choose AI Voice &amp; Provider</h3>
+      <button class="btn ghost sm" id="btnCloseVoiceModal"></button>
     </div>
     <div class="modal-b">
       <!-- Search & Filters -->
       <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-        <input type="text" id="voiceSearchInput" placeholder="🔍 Search voice name, accent (e.g. British, Spanish, warm, calm)..." style="flex:1;min-width:200px">
+        <input type="text" id="voiceSearchInput" placeholder="Search voice name, accent (e.g. British, Spanish, warm, calm)..." style="flex:1;min-width:200px">
         <select id="voiceGenderFilter" style="width:140px">
           <option value="all">All Genders</option>
-          <option value="female">♀ Female Only</option>
-          <option value="male">♂ Male Only</option>
+          <option value="female">Female Only</option>
+          <option value="male">Male Only</option>
         </select>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;white-space:nowrap;cursor:pointer" title="Hide voices that would play a neural fallback instead of the voice itself">
-          <input type="checkbox" id="voiceReadyOnly"> ✅ Real voices only
+          <input type="checkbox" id="voiceReadyOnly"> Real voices only
         </label>
-        <button type="button" id="btnSyncVoices" class="btn ghost" style="padding:6px 10px;font-size:12.5px;white-space:nowrap" title="Re-read the voices in your ElevenLabs and Retell accounts">↻ Sync accounts</button>
+        <button type="button" id="btnSyncVoices" class="btn ghost" style="padding:6px 10px;font-size:12.5px;white-space:nowrap" title="Re-read the voices in your ElevenLabs account">Sync accounts</button>
       </div>
 
       <!-- Expressive Human Emotion & Tone Studio Lab -->
       <div style="background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(139,92,246,0.04) 100%);border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:14px;margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:16px">🎭</span>
+            <span style="font-size:16px"></span>
             <b style="font-size:13.5px;color:var(--ink)">Human Emotion &amp; Dynamic Tone Studio</b>
             <span style="font-size:10.5px;padding:2px 7px;border-radius:10px;background:rgba(99,102,241,0.12);color:#4F46E5;font-weight:600">Neural Studio Synthesis</span>
           </div>
@@ -529,37 +535,37 @@
           <div>
             <label style="font-size:11.5px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">1. Select Human Emotion / Tone Style:</label>
             <select id="toneStyleSelect" style="width:100%;font-size:12.5px;padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg)">
-              <option value="customerservice">🤝 Customer Service (Warm, Helpful &amp; Attentive)</option>
-              <option value="empathetic">💖 Empathetic &amp; Caring (Healthcare &amp; Urgent Support)</option>
-              <option value="cheerful">😊 Cheerful &amp; Upbeat (Welcoming &amp; Friendly)</option>
-              <option value="excited">🚀 High-Energy Sales (Enthusiastic &amp; Dynamic)</option>
-              <option value="friendly">🌟 Everyday Conversational (Natural &amp; Relaxed)</option>
-              <option value="hopeful">🌈 Hopeful &amp; Reassuring (Calming &amp; Uplifting)</option>
-              <option value="newscast">📰 Professional Broadcaster (Crisp Executive News)</option>
-              <option value="whisper">🤫 Soft Whisper (Gentle &amp; Confidential)</option>
+              <option value="customerservice">Customer Service (Warm, Helpful &amp; Attentive)</option>
+              <option value="empathetic">Empathetic &amp; Caring (Healthcare &amp; Urgent Support)</option>
+              <option value="cheerful">Cheerful &amp; Upbeat (Welcoming &amp; Friendly)</option>
+              <option value="excited">High-Energy Sales (Enthusiastic &amp; Dynamic)</option>
+              <option value="friendly">Everyday Conversational (Natural &amp; Relaxed)</option>
+              <option value="hopeful">Hopeful &amp; Reassuring (Calming &amp; Uplifting)</option>
+              <option value="newscast">Professional Broadcaster (Crisp Executive News)</option>
+              <option value="whisper">Soft Whisper (Gentle &amp; Confidential)</option>
             </select>
           </div>
           <div>
             <label style="font-size:11.5px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:4px">2. Select Voice Persona / Accent:</label>
             <select id="toneVoiceSelect" style="width:100%;font-size:12.5px;padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg)">
-              <option value="studio-calvin">✨ Camille (Studio Pro · Calm Concierge Female)</option>
-              <option value="studio-kaitlyn">✨ Kaitlyn (Studio Pro · Upbeat Support Female)</option>
-              <option value="studio-maya">✨ Maya (Studio Pro · Executive Assistant Female)</option>
-              <option value="studio-nathan">✨ Nathan (Studio Pro · Deep Strategic Advisor Male)</option>
-              <option value="studio-luna">✨ Luna (Studio Pro · Empathetic Receptionist Female)</option>
-              <option value="studio-winona">✨ Winona (Studio Pro · Polished British RP Female)</option>
-              <option value="studio-amber">✨ Amber (Studio Pro · British Concierge Female)</option>
-              <option value="studio-cassidy">✨ Cassidy (Studio Pro · Vibrant Sales Female)</option>
-              <option value="studio-alana">✨ Alana (Studio Pro · Bilingual Customer Care Female)</option>
-              <option value="neural-aria">🇺🇸 Aria (Expressive Female · US)</option>
-              <option value="neural-jenny">🇺🇸 Jenny (Warm &amp; Friendly Female · US)</option>
-              <option value="neural-guy">🇺🇸 Guy (Calm Executive Male · US)</option>
-              <option value="neural-christopher">🇺🇸 Christopher (Deep Storyteller Male · US)</option>
-              <option value="neural-sonia">🇬🇧 Sonia (Polished British RP Female · UK)</option>
-              <option value="neural-ryan">🇬🇧 Ryan (Broadcaster Male · UK)</option>
-              <option value="neural-natasha">🇦🇺 Natasha (Upbeat Female · Australia)</option>
-              <option value="neural-neerja">🇮🇳 Neerja (Expressive Female · Indian English)</option>
-              <option value="neural-prabhat">🇮🇳 Prabhat (Advisor Male · Indian English)</option>
+              <option value="studio-calvin">Camille (Studio Pro · Calm Concierge Female)</option>
+              <option value="studio-kaitlyn">Kaitlyn (Studio Pro · Upbeat Support Female)</option>
+              <option value="studio-maya">Maya (Studio Pro · Executive Assistant Female)</option>
+              <option value="studio-nathan">Nathan (Studio Pro · Deep Strategic Advisor Male)</option>
+              <option value="studio-luna">Luna (Studio Pro · Empathetic Receptionist Female)</option>
+              <option value="studio-winona">Winona (Studio Pro · Polished British RP Female)</option>
+              <option value="studio-amber">Amber (Studio Pro · British Concierge Female)</option>
+              <option value="studio-cassidy">Cassidy (Studio Pro · Vibrant Sales Female)</option>
+              <option value="studio-alana">Alana (Studio Pro · Bilingual Customer Care Female)</option>
+              <option value="neural-aria">Aria (Expressive Female · US)</option>
+              <option value="neural-jenny">Jenny (Warm &amp; Friendly Female · US)</option>
+              <option value="neural-guy">Guy (Calm Executive Male · US)</option>
+              <option value="neural-christopher">Christopher (Deep Storyteller Male · US)</option>
+              <option value="neural-sonia">Sonia (Polished British RP Female · UK)</option>
+              <option value="neural-ryan">Ryan (Broadcaster Male · UK)</option>
+              <option value="neural-natasha">Natasha (Upbeat Female · Australia)</option>
+              <option value="neural-neerja">Neerja (Expressive Female · Indian English)</option>
+              <option value="neural-prabhat">Prabhat (Advisor Male · Indian English)</option>
             </select>
           </div>
         </div>
@@ -567,7 +573,7 @@
         <div style="display:flex;gap:8px;align-items:center">
           <input type="text" id="toneCustomTextInput" placeholder="Type custom human script to synthesize..." value="Hello! Thank you for calling our clinic. How can I assist you with your appointment today?" style="flex:1;font-size:12.5px;padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg)">
           <button class="btn btn-primary sm" id="btnPlayCustomTone" style="white-space:nowrap;padding:7px 14px">
-            ▶ Synthesize &amp; Listen
+            Synthesize &amp; Listen
           </button>
         </div>
       </div>
@@ -575,13 +581,12 @@
       <!-- Provider Tabs -->
       <div class="provider-tabs" id="providerTabs">
         <button class="ptab active" data-prov="all">All Voices</button>
-        <button class="ptab" data-prov="retell">🎧 Retell AI (0)</button>
-        <button class="ptab" data-prov="studio">✨ Studio Pro (18 Voices)</button>
-        <button class="ptab" data-prov="neural">⚡ Free Neural HD</button>
-        <button class="ptab" data-prov="elevenlabs">✨ ElevenLabs Turbo</button>
-        <button class="ptab" data-prov="cartesia">⚡ Cartesia Sonic (Sub-100ms)</button>
-        <button class="ptab" data-prov="deepgram">🔊 Deepgram Aura</button>
-        <button class="ptab" data-prov="openai">🤖 OpenAI TTS</button>
+        <button class="ptab" data-prov="studio">Studio Pro (18 Voices)</button>
+        <button class="ptab" data-prov="neural">Neural Voice</button>
+        <button class="ptab" data-prov="elevenlabs">ElevenLabs Turbo</button>
+        <button class="ptab" data-prov="cartesia">Cartesia Sonic (Sub-100ms)</button>
+        <button class="ptab" data-prov="deepgram">Deepgram Aura</button>
+        <button class="ptab" data-prov="openai">OpenAI TTS</button>
       </div>
 
       <!-- Voice Cards Grid -->
@@ -603,8 +608,8 @@
 <div class="modal-overlay" id="modalToolConfig">
   <div class="modal-card" style="max-width:680px">
     <div class="modal-h">
-      <h3><span id="modalToolIcon">⚙️</span> <span id="modalToolTitle">Tool Details &amp; Sandbox</span></h3>
-      <button class="btn ghost sm" id="btnCloseToolConfigModal">✕</button>
+      <h3><span id="modalToolIcon"></span> <span id="modalToolTitle">Tool Details &amp; Sandbox</span></h3>
+      <button class="btn ghost sm" id="btnCloseToolConfigModal"></button>
     </div>
     <div class="modal-b">
       <div style="background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:14px">
@@ -617,8 +622,8 @@
         </div>
         <p id="modalToolDesc" style="margin:0;font-size:13px;color:var(--ink-soft);line-height:1.45"></p>
         <div style="display:flex;gap:18px;margin-top:12px;font-size:12px;color:var(--ink-faint);flex-wrap:wrap">
-          <span>⏱ Timeout: <b id="modalToolTimeout" style="color:var(--ink)">2.5s</b></span>
-          <span id="modalToolFillerCount">💬 3 Filler phrases</span>
+          <span>Timeout: <b id="modalToolTimeout" style="color:var(--ink)">2.5s</b></span>
+          <span id="modalToolFillerCount">3 Filler phrases</span>
         </div>
       </div>
 
@@ -634,8 +639,8 @@
       <!-- Test Execution Sandbox -->
       <div style="background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <label style="font-size:12.5px;font-weight:700;color:var(--ink)">🧪 Sandbox Dry-Run (Live Execution Test)</label>
-          <button class="btn btn-outline sm" id="btnRunToolTest" style="font-size:12px;padding:4px 10px">▶ Run Tool</button>
+          <label style="font-size:12.5px;font-weight:700;color:var(--ink)">Sandbox Dry-Run (Live Execution Test)</label>
+          <button class="btn btn-outline sm" id="btnRunToolTest" style="font-size:12px;padding:4px 10px">Run Tool</button>
         </div>
         <div style="margin-bottom:8px">
           <div style="font-size:11px;color:var(--ink-faint);margin-bottom:4px">Test Input Arguments (JSON):</div>
@@ -643,7 +648,7 @@
         </div>
         <div id="toolTestResultBox" style="display:none;background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:8px">
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;margin-bottom:4px">
-            <span id="toolTestStatus" style="font-weight:700;color:var(--pos)">✅ SUCCESS</span>
+            <span id="toolTestStatus" style="font-weight:700;color:var(--pos)">SUCCESS</span>
             <span id="toolTestDuration" style="color:var(--ink-faint);font-family:var(--f-mono)"></span>
           </div>
           <pre id="toolTestOutput" style="margin:0;font-family:var(--f-mono);font-size:11.5px;max-height:130px;overflow-y:auto;color:var(--ink)"></pre>
@@ -661,8 +666,8 @@
 <div class="modal-overlay" id="modalAddCustomTool">
   <div class="modal-card" style="max-width:620px">
     <div class="modal-h">
-      <h3><span>➕</span> Register Custom Function Tool</h3>
-      <button class="btn ghost sm" id="btnCloseAddCustomToolModal">✕</button>
+      <h3><span></span> Register Custom Function Tool</h3>
+      <button class="btn ghost sm" id="btnCloseAddCustomToolModal"></button>
     </div>
     <div class="modal-b">
       <div style="margin-bottom:12px">
@@ -726,7 +731,7 @@
   </div>
 </div>
 
-<!-- Retell-Style In-Page Live Test Call Modal -->
+<!-- In-page Live Test Call Modal -->
 <div class="modal-overlay" id="modalTestCall">
   <div class="modal-card test-call-card">
     <!-- Call Header -->
@@ -741,7 +746,7 @@
         <div style="font-size:12.5px;font-weight:600;color:var(--ink)" id="testCallAgentName">Intake Agent</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <span class="orb-voice-pill" id="testCallVoiceBadge" style="background:var(--sunk);border:1px solid var(--line);padding:3px 8px;border-radius:12px">🎙️ Camille (Studio Pro)</span>
+        <span class="orb-voice-pill" id="testCallVoiceBadge" style="background:var(--sunk);border:1px solid var(--line);padding:3px 8px;border-radius:12px">Camille (Studio Pro)</span>
         <button class="test-hangup-btn" id="btnEndTestCall">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/></svg>
           Hang Up
@@ -751,7 +756,7 @@
 
     <!-- Orb Visualizer Stage -->
     <div class="orb-stage">
-      <div class="retell-orb speaking" id="testCallOrb">
+      <div class="test-call-orb speaking" id="testCallOrb">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
       </div>
       <div class="orb-state-text" id="testCallOrbState">
@@ -767,10 +772,10 @@
 
     <!-- Quick Prompts Pill Bar -->
     <div class="quick-prompts-bar" id="testCallQuickPrompts">
-      <span class="quick-chip" data-text="Hello, what services do you provide?">💡 "What services do you provide?"</span>
-      <span class="quick-chip" data-text="Can you check doctor availability for tomorrow morning?">📅 "Check availability tomorrow"</span>
-      <span class="quick-chip" data-text="I'd like to book an appointment with Dr. Smith.">🩺 "Book an appointment"</span>
-      <span class="quick-chip" data-text="What are your office hours and address?">🕒 "Office hours & address"</span>
+      <span class="quick-chip" data-text="Hello, what services do you provide?"> "What services do you provide?"</span>
+      <span class="quick-chip" data-text="Can you check doctor availability for tomorrow morning?"> "Check availability tomorrow"</span>
+      <span class="quick-chip" data-text="I'd like to book an appointment with Dr. Smith."> "Book an appointment"</span>
+      <span class="quick-chip" data-text="What are your office hours and address?"> "Office hours & address"</span>
     </div>
 
     <!-- Interactive Bottom Controls -->
@@ -811,7 +816,6 @@
 
   var PROVIDER_COLORS = {
     studio: "#4F46E5",
-    retell: "#0EA5E9",
     neural: "#2F7A4F",
     cartesia: "#C2560F",
     deepgram: "#13B58C",
@@ -821,8 +825,7 @@
 
   var PROVIDER_NAMES = {
     studio: "Studio Pro",
-    retell: "Retell AI",
-    neural: "Neural HD",
+    neural: "Neural Voice",
     cartesia: "Cartesia Sonic",
     deepgram: "Deepgram Aura",
     openai: "OpenAI TTS",
@@ -837,7 +840,7 @@
   var lastEngineByVoice = {};
   function describeEngine(engine) {
     if (!engine) return "unknown engine";
-    if (engine.indexOf("neural:") === 0) return "Neural HD (" + engine.slice(7).replace(/^en-[A-Z]{2}-/, "").replace("Neural", "") + ")";
+    if (engine.indexOf("neural:") === 0) return "Neural Voice (" + engine.slice(7).replace(/^en-[A-Z]{2}-/, "").replace("Neural", "") + ")";
     if (engine === "elevenlabs-cdn-sample") return "ElevenLabs portal sample";
     if (engine === "tone-simulator") return "tone simulator (no speech engine)";
     return PROVIDER_NAMES[engine] || engine;
@@ -859,10 +862,10 @@
     var badge = $("#testCallVoiceBadge");
     if (meta.fallbackReason) {
       var vName = v ? v.name : voiceId;
-      if (badge) { badge.textContent = "⚠️ " + vName + " → fallback: " + describeEngine(meta.engine); badge.style.color = "var(--warn, #b45309)"; }
+      if (badge) { badge.textContent = vName + " → fallback: " + describeEngine(meta.engine); badge.style.color = "var(--warn, #b45309)"; }
       if (!engineWarnedFor[voiceId]) {
         engineWarnedFor[voiceId] = true;
-        showToast("⚠️ " + vName + " is not available: " + meta.fallbackReason + " — playing " + describeEngine(meta.engine) + " instead.", 7000);
+        showToast(vName + " is not available: " + meta.fallbackReason + " — playing " + describeEngine(meta.engine) + " instead.", 7000);
         markVoiceUnavailable(voiceId, meta.fallbackReason);
       }
     } else if (badge && v && badge.textContent.indexOf(v.name) !== -1) {
@@ -877,8 +880,14 @@
       chip.className = "vc-chip locked";
       chip.style.cssText = "background:#FEF3C7;color:#92400E;border:1px solid #F59E0B";
       chip.title = note;
-      chip.textContent = "🔒 plan locked";
-      var host = card.querySelector(".vc-chips, .vc-meta") || card;
+      chip.textContent = "plan locked";
+      var host = card.querySelector(".vc-chips, .vc-meta");
+      if (!host) {
+        host = document.createElement("div");
+        host.className = "vc-meta";
+        var actions = card.querySelector(".vc-actions");
+        if (actions) actions.parentNode.insertBefore(host, actions); else card.appendChild(host);
+      }
       host.appendChild(chip);
     });
   }
@@ -906,10 +915,10 @@
       var vid = card ? card.dataset.id : null;
       if (vid && vid === currentPlayingVoiceId) {
         btn.classList.add("playing");
-        btn.innerHTML = '<span class="eq-wave"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span> ⏹ Stop';
+        btn.innerHTML = '<span class="eq-wave"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span> Stop';
       } else {
         btn.classList.remove("playing");
-        btn.innerHTML = '▶ Play Sample';
+        btn.innerHTML = 'Play Sample';
       }
     });
 
@@ -918,10 +927,10 @@
       var activeVoiceId = $("#voiceSelect") ? $("#voiceSelect").value : null;
       if (currentPlayingVoiceId && currentPlayingVoiceId === activeVoiceId) {
         mainPreviewBtn.classList.add("playing");
-        mainPreviewBtn.innerHTML = '<span class="eq-wave"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span> ⏹ Stop Voice Sample';
+        mainPreviewBtn.innerHTML = '<span class="eq-wave"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span> Stop Voice Sample';
       } else {
         mainPreviewBtn.classList.remove("playing");
-        mainPreviewBtn.innerHTML = '🔊 Play Voice Sample';
+        mainPreviewBtn.innerHTML = 'Play Voice Sample';
       }
     }
   }
@@ -942,7 +951,7 @@
     var vName = v ? v.name : voiceId;
     var pName = v ? (PROVIDER_NAMES[v.provider] || v.provider) : "";
 
-    showToast("▶ Synthesizing Voice: " + vName + " (" + pName + ")");
+    showToast("Synthesizing Voice: " + vName + " (" + pName + ")");
 
     var audioUrl = "/api/agents/voice-audio?voice_id=" + encodeURIComponent(voiceId);
     if (customText) {
@@ -1028,7 +1037,7 @@
   }
 
   function updateProviderTabCounts() {
-    var counts = { all: allVoicesList.length, studio: 0, retell: 0, neural: 0, cartesia: 0, deepgram: 0, openai: 0, elevenlabs: 0 };
+    var counts = { all: allVoicesList.length, studio: 0, neural: 0, cartesia: 0, deepgram: 0, openai: 0, elevenlabs: 0 };
     allVoicesList.forEach(function (v) {
       if (counts[v.provider] !== undefined) {
         counts[v.provider]++;
@@ -1041,20 +1050,17 @@
       if (p === "all") {
         tab.textContent = "All Providers (" + counts.all + ")";
       } else if (p === "studio") {
-        tab.textContent = "✨ Studio Pro (" + counts.studio + ")";
-      } else if (p === "retell") {
-        tab.textContent = "🎧 Retell AI (" + counts.retell + ")";
-        tab.title = counts.retell ? "Live Retell AI platform voice library" : "Add RETELL_API_KEY on the API Keys page to sync the Retell voice library";
+        tab.textContent = "Studio Pro (" + counts.studio + ")";
       } else if (p === "neural") {
-        tab.textContent = "⚡ Free Neural HD (" + counts.neural + ")";
+        tab.textContent = "Neural Voice (" + counts.neural + ")";
       } else if (p === "elevenlabs") {
-        tab.textContent = "✨ ElevenLabs Turbo (" + counts.elevenlabs + ")";
+        tab.textContent = "ElevenLabs Turbo (" + counts.elevenlabs + ")";
       } else if (p === "cartesia") {
-        tab.textContent = "⚡ Cartesia Sonic (" + counts.cartesia + ")";
+        tab.textContent = "Cartesia Sonic (" + counts.cartesia + ")";
       } else if (p === "deepgram") {
-        tab.textContent = "🔊 Deepgram Aura (" + counts.deepgram + ")";
+        tab.textContent = "Deepgram Aura (" + counts.deepgram + ")";
       } else if (p === "openai") {
-        tab.textContent = "🤖 OpenAI TTS (" + counts.openai + ")";
+        tab.textContent = "OpenAI TTS (" + counts.openai + ")";
       }
     });
   }
@@ -1110,14 +1116,14 @@
     // Estimated turn cost (assuming ~150 prompt/completion tokens + ~120 chars TTS)
     var estTurn = (150 * (llmCost / 1000)) + (120 * (vCost / 1000));
 
-    if ($("#statModelTTFT")) $("#statModelTTFT").innerHTML = '⚡ TTFT: <b style="color:var(--ink);font-family:var(--f-mono)">' + (m.ttft_ms || 180) + ' ms</b>';
-    if ($("#statModelCost")) $("#statModelCost").innerHTML = '💰 LLM: <b style="color:var(--ink);font-family:var(--f-mono)">$' + llmCost.toFixed(5).replace(/\.?0+$/, "") + ' / 1k tokens</b>';
-    if ($("#statVoiceLatency")) $("#statVoiceLatency").innerHTML = '🎙️ Voice TTFA: <b style="color:var(--ink);font-family:var(--f-mono)">' + vLat + ' ms</b>';
+    if ($("#statModelTTFT")) $("#statModelTTFT").innerHTML = 'TTFT: <b style="color:var(--ink);font-family:var(--f-mono)">' + (m.ttft_ms || 180) + ' ms</b>';
+    if ($("#statModelCost")) $("#statModelCost").innerHTML = 'LLM: <b style="color:var(--ink);font-family:var(--f-mono)">$' + llmCost.toFixed(5).replace(/\.?0+$/, "") + ' / 1k tokens</b>';
+    if ($("#statVoiceLatency")) $("#statVoiceLatency").innerHTML = 'Voice TTFA: <b style="color:var(--ink);font-family:var(--f-mono)">' + vLat + ' ms</b>';
     if ($("#statVoiceCost")) {
       var vCostStr = "$" + vCost.toFixed(3) + " / 1k chars";
-      $("#statVoiceCost").innerHTML = '🏷️ Voice: <b style="color:var(--ink);font-family:var(--f-mono)">' + vCostStr + '</b>';
+      $("#statVoiceCost").innerHTML = 'Voice: <b style="color:var(--ink);font-family:var(--f-mono)">' + vCostStr + '</b>';
     }
-    if ($("#statTotalCost")) $("#statTotalCost").innerHTML = '💵 Est. Turn: <b style="color:var(--accent);font-family:var(--f-mono)">$' + estTurn.toFixed(4) + '</b>';
+    if ($("#statTotalCost")) $("#statTotalCost").innerHTML = 'Est. Turn: <b style="color:var(--accent);font-family:var(--f-mono)">$' + estTurn.toFixed(4) + '</b>';
     if ($("#statModelProvider")) {
       var p = m.provider || (m.model && m.model.startsWith("gemini") ? "Google" : (m.model && m.model.startsWith("gpt") ? "OpenAI" : "Anthropic"));
       $("#statModelProvider").textContent = p;
@@ -1188,7 +1194,7 @@
     if ($("#statCost")) $("#statCost").textContent = "$" + v.cost_per_1k_chars.toFixed(3) + " / 1k chars";
 
     if ($("#modalSelVoiceText")) $("#modalSelVoiceText").textContent = v.name + " (" + (PROVIDER_NAMES[v.provider] || v.provider) + ")";
-    if ($("#testCallVoiceBadge")) $("#testCallVoiceBadge").textContent = "🎙️ " + v.name + " (" + (PROVIDER_NAMES[v.provider] || v.provider) + ")";
+    if ($("#testCallVoiceBadge")) $("#testCallVoiceBadge").textContent = v.name + " (" + (PROVIDER_NAMES[v.provider] || v.provider) + ")";
     updatePlayingVisuals();
     updateModelStats();
   }
@@ -1217,7 +1223,7 @@
       var isSel = (v.voice_id === pendingSelectedVoiceId);
       var isPlaying = (v.voice_id === currentPlayingVoiceId);
       var col = PROVIDER_COLORS[v.provider] || "var(--accent)";
-      var gIcon = (v.gender === "female") ? "♀ Female" : (v.gender === "male") ? "♂ Male" : "⚥ Unisex";
+      var gIcon = (v.gender === "female") ? "Female" : (v.gender === "male") ? "Male" : "Unisex";
 
       return '<div class="voice-card' + (isSel ? ' selected' : '') + '" data-id="' + v.voice_id + '">' +
         '<div>' +
@@ -1234,18 +1240,14 @@
           '<div class="vc-style">' + v.style + '</div>' +
         '</div>' +
         '<div>' +
-          '<div class="vc-meta">' +
-            '<span class="vc-chip latency">⚡ ' + v.first_audio_ms + 'ms TTFA</span>' +
-            '<span class="vc-chip" style="background:var(--accent-soft);color:var(--accent);font-weight:600">' + (v.cost_per_1k_chars === 0 ? '✨ 100% Free' : '⚡ Studio Audio') + '</span>' +
-            (v.api_ready === false
-              ? '<span class="vc-chip locked" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B" title="' + (v.api_note || '').replace(/"/g, '&quot;') + '">⚠️ ' + (v.engine || 'fallback') + '</span>'
-              : '<span class="vc-chip" style="background:#DCFCE7;color:#166534;border:1px solid #22C55E" title="This exact voice speaks in the test call and on live calls">✅ ' + (v.engine || 'live') + '</span>') +
-          '</div>' +
+          (v.api_ready === false
+            ? '<div class="vc-meta"><span class="vc-chip locked" style="background:#FEF3C7;color:#92400E;border:1px solid #F59E0B" title="' + (v.api_note || '').replace(/"/g, '&quot;') + '"> ' + (v.engine || ' fallback') + '</span></div>'
+            : '') +
           '<div class="vc-actions">' +
             '<button class="vc-btn-preview' + (isPlaying ? ' playing' : '') + '" data-id="' + v.voice_id + '" title="Listen to voice acoustic sample">' +
-              (isPlaying ? '<span class="eq-wave"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span> ⏹ Stop' : '▶ Play Sample') +
+              (isPlaying ? '<span class="eq-wave"><span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span></span> Stop' : 'Play Sample') +
             '</button>' +
-            '<button class="vc-btn-select" data-id="' + v.voice_id + '">' + (isSel ? '✓ Selected' : 'Select') + '</button>' +
+            '<button class="vc-btn-select" data-id="' + v.voice_id + '">' + (isSel ? 'Selected' : 'Select') + '</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -1264,9 +1266,9 @@
         if (e.target.closest(".vc-btn-select")) {
           setChosenVoice(vid);
           if (v && v.api_ready === false) {
-            showToast("⚠️ " + v.name + " cannot be synthesized here (" + (v.api_note || "no engine") + "). You will hear " + (v.engine || "a fallback voice") + " instead.", 7000);
+            showToast(v.name + " cannot be synthesized here (" + (v.api_note || "no engine") + "). You will hear " + (v.engine || "a fallback voice") + " instead.", 7000);
           } else {
-            showToast("🎙️ Voice changed to " + (v ? v.name : vid));
+            showToast("Voice changed to " + (v ? v.name : vid));
           }
           saveCurrentAgentForm(true);
           closeVoiceModal();
@@ -1315,7 +1317,7 @@
     if (pendingSelectedVoiceId) {
       setChosenVoice(pendingSelectedVoiceId);
       var v = voiceMap[pendingSelectedVoiceId];
-      showToast("🎙️ Voice set to " + (v ? v.name : pendingSelectedVoiceId));
+      showToast("Voice set to " + (v ? v.name : pendingSelectedVoiceId));
       saveCurrentAgentForm(true);
     }
     closeVoiceModal();
@@ -1339,11 +1341,11 @@
   if ($("#btnSyncVoices")) {
     $("#btnSyncVoices").addEventListener("click", function () {
       var before = allVoicesList.length;
-      showToast("↻ Syncing voices from your ElevenLabs / Retell accounts…");
+      showToast("Syncing voices from your ElevenLabs account…");
       loadVoices($("#voiceSelect").value, true).then(function () {
         renderVoiceGrid();
         var added = allVoicesList.length - before;
-        showToast(added > 0 ? "✅ " + added + " new voice(s) added from your accounts" : "✅ Voice list is up to date (" + allVoicesList.length + " voices)", 5000);
+        showToast(added > 0 ? added + " new voice(s) added from your accounts" : "Voice list is up to date (" + allVoicesList.length + " voices)", 5000);
       });
     });
   }
@@ -1373,12 +1375,12 @@
   var currentInspectingTool = null;
 
   var TOOL_ICONS = {
-    check_availability: "📅",
-    book_appointment: "📝",
-    lookup_order: "📦",
-    query_knowledge_base: "📚",
-    execute_webhook: "🌐",
-    transfer_call: "🔄"
+    check_availability: "",
+    book_appointment: "",
+    lookup_order: "",
+    query_knowledge_base: "",
+    execute_webhook: "",
+    transfer_call: ""
   };
 
   var TOOL_FRIENDLY_NAMES = {
@@ -1422,7 +1424,7 @@
 
     container.innerHTML = allTools.map(function (t) {
       var isEnabled = activeTools.has(t.name);
-      var icon = TOOL_ICONS[t.name] || "⚡";
+      var icon = TOOL_ICONS[t.name] || "";
       var friendlyName = TOOL_FRIENDLY_NAMES[t.name] || t.name.replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
 
       return '<div class="tool-item' + (isEnabled ? ' active' : '') + '" id="tool-row-' + t.name + '" data-tool="' + t.name + '">' +
@@ -1435,7 +1437,7 @@
           '<div class="tool-desc">' + (t.description || "Callable function tool for dialogue manager.") + '</div>' +
         '</div>' +
         '<div class="tool-actions">' +
-          '<button class="btn ghost sm btn-tool-inspect" data-tool="' + t.name + '" title="View tool details & test live execution" style="font-size:11.5px;padding:3px 8px">⚙️ Config</button>' +
+          '<button class="btn ghost sm btn-tool-inspect" data-tool="' + t.name + '" title="View tool details & test live execution" style="font-size:11.5px;padding:3px 8px">Config</button>' +
           '<span class="pill-toggle ' + (isEnabled ? 'pill-on' : 'pill-off') + '" data-tool="' + t.name + '" title="Click to toggle tool on/off">' + (isEnabled ? 'on' : 'off') + '</span>' +
           '<label class="switch" title="Toggle ' + t.name + '">' +
             '<input type="checkbox" class="tool-toggle" data-tool="' + t.name + '"' + (isEnabled ? ' checked' : '') + '>' +
@@ -1501,7 +1503,7 @@
       updateModalToolState();
     }
 
-    showToast((isEnabled ? "✅ Enabled" : "⭕ Disabled") + " tool: " + toolName);
+    showToast((isEnabled ? "Enabled" : "Disabled") + " tool: " + toolName);
   }
 
   function loadTools() {
@@ -1526,7 +1528,7 @@
     if (!tool) { return; }
     currentInspectingTool = tool;
 
-    $("#modalToolIcon").textContent = TOOL_ICONS[tool.name] || "⚙️";
+    $("#modalToolIcon").textContent = TOOL_ICONS[tool.name] || "";
     $("#modalToolTitle").textContent = TOOL_FRIENDLY_NAMES[tool.name] || tool.name;
     $("#modalToolName").textContent = tool.name;
     $("#modalToolCode").textContent = (tool.name === "transfer_call" || tool.name === "execute_webhook") ? "built-in handler" : "async function";
@@ -1534,7 +1536,7 @@
     $("#modalToolTimeout").textContent = (tool.timeout || 3.0) + "s";
 
     var fillers = tool.filler_phrases || [];
-    $("#modalToolFillerCount").textContent = "💬 " + fillers.length + " Filler phrase" + (fillers.length === 1 ? "" : "s");
+    $("#modalToolFillerCount").textContent = fillers.length + " filler phrase" + (fillers.length === 1 ? "" : "s");
 
     $("#modalToolParamsSchema").textContent = JSON.stringify(tool.parameters || {}, null, 2);
 
@@ -1583,7 +1585,7 @@
     try {
       argsObj = JSON.parse(raw);
     } catch (e) {
-      showToast("❌ Invalid JSON in test arguments");
+      showToast("Invalid JSON in test arguments");
       return;
     }
 
@@ -1591,7 +1593,7 @@
     btn.textContent = "Running…";
     $("#toolTestResultBox").style.display = "block";
     $("#toolTestStatus").style.color = "var(--accent)";
-    $("#toolTestStatus").textContent = "⏳ Executing tool…";
+    $("#toolTestStatus").textContent = "Executing tool…";
     $("#toolTestDuration").textContent = "";
     $("#toolTestOutput").textContent = "Dispatching to tool engine…";
 
@@ -1607,33 +1609,33 @@
       .then(function (r) { return r.json(); })
       .then(function (data) {
         btn.disabled = false;
-        btn.textContent = "▶ Run Tool";
+        btn.textContent = "Run Tool";
         var t1 = performance.now();
         var ms = Math.round(t1 - t0);
 
         if (data.status === "ok") {
           var exec = data.execution || {};
           $("#toolTestStatus").style.color = "var(--pos)";
-          $("#toolTestStatus").textContent = "✅ " + (exec.status || "SUCCESS").toUpperCase();
+          $("#toolTestStatus").textContent = (exec.status || "SUCCESS").toUpperCase();
           $("#toolTestDuration").textContent = (exec.duration_ms ? exec.duration_ms.toFixed(1) + "ms" : ms + "ms");
           $("#toolTestOutput").textContent = JSON.stringify(exec.result !== undefined ? exec.result : exec, null, 2);
-          showToast("🧪 Tool test passed (" + ms + "ms)");
+          showToast("Tool test passed (" + ms + "ms)");
         } else {
           $("#toolTestStatus").style.color = "var(--neg, #E5484D)";
-          $("#toolTestStatus").textContent = "❌ ERROR: " + (data.error || "Failed");
+          $("#toolTestStatus").textContent = "ERROR: " + (data.error || "Failed");
           $("#toolTestDuration").textContent = ms + "ms";
           $("#toolTestOutput").textContent = JSON.stringify(data, null, 2);
-          showToast("❌ Tool execution failed");
+          showToast("Tool execution failed");
         }
       })
       .catch(function (err) {
         btn.disabled = false;
-        btn.textContent = "▶ Run Tool";
+        btn.textContent = "Run Tool";
         $("#toolTestStatus").style.color = "var(--neg, #E5484D)";
-        $("#toolTestStatus").textContent = "❌ EXECUTION FAILED";
+        $("#toolTestStatus").textContent = "EXECUTION FAILED";
         $("#toolTestDuration").textContent = "";
         $("#toolTestOutput").textContent = String(err);
-        showToast("❌ Network error executing tool");
+        showToast("Network error executing tool");
       });
   });
 
@@ -1667,12 +1669,12 @@
     var paramsRaw = $("#newToolParams").value.trim();
 
     if (!name) {
-      showToast("❌ Please enter a tool identifier name");
+      showToast("Please enter a tool identifier name");
       $("#newToolName").focus();
       return;
     }
     if (!desc) {
-      showToast("❌ Please provide a description for the LLM");
+      showToast("Please provide a description for the LLM");
       $("#newToolDesc").focus();
       return;
     }
@@ -1682,7 +1684,7 @@
       try {
         paramsObj = JSON.parse(paramsRaw);
       } catch (e) {
-        showToast("❌ Invalid JSON Schema parameters");
+        showToast("Invalid JSON Schema parameters");
         $("#newToolParams").focus();
         return;
       }
@@ -1723,15 +1725,15 @@
 
           renderTools();
           closeAddCustomToolModal();
-          showToast("✨ Custom tool '" + registered.name + "' registered & enabled!");
+          showToast("Custom tool '" + registered.name + "' registered & enabled!");
         } else {
-          showToast("❌ Failed: " + (data.error || "Could not register tool"));
+          showToast("Failed: " + (data.error || "Could not register tool"));
         }
       })
       .catch(function (err) {
         btn.disabled = false;
         btn.textContent = "Register & Enable Tool";
-        showToast("❌ Network error registering tool");
+        showToast("Network error registering tool");
       });
   });
 
@@ -1866,7 +1868,7 @@
           }
         }
         if (!isAuto) {
-          showToast("✅ Agent saved (" + selectedModel + " · " + selectedToolsArray.length + " tools)");
+          showToast("Agent saved (" + selectedModel + " · " + selectedToolsArray.length + " tools)");
         }
         $("#editMeta").textContent = "edited just now";
         $("#agentCardTitle").textContent = payload.name;
@@ -1875,12 +1877,12 @@
         renderAgentSwitch();
       } else {
         if (!isAuto) {
-          showToast("❌ " + (data.error || "Could not save agent"));
+          showToast(data.error || "Could not save agent");
         }
       }
     }).catch(function () {
       if (!isAuto) {
-        showToast("❌ Network error saving agent");
+        showToast("Network error saving agent");
       }
     });
   }
@@ -1896,7 +1898,7 @@
     });
   });
 
-  // ── Retell-Style In-Page Live Test Call Simulator ───────────────────────────
+  // ── In-page Live Test Call Simulator ───────────────────────────
   var testCallTimerInterval = null;
   var testCallStartTime = 0;
   var testCallActive = false;
@@ -1911,7 +1913,7 @@
     var lbl = $("#testCallStateLabel");
     if (!orb || !lbl) return;
 
-    orb.className = "retell-orb " + state;
+    orb.className = "test-call-orb " + state;
     lbl.textContent = label || (state === "speaking" ? "Speaking…" : state === "thinking" ? "Thinking…" : "Listening…");
     if (eq) {
       eq.style.display = (state === "speaking" ? "inline-flex" : "none");
@@ -2065,8 +2067,8 @@
         })
       }).then(function (r) { return r.json(); }).then(function (d) {
         if (d.status === "ok") {
-          showToast("💾 Saved to Call History as " + d.call_id + (d.has_audio ? " with recording" : " (transcript only)") + " — open Call Desk → Calls", 6000);
-        } else { showToast("❌ Could not save test call: " + (d.error || "unknown error")); }
+          showToast("Saved to Call History as " + d.call_id + (d.has_audio ? " with recording" : " (transcript only)") + " — open Call Desk → Calls", 6000);
+        } else { showToast("Could not save test call: " + (d.error || "unknown error")); }
       });
     }).catch(function (e) { console.warn("save test call failed", e); });
   }
@@ -2089,11 +2091,11 @@
     agentSpeaking = on;
     if (on) {
       if (micSilenceTimer) { clearTimeout(micSilenceTimer); micSilenceTimer = null; }
-      if ($("#testCallInput")) { $("#testCallInput").value = ""; $("#testCallInput").placeholder = "🔇 Mic paused while the agent speaks…"; }
+      if ($("#testCallInput")) { $("#testCallInput").value = ""; $("#testCallInput").placeholder = "Mic paused while the agent speaks…"; }
       try { if (testCallRecognition && isMicListening) testCallRecognition.stop(); } catch (e) {}
     } else {
       agentSpeakingUntil = Date.now() + 700;                    // let room echo die down
-      if ($("#testCallInput")) { $("#testCallInput").placeholder = isMicListening ? "🎙️ Listening to you... (speak now or type)" : "Speak into mic or type a message to your agent…"; }
+      if ($("#testCallInput")) { $("#testCallInput").placeholder = isMicListening ? "Listening to you... (speak now or type)" : "Speak into mic or type a message to your agent…"; }
       setTimeout(function () {
         if (isMicListening && testCallActive && testCallRecognition && !agentSpeaking) { try { testCallRecognition.start(); } catch (e) {} }
       }, 700);
@@ -2125,26 +2127,26 @@
     if (speaker === "agent" && meta && meta.tool) {
       var toolEl = document.createElement("div");
       toolEl.className = "test-msg-tool";
-      toolEl.innerHTML = "🛠️ <b>Tool:</b> " + meta.tool;
+      toolEl.innerHTML = " <b>Tool:</b> " + meta.tool;
       msgDiv.appendChild(toolEl);
     }
 
     var metaEl = document.createElement("div");
     metaEl.className = "test-msg-meta";
     if (speaker === "agent") {
-      var lat = (meta && meta.round_trip_ms) ? ("⏱ " + (meta.round_trip_ms / 1000).toFixed(1) + "s reply")
+      var lat = (meta && meta.round_trip_ms) ? ((meta.round_trip_ms / 1000).toFixed(1) + "s reply")
               : (meta && meta.first_audio_ms ? meta.first_audio_ms + "ms TTFA" : "120ms TTFA");
       var spoken = lastEngineByVoice[vId];
-      var label = (spoken && spoken.fallbackReason) ? '⚠️ ' + vName + ' → ' + describeEngine(spoken.engine) : '🎙️ ' + vName;
+      var label = (spoken && spoken.fallbackReason) ? vName + ' → ' + describeEngine(spoken.engine) : vName;
       var brain = "";
       if (meta && meta.backend) {
         var isModel = meta.backend.indexOf("gemini") === 0 || meta.backend.indexOf("openai") === 0;
         brain = '<span>•</span><span title="' + meta.backend.replace(/"/g, '&quot;') + '"' + (isModel ? '' : ' style="color:#b45309"') + '>' +
-                (isModel ? '🧠 ' + meta.backend.split(":")[0] : '📜 rule script') + '</span>';
+                (isModel ? meta.backend.split(":")[0] : 'rule script') + '</span>';
       }
-      metaEl.innerHTML = '<span' + ((spoken && spoken.fallbackReason) ? ' title="' + spoken.fallbackReason.replace(/"/g, '&quot;') + '" style="color:#b45309"' : '') + '>' + label + '</span><span>•</span><span>⚡ ' + lat + '</span>' + brain;
+      metaEl.innerHTML = '<span' + ((spoken && spoken.fallbackReason) ? ' title="' + spoken.fallbackReason.replace(/"/g, '&quot;') + '" style="color:#b45309"' : '') + '>' + label + '</span><span>•</span><span> ' + lat + '</span>' + brain;
     } else {
-      metaEl.innerHTML = '<span>👤 Caller</span><span>•</span><span>🎙️ Voice Input</span>';
+      metaEl.innerHTML = '<span>Caller</span><span>•</span><span>Voice Input</span>';
     }
     msgDiv.appendChild(metaEl);
 
@@ -2228,12 +2230,12 @@
     playNext();
   }
 
-  // Appends "🔊 0.9s voice" to the newest agent bubble so text→voice delay is visible.
+  // Appends "0.9s voice"to the newest agent bubble so text→voice delay is visible.
   function noteVoiceLatency(ms) {
     var metas = document.querySelectorAll("#testCallTranscript .test-msg.agent .test-msg-meta");
     var el = metas[metas.length - 1];
     if (el && !el.querySelector(".voice-lat")) {
-      el.insertAdjacentHTML("beforeend", '<span>•</span><span class="voice-lat" title="time from text to first audio">🔊 ' + (ms / 1000).toFixed(1) + 's voice</span>');
+      el.insertAdjacentHTML("beforeend", '<span>•</span><span class="voice-lat" title="time from text to first audio"> ' + (ms / 1000).toFixed(1) + 's voice</span>');
     }
   }
 
@@ -2287,7 +2289,7 @@
             setOrbState("speaking", "Agent is wrapping up…");
             playAgentVoiceResponse(lastTurn.text, function () {
               setTimeout(function () {
-                if (testCallActive) { showToast("📞 Agent ended the call"); endInPageTestCall(); }
+                if (testCallActive) { showToast("Agent ended the call"); endInPageTestCall(); }
               }, 1200);
             }, lastTurn.speech_chunks);
           } else {
@@ -2325,7 +2327,7 @@
     var vName = vObj ? vObj.name : "Camille (Studio Pro)";
 
     $("#testCallAgentName").textContent = agentName;
-    $("#testCallVoiceBadge").textContent = "🎙️ " + vName;
+    $("#testCallVoiceBadge").textContent = vName;
     $("#testCallTranscript").innerHTML = "";
     $("#modalTestCall").classList.add("open");
 
@@ -2355,7 +2357,7 @@
       infoDiv.style.fontSize = "11.5px";
       infoDiv.style.color = "var(--ink-faint)";
       infoDiv.style.fontFamily = "var(--f-mono)";
-      infoDiv.innerHTML = "👤 <i>User Speaks First mode enabled. Speak into microphone or type below.</i>";
+      infoDiv.innerHTML = " <i>User Speaks First mode enabled. Speak into microphone or type below.</i>";
       $("#testCallTranscript").appendChild(infoDiv);
     }
 
@@ -2375,7 +2377,7 @@
     }
     stopSpeechRecognition();
     $("#modalTestCall").classList.remove("open");
-    showToast("⏹️ Call ended — saving to Call History…");
+    showToast("Call ended — saving to Call History…");
     saveSandboxCall(endedAt);
   }
 
@@ -2405,10 +2407,10 @@
     if (btn) btn.classList.add("active");
     if (agentSpeaking) {
       // The agent is talking right now; setAgentSpeaking(false) starts listening when she stops.
-      if ($("#testCallInput")) $("#testCallInput").placeholder = "🔇 Mic paused while the agent speaks…";
+      if ($("#testCallInput")) $("#testCallInput").placeholder = "Mic paused while the agent speaks…";
       return;
     }
-    if ($("#testCallInput")) $("#testCallInput").placeholder = "🎙️ Listening to you... (speak now or type)";
+    if ($("#testCallInput")) $("#testCallInput").placeholder = "Listening to you... (speak now or type)";
 
     try {
       testCallRecognition.start();
@@ -2434,7 +2436,7 @@
         isMicListening = true;
         var btn = $("#btnTestCallMic");
         if (btn) btn.classList.add("active");
-        if ($("#testCallInput")) $("#testCallInput").placeholder = "🎙️ Listening to you... (speak now or type)";
+        if ($("#testCallInput")) $("#testCallInput").placeholder = "Listening to you... (speak now or type)";
       };
 
       testCallRecognition.onresult = function (e) {
@@ -2480,12 +2482,12 @@
           isMicListening = false;
           var btn = $("#btnTestCallMic");
           if (btn) btn.classList.remove("active");
-          showToast("⚠️ Microphone access blocked. Please allow mic permissions in your browser.");
+          showToast("Microphone access blocked. Please allow mic permissions in your browser.");
         } else if (e.error === "no-speech") {
           // Normal silence, keep listening
         } else if (e.error === "audio-capture") {
           isMicListening = false;
-          showToast("⚠️ No microphone device found.");
+          showToast("No microphone device found.");
         }
       };
 
@@ -2503,7 +2505,7 @@
     var btn = $("#btnTestCallMic");
     var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRec) {
-      showToast("ℹ️ Speech recognition is not available in this browser. Please use text chat.");
+      showToast("ℹSpeech recognition is not available in this browser. Please use text chat.");
       return;
     }
 
@@ -2512,7 +2514,7 @@
       window.isMicListening = false;
       if (btn) btn.classList.remove("active");
       if ($("#testCallInput")) $("#testCallInput").placeholder = "Speak into mic or type a message to your agent…";
-      showToast("🔇 Microphone muted");
+      showToast("Microphone muted");
       try {
         if (testCallRecognition) testCallRecognition.stop();
       } catch (e) {}
@@ -2520,7 +2522,7 @@
       isMicListening = true;
       window.isMicListening = true;
       if (btn) btn.classList.add("active");
-      showToast("🎙️ Microphone active — listening for speech");
+      showToast("Microphone active — listening for speech");
       startSpeechRecognition();
     }
   }
@@ -2569,7 +2571,7 @@
     });
   }
 
-  if ($("#btnShare")) { $("#btnShare").addEventListener("click", function () { showToast("🔗 Agent configuration link copied to clipboard"); }); }
+  if ($("#btnShare")) { $("#btnShare").addEventListener("click", function () { showToast("Agent configuration link copied to clipboard"); }); }
 
   // Dynamic Live Data Loading
   var hasLoadedInitialAgent = false;
@@ -2584,7 +2586,7 @@
     sel.innerHTML = knownAgents.map(function (a) {
       return '<option value="' + a.agent_id + '"' + (a.agent_id === currentLoadedAgentId ? ' selected' : '') + '>' +
         a.name.replace(/</g, "&lt;") + (a.agent_id === liveAgentId ? ' · live' : '') + '</option>';
-    }).join("") + '<option value="__new__">＋ New agent…</option>';
+    }).join("") + '<option value="__new__">New agent…</option>';
     var chip = $("#liveStateChip");
     if (chip) { chip.hidden = !(currentLoadedAgentId && currentLoadedAgentId === liveAgentId); }
   }
@@ -2674,12 +2676,12 @@
                              system_prompt: "You are a friendly, concise voice assistant. Ask one question at a time.", voice_id: $("#voiceSelect").value })
     }).then(function (r) { return r.json(); }).then(function (data) {
       if (data.status === "ok" && data.agent) {
-        showToast("✨ Created " + data.agent.name + " — rename it, paste its prompt, pick a voice, then Save. It is not live until you press Set live.", 7000);
+        showToast("Created " + data.agent.name + " — rename it, paste its prompt, pick a voice, then Save. It is not live until you press Set live.", 7000);
         return loadInitialAgent(data.agent.agent_id).then(function () { try { $("#agentName").focus(); $("#agentName").select(); } catch (e) {} });
       }
-      showToast("❌ " + (data.error || "Could not create agent"));
+      showToast(data.error || "Could not create agent");
       renderAgentSwitch();
-    }).catch(function () { showToast("❌ Network error creating agent"); renderAgentSwitch(); });
+    }).catch(function () { showToast("Network error creating agent"); renderAgentSwitch(); });
   }
   $("#btnNewAgent").addEventListener("click", function () {
     saveCurrentAgentForm(true).then(createNewAgent, createNewAgent);
@@ -2705,11 +2707,11 @@
       if (data.status === "ok") {
         liveAgentId = currentLoadedAgentId;
         renderAgentSwitch();
-        showToast("📞 " + ($("#agentName").value || "Agent") + " now answers live calls");
+        showToast(($("#agentName").value || "Agent") + " now answers live calls");
       } else {
-        showToast("❌ " + (data.error || "Could not activate agent"));
+        showToast(data.error || "Could not activate agent");
       }
-    }).catch(function () { showToast("❌ Network error activating agent"); });
+    }).catch(function () { showToast("Network error activating agent"); });
   });
 
   function pollLiveStats() {
@@ -2776,7 +2778,7 @@
         '<td style="padding:5px 6px"><select class="f-type">' + FIELD_TYPES.map(function (t) { return "<option" + (t === f.type ? " selected" : "") + ">" + t + "</option>"; }).join("") + '</select></td>' +
         '<td style="padding:5px 6px"><input class="f-desc" value="' + CI_esc(f.description || "") + '" placeholder="what it is"><input class="f-q" style="margin-top:4px" value="' + CI_esc(f.question || "") + '" placeholder="how the agent asks for it (optional)"></td>' +
         '<td style="padding:5px 6px;text-align:center"><input type="checkbox" class="f-req"' + (f.required ? " checked" : "") + '></td>' +
-        '<td style="padding:5px 6px"><button type="button" class="btn ghost sm f-del" style="padding:2px 8px">✕</button></td></tr>';
+        '<td style="padding:5px 6px"><button type="button" class="btn ghost sm f-del" style="padding:2px 8px"></button></td></tr>';
     }).join("");
     styleFieldInputs(tb);
     Array.prototype.forEach.call(tb.querySelectorAll(".f-del"), function (b) { b.addEventListener("click", function () { readExtractionFields(); extractionFields.splice(parseInt(b.closest("tr").dataset.i, 10), 1); renderExtractionFields(); toggleWebhookBody(); }); });
@@ -2803,7 +2805,7 @@
           if (d.status !== "ok") { $("#fieldsMsg").textContent = d.error || "Suggestion failed"; return; }
           readExtractionFields(); var have = {}; extractionFields.forEach(function (f) { have[f.name] = true; });
           var added = 0; (d.fields || []).forEach(function (f) { if (!have[f.name]) { extractionFields.push(f); added++; } });
-          renderExtractionFields(); toggleWebhookBody(); $("#fieldsMsg").textContent = added + " field(s) suggested — review, then Save changes"; showToast("✨ " + added + " field(s) suggested from the prompt");
+          renderExtractionFields(); toggleWebhookBody(); $("#fieldsMsg").textContent = added + " field(s) suggested — review, then Save changes"; showToast(added + " field(s) suggested from the prompt");
         }).catch(function () { $("#btnSuggestFields").disabled = false; $("#fieldsMsg").textContent = "Network error"; });
     });
     $("#btnPreviewFields").addEventListener("click", function () {

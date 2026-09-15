@@ -127,7 +127,7 @@
     <span>API Keys &amp; Providers</span>
   </div>
   <div>
-    <button class="btn btn-primary" id="btnSaveAllTop">💾 Save All API Keys</button>
+    <button class="btn btn-primary" id="btnSaveAllTop">Save All API Keys</button>
   </div>
 </header>
 
@@ -140,10 +140,13 @@
       <a href="/#calls">Calls<span class="ct" id="navCtCalls">0</span></a>
       <a href="/#detail">Call detail</a>
       <a href="/agent-builder.html">Agents<span class="ct" id="navCtAgents">1</span></a>
-      <a href="/api-keys.html" class="active" data-admin-only>API Keys &amp; Providers<span class="ct">🔑</span></a>
-      <a href="/webhooks.html">Webhooks &amp; Data<span class="ct">⚡</span></a>
-      <a href="/profile.html">My Profile<span class="ct">👤</span></a>
-      <a href="/user-guide.html">How to use<span class="ct">📘</span></a>
+      <a href="/api-keys.html" class="active" data-admin-only>API Keys &amp; Providers</a>
+      <a href="/webhooks.html">Webhooks &amp; Data</a>
+      <a href="/profile.html">My Profile</a>
+      <a href="/cost-comparison.html" data-admin-only>Cost Calculator</a>
+      <a href="/competitor-analysis.html">Competitors &amp; Features</a>
+      <a href="/admin-guide.html" data-admin-only>Admin Guide</a>
+      <a href="/user-guide.html">User Guide</a>
     </div>
     <div class="rail-foot">
       <!-- profile card is injected here by /profile.js -->
@@ -159,21 +162,21 @@
           <h1>Integrations &amp; Provider API Keys</h1>
         </div>
         <div style="display:flex;gap:10px">
-          <button class="btn btn-ghost" id="btnRefreshStatus">↻ Refresh Status</button>
-          <button class="btn btn-primary" id="btnSaveAll">💾 Save All Changes</button>
+          <button class="btn btn-ghost" id="btnRefreshStatus">Refresh Status</button>
+          <button class="btn btn-primary" id="btnSaveAll">Save All Changes</button>
         </div>
       </div>
 
       <div class="banner">
         <div class="banner-text">
-          <b>🔐 Unified Voice &amp; LLM Key Management</b>
-          <p>Configure API keys for ElevenLabs, Retell AI, Cartesia, Deepgram, Google Gemini, OpenAI, Claude, and Telephony. Keys are encrypted, securely stored in <code>.env</code>, and dynamically loaded into real-time voice sessions.</p>
+          <b>Unified Voice &amp; LLM Key Management</b>
+          <p>Configure API keys for ElevenLabs, Cartesia, Deepgram, Google Gemini, OpenAI, Claude, and Telephony. Keys are encrypted, securely stored in <code>.env</code>, and dynamically loaded into real-time voice sessions.</p>
         </div>
-        <a href="/agent-builder.html" class="btn btn-outline" style="white-space:nowrap">🎙️ Open Agent Builder →</a>
+        <a href="/agent-builder.html" class="btn btn-outline" style="white-space:nowrap">Open Agent Builder →</a>
       </div>
 
       <!-- SECTION 1: Voice / TTS Providers -->
-      <div class="section-title"><span>🎙️</span> Voice Synthesis &amp; TTS Providers</div>
+      <div class="section-title">Voice Synthesis &amp; TTS Providers</div>
       <div class="section-desc">Generate crystal-clear authentic human voices, voice clones, and emotional speech.</div>
 
       <div class="card-grid">
@@ -187,48 +190,23 @@
                 <div class="pcard-meta"><code>ELEVEN_API_KEY</code> · Authentic Cloned &amp; Studio Voices</div>
               </div>
             </div>
-            <span class="status-pill sp-ok" id="pill-elevenlabs">● ACTIVE (24 Voices)</span>
+            <span class="status-pill sp-ok" id="pill-elevenlabs">ACTIVE (24 Voices)</span>
           </div>
           <div class="pcard-desc">Provides 24 premium studio voices (including custom cloned voices Anika and Fiona) and instant zero-quota portal CDN previews.</div>
           <div class="key-input-row">
             <div class="key-input-wrapper">
               <input type="password" class="key-input" id="key-ELEVEN_API_KEY" placeholder="sk_..." data-provider="elevenlabs">
-              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
             </div>
-            <button class="btn btn-primary btn-sm btn-test" data-provider="elevenlabs">⚡ Test &amp; Sync</button>
+            <button class="btn btn-primary btn-sm btn-test" data-provider="elevenlabs">Test &amp; Sync</button>
           </div>
           <div class="diag-box" id="diag-elevenlabs"></div>
           <div class="pcard-actions">
-            <a href="https://elevenlabs.io/app/speech-synthesis" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">ElevenLabs Console ↗</a>
+            <a href="https://elevenlabs.io/app/speech-synthesis" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">ElevenLabs Console</a>
             <span style="font-size:11.5px;color:var(--ink-faint)">Voice Studio: 46 total voices</span>
           </div>
         </div>
 
-        <!-- Retell AI Card -->
-        <div class="pcard" id="card-retell">
-          <div class="pcard-h">
-            <div class="pcard-title">
-              <div class="pcard-icon" style="background:#0EA5E9;color:#fff">R</div>
-              <div>
-                <div class="pcard-name">Retell AI Voice Library</div>
-                <div class="pcard-meta"><code>RETELL_API_KEY</code> · Platform Voice Library Sync</div>
-              </div>
-            </div>
-            <span class="status-pill sp-off" id="pill-retell">UNCONFIGURED</span>
-          </div>
-          <div class="pcard-desc">Syncs every voice from your Retell AI workspace with official previews. Retell has no TTS endpoint, so custom text is spoken through each voice's underlying engine (ElevenLabs, OpenAI, Deepgram) using the keys above.</div>
-          <div class="key-input-row">
-            <div class="key-input-wrapper">
-              <input type="password" class="key-input" id="key-RETELL_API_KEY" placeholder="key_..." data-provider="retell">
-              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
-            </div>
-            <button class="btn btn-outline btn-sm btn-test" data-provider="retell">⚡ Test &amp; Sync</button>
-          </div>
-          <div class="diag-box" id="diag-retell"></div>
-          <div class="pcard-actions">
-            <a href="https://dashboard.retellai.com/apiKey" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Retell Dashboard ↗</a>
-            <span style="font-size:11.5px;color:var(--ink-faint)">Voices appear in Agent Builder → 🎧 Retell AI tab</span>
-          </div>
         </div>
 
         <!-- Cartesia Sonic Card -->
@@ -247,13 +225,13 @@
           <div class="key-input-row">
             <div class="key-input-wrapper">
               <input type="password" class="key-input" id="key-CARTESIA_API_KEY" placeholder="Paste Cartesia API key..." data-provider="cartesia">
-              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
             </div>
-            <button class="btn btn-outline btn-sm btn-test" data-provider="cartesia">⚡ Test Key</button>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="cartesia">Test Key</button>
           </div>
           <div class="diag-box" id="diag-cartesia"></div>
           <div class="pcard-actions">
-            <a href="https://play.cartesia.ai" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Cartesia Portal ↗</a>
+            <a href="https://play.cartesia.ai" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Cartesia Portal</a>
             <span style="font-size:11.5px;color:var(--ink-faint)">9 Sonic voices configured</span>
           </div>
         </div>
@@ -264,30 +242,30 @@
             <div class="pcard-title">
               <div class="pcard-icon" style="background:#13B58C;color:#fff">DG</div>
               <div>
-                <div class="pcard-name">Deepgram (Aura TTS &amp; Nova STT)</div>
+                <div class="pcard-name">Deepgram Aura (voice)</div>
                 <div class="pcard-meta"><code>DEEPGRAM_API_KEY</code> · Dual Speech &amp; Transcription</div>
               </div>
             </div>
-            <span class="status-pill sp-ok" id="pill-deepgram">● CONFIGURED</span>
+            <span class="status-pill sp-ok" id="pill-deepgram">CONFIGURED</span>
           </div>
-          <div class="pcard-desc">Powers real-time Nova-2/Nova-3 speech-to-text transcription and Aura-2 natural conversational voice generation.</div>
+          <div class="pcard-desc">Aura-2 natural conversational voices for live calls. Hearing the caller is done by the Gemini model itself, so no speech-to-text service is billed.</div>
           <div class="key-input-row">
             <div class="key-input-wrapper">
               <input type="password" class="key-input" id="key-DEEPGRAM_API_KEY" placeholder="Paste Deepgram key..." data-provider="deepgram">
-              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
             </div>
-            <button class="btn btn-outline btn-sm btn-test" data-provider="deepgram">⚡ Test Key</button>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="deepgram">Test Key</button>
           </div>
           <div class="diag-box" id="diag-deepgram"></div>
           <div class="pcard-actions">
-            <a href="https://console.deepgram.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Deepgram Console ↗</a>
-            <span style="font-size:11.5px;color:var(--ink-faint)">7 Aura voices + Nova STT</span>
+            <a href="https://console.deepgram.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Deepgram Console</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">7 Aura voices</span>
           </div>
         </div>
       </div>
 
       <!-- SECTION 2: LLM & Intelligence Models -->
-      <div class="section-title"><span>🧠</span> LLM Reasoning &amp; Dialogue Models</div>
+      <div class="section-title">LLM Reasoning &amp; Dialogue Models</div>
       <div class="section-desc">Connect state-of-the-art language models for real-time speech dialogue, function calling, and workflow logic.</div>
 
       <div class="card-grid">
@@ -307,13 +285,13 @@
           <div class="key-input-row">
             <div class="key-input-wrapper">
               <input type="password" class="key-input" id="key-GEMINI_API_KEY" placeholder="AIzaSy..." data-provider="google">
-              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
             </div>
-            <button class="btn btn-primary btn-sm btn-test" data-provider="google">⚡ Test Gemini</button>
+            <button class="btn btn-primary btn-sm btn-test" data-provider="google">Test Gemini</button>
           </div>
           <div class="diag-box" id="diag-google"></div>
           <div class="pcard-actions">
-            <a href="https://aistudio.google.com/app/apikey" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Get Free Gemini Key ↗</a>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Get Free Gemini Key</a>
             <span style="font-size:11.5px;color:var(--pos);font-weight:600">5 Gemini models supported</span>
           </div>
         </div>
@@ -334,13 +312,13 @@
           <div class="key-input-row">
             <div class="key-input-wrapper">
               <input type="password" class="key-input" id="key-OPENAI_API_KEY" placeholder="sk-proj-..." data-provider="openai">
-              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
             </div>
-            <button class="btn btn-outline btn-sm btn-test" data-provider="openai">⚡ Test OpenAI</button>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="openai">Test OpenAI</button>
           </div>
           <div class="diag-box" id="diag-openai"></div>
           <div class="pcard-actions">
-            <a href="https://platform.openai.com/api-keys" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">OpenAI API Keys ↗</a>
+            <a href="https://platform.openai.com/api-keys" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">OpenAI API Keys</a>
             <span style="font-size:11.5px;color:var(--ink-faint)">GPT-4o mini &amp; GPT-4o</span>
           </div>
         </div>
@@ -361,13 +339,13 @@
           <div class="key-input-row">
             <div class="key-input-wrapper">
               <input type="password" class="key-input" id="key-ANTHROPIC_API_KEY" placeholder="sk-ant-..." data-provider="anthropic">
-              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
             </div>
-            <button class="btn btn-outline btn-sm btn-test" data-provider="anthropic">⚡ Test Claude</button>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="anthropic">Test Claude</button>
           </div>
           <div class="diag-box" id="diag-anthropic"></div>
           <div class="pcard-actions">
-            <a href="https://console.anthropic.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Anthropic Console ↗</a>
+            <a href="https://console.anthropic.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Anthropic Console</a>
             <span style="font-size:11.5px;color:var(--ink-faint)">Claude 3.5 Models</span>
           </div>
         </div>
@@ -388,20 +366,20 @@
           <div class="key-input-row">
             <div class="key-input-wrapper">
               <input type="password" class="key-input" id="key-AZURE_OPENAI_API_KEY" placeholder="Paste Azure / Copilot key..." data-provider="azure">
-              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
             </div>
-            <button class="btn btn-outline btn-sm btn-test" data-provider="azure">⚡ Test Azure</button>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="azure">Test Azure</button>
           </div>
           <div class="diag-box" id="diag-azure"></div>
           <div class="pcard-actions">
-            <a href="https://portal.azure.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Azure Portal ↗</a>
+            <a href="https://portal.azure.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Azure Portal</a>
             <span style="font-size:11.5px;color:var(--ink-faint)">Enterprise endpoints</span>
           </div>
         </div>
       </div>
 
       <!-- SECTION 3: Telephony & Carrier Gateways -->
-      <div class="section-title"><span>📞</span> Telephony &amp; Carrier Gateways</div>
+      <div class="section-title">Telephony &amp; Carrier Gateways</div>
       <div class="section-desc">Connect SIP Trunks, DIDs, and real-time WebRTC media servers.</div>
 
       <div class="card-grid">
@@ -421,13 +399,13 @@
           <div class="key-input-row">
             <div class="key-input-wrapper">
               <input type="password" class="key-input" id="key-TELNYX_API_KEY" placeholder="KEY..." data-provider="telnyx">
-              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
             </div>
-            <button class="btn btn-outline btn-sm btn-test" data-provider="telnyx">⚡ Test Key</button>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="telnyx">Test Key</button>
           </div>
           <div class="diag-box" id="diag-telnyx"></div>
           <div class="pcard-actions">
-            <a href="https://portal.telnyx.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Telnyx Portal ↗</a>
+            <a href="https://portal.telnyx.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Telnyx Portal</a>
             <span style="font-size:11.5px;color:var(--ink-faint)">E.164 Number Ordering</span>
           </div>
         </div>
@@ -448,13 +426,13 @@
           <div class="key-input-row">
             <div class="key-input-wrapper">
               <input type="password" class="key-input" id="key-TWILIO_AUTH_TOKEN" placeholder="Twilio Auth Token..." data-provider="twilio">
-              <button class="btn-toggle-mask" type="button" title="Toggle visibility">👁</button>
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
             </div>
-            <button class="btn btn-outline btn-sm btn-test" data-provider="twilio">⚡ Test Key</button>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="twilio">Test Key</button>
           </div>
           <div class="diag-box" id="diag-twilio"></div>
           <div class="pcard-actions">
-            <a href="https://console.twilio.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Twilio Console ↗</a>
+            <a href="https://console.twilio.com" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Twilio Console</a>
             <span style="font-size:11.5px;color:var(--ink-faint)">Voice webhooks</span>
           </div>
         </div>
@@ -484,10 +462,10 @@
       var input = this.parentElement.querySelector("input");
       if (input.type === "password") {
         input.type = "text";
-        this.textContent = "🔒";
+        this.textContent = "Hide";
       } else {
         input.type = "password";
-        this.textContent = "👁";
+        this.textContent = "Show";
       }
     });
   });
@@ -509,9 +487,9 @@
             if (pill) {
               pill.className = "status-pill sp-ok";
               if (p.provider_id === "elevenlabs") {
-                pill.textContent = "● ACTIVE (24 Voices)";
+                pill.textContent = "ACTIVE (24 Voices)";
               } else {
-                pill.textContent = "● CONFIGURED";
+                pill.textContent = "CONFIGURED";
               }
             }
           } else {
@@ -539,7 +517,7 @@
     });
 
     if (Object.keys(updates).length === 0) {
-      showToast("ℹ️ No new keys entered to save.");
+      showToast("ℹNo new keys entered to save.");
       return;
     }
 
@@ -551,16 +529,16 @@
     .then(function(r) { return r.json(); })
     .then(function(res) {
       if (res.status === "ok") {
-        showToast("✅ Successfully saved " + (res.updated || []).length + " API keys to .env!");
+        showToast("Successfully saved " + (res.updated || []).length + " API keys to .env!");
         // Clear input values and refresh placeholders
         $$(".key-input").forEach(function(input) { input.value = ""; });
         loadProviders();
       } else {
-        showToast("❌ Error: " + (res.error || "Failed to save keys"));
+        showToast("Error: " + (res.error || "Failed to save keys"));
       }
     })
     .catch(function() {
-      showToast("❌ Network error saving API keys.");
+      showToast("Network error saving API keys.");
     });
   }
 
@@ -568,7 +546,7 @@
   $("#btnSaveAllTop").addEventListener("click", saveAllKeys);
   $("#btnRefreshStatus").addEventListener("click", function() {
     loadProviders();
-    showToast("↻ Refreshed provider status.");
+    showToast("Refreshed provider status.");
   });
 
   // Test Provider Key
@@ -595,38 +573,38 @@
       .then(function(r) { return r.json(); })
       .then(function(res) {
         btn.disabled = false;
-        btn.textContent = "⚡ Test Connection";
+        btn.textContent = "Test Connection";
 
         if (diag) {
           diag.classList.add("show");
           if (res.status === "ok") {
             diag.style.color = "var(--pos)";
-            diag.innerHTML = "<b>✔ " + (res.details || "Connected successfully") + "</b><br>Latency: " + (res.latency_ms || 0) + "ms";
+            diag.innerHTML = "<b> " + (res.details || "Connected successfully") + "</b><br>Latency: " + (res.latency_ms || 0) + "ms";
             if (pill) {
               pill.className = "status-pill sp-ok";
-              pill.textContent = "● CONNECTED (" + (res.latency_ms || 0) + "ms)";
+              pill.textContent = "CONNECTED (" + (res.latency_ms || 0) + "ms)";
             }
-            showToast("✅ " + providerId.toUpperCase() + " connection verified!");
+            showToast(providerId.toUpperCase() + " connection verified");
           } else {
             diag.style.color = "var(--neg)";
-            diag.innerHTML = "<b>✖ " + (res.error || "Connection failed") + "</b>";
+            diag.innerHTML = "<b> " + (res.error || "Connection failed") + "</b>";
             if (pill) {
               pill.className = "status-pill sp-err";
-              pill.textContent = "✖ FAILED";
+              pill.textContent = "FAILED";
             }
-            showToast("❌ " + providerId.toUpperCase() + ": " + (res.error || "Failed"));
+            showToast(providerId.toUpperCase() + ": " + (res.error || "Failed"));
           }
         }
       })
       .catch(function(err) {
         btn.disabled = false;
-        btn.textContent = "⚡ Test Connection";
+        btn.textContent = "Test Connection";
         if (diag) {
           diag.classList.add("show");
           diag.style.color = "var(--neg)";
-          diag.innerHTML = "<b>✖ Network request failed</b>";
+          diag.innerHTML = "<b>Network request failed</b>";
         }
-        showToast("❌ Failed to reach test endpoint");
+        showToast("Failed to reach test endpoint");
       });
     });
   });

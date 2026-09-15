@@ -243,12 +243,14 @@
       <button role="tab" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls">…</span></button>
       <button role="tab" aria-selected="false" data-v="detail">Call detail</button>
       <button role="tab" aria-selected="false" data-v="telephony">SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></button>
-      <button role="tab" aria-selected="false" data-v="market" style="color:var(--accent);font-weight:600">🛒 Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></button>
+      <button role="tab" aria-selected="false" data-v="market" style="color:var(--accent);font-weight:600">Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></button>
       <button role="tab" aria-selected="false" data-v="agents">Agents<span class="ct" id="ctAgents">…</span></button>
-      <a href="/api-keys.html" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers<span class="ct">🔑</span></a>
-      <a href="/webhooks.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Webhooks &amp; Data<span class="ct">⚡</span></a>
-      <a href="/profile.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">My Profile<span class="ct">👤</span></a>
-      <a href="/user-guide.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">How to use<span class="ct">📘</span></a>
+      <a href="/api-keys.html" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers</a>
+      <a href="/webhooks.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Webhooks &amp; Data</a>
+      <a href="/cost-comparison.html" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Cost Calculator</a>
+      <a href="/competitor-analysis.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Competitors &amp; Features</a>
+      <a href="/admin-guide.html" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Admin Guide</a>
+      <a href="/user-guide.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">User Guide</a>
     </div>
     <div class="rail-foot">
       <!-- profile card is injected here by /profile.js -->
@@ -264,16 +266,16 @@
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <button id="btnSimulate" class="btn" title="Generate and execute a real live dynamic call through the AI pipeline">
-          ⚡ Simulate Inbound Call
+          Simulate Inbound Call
         </button>
         <button id="btnOpenMarket" class="btn ghost" title="Browse and purchase carrier phone numbers">
-          🛒 Buy Phone Number
+          Buy Phone Number
         </button>
         <button id="btnSyncToggle" class="btn ghost" title="Toggle real-time auto-refresh polling">
-          ● Live Sync: ON (3s)
+          Live Sync: ON (3s)
         </button>
         <button id="btnRefresh" class="btn ghost" style="padding:7px 10px" title="Refresh all data immediately">
-          ↻
+         
         </button>
         <span class="livechip"><span class="pulse"></span><span id="livect">loading…</span></span>
       </div>
@@ -291,7 +293,7 @@
             </h2>
             <div style="display:flex;align-items:center;gap:10px">
               <span class="meta" style="color:var(--pos);font-weight:600">SIP / WebRTC In-Progress</span>
-              <button id="btnEndAllActiveCalls" class="btn sm ghost" style="color:var(--neg);border-color:rgba(163,47,38,.3);background:var(--neg-soft)">🔴 End All Calls</button>
+              <button id="btnEndAllActiveCalls" class="btn sm ghost" style="color:var(--neg);border-color:rgba(163,47,38,.3);background:var(--neg-soft)">End All Calls</button>
             </div>
           </div>
           <div class="card-b" id="activeCallsList" style="padding:10px 16px"></div>
@@ -406,7 +408,7 @@
         <!-- Sub navigation pills -->
         <div class="filters" id="telNav">
           <button aria-pressed="true" data-tv="owned">Active Phone Numbers</button>
-          <button aria-pressed="false" data-tv="market">🛒 Purchase Direct Numbers</button>
+          <button aria-pressed="false" data-tv="market">Purchase Direct Numbers</button>
           <button aria-pressed="false" data-tv="trunks">SIP Trunks &amp; Gateways</button>
           <button aria-pressed="false" data-tv="rules">Dispatch &amp; Routing Rules</button>
         </div>
@@ -437,17 +439,17 @@
             </div>
             <div class="card-b">
               <div class="filters" id="marketCarrierTabs" role="tablist" aria-label="Carrier">
-                <button role="tab" data-carrier="telnyx" aria-pressed="true">📡 Telnyx Numbers <span class="ct" id="ctTelnyx">…</span></button>
-                <button role="tab" data-carrier="twilio" aria-pressed="false">☎️ Twilio Numbers <span class="ct" id="ctTwilio">…</span></button>
+                <button role="tab" data-carrier="telnyx" aria-pressed="true">Telnyx Numbers <span class="ct" id="ctTelnyx">…</span></button>
+                <button role="tab" data-carrier="twilio" aria-pressed="false">Twilio Numbers <span class="ct" id="ctTwilio">…</span></button>
               </div>
               <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
                 <select id="marketCountry" style="padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);font-size:13px">
-                  <option value="ALL">🌍 All Countries</option>
-                  <option value="US" selected>🇺🇸 United States (+1)</option>
-                  <option value="CA">🇨🇦 Canada (+1)</option>
-                  <option value="GB">🇬🇧 United Kingdom (+44)</option>
-                  <option value="AU">🇦🇺 Australia (+61)</option>
-                  <option value="DE">🇩🇪 Germany (+49)</option>
+                  <option value="ALL">All Countries</option>
+                  <option value="US" selected>United States (+1)</option>
+                  <option value="CA">Canada (+1)</option>
+                  <option value="GB">United Kingdom (+44)</option>
+                  <option value="AU">Australia (+61)</option>
+                  <option value="DE">Germany (+49)</option>
                 </select>
                 <input id="marketSearch" type="search" placeholder="Search area code or city (e.g. 415, 212, London)…"
                   style="flex:1;min-width:240px;padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);font-size:13px">
@@ -463,14 +465,14 @@
             <div class="card">
               <div class="card-h">
                 <h2>Inbound SIP Trunks</h2>
-                <button class="btn sm ghost" id="btnAddInboundTrunk">➕ New Inbound Trunk</button>
+                <button class="btn sm ghost" id="btnAddInboundTrunk">New Inbound Trunk</button>
               </div>
               <div class="card-b" id="inboundTrunksList"></div>
             </div>
             <div class="card">
               <div class="card-h">
                 <h2>Outbound SIP Trunks</h2>
-                <button class="btn sm ghost" id="btnAddOutboundTrunk">➕ New Outbound Trunk</button>
+                <button class="btn sm ghost" id="btnAddOutboundTrunk">New Outbound Trunk</button>
               </div>
               <div class="card-b" id="outboundTrunksList"></div>
             </div>
@@ -495,7 +497,7 @@
           <div class="card-h">
             <h2>Configured agents</h2>
             <span class="meta" style="display:flex;gap:10px;align-items:center">
-              <a class="btn sm" href="/agent-builder.html?new=1" style="text-decoration:none">＋ New agent</a>
+              <a class="btn sm" href="/agent-builder.html?new=1" style="text-decoration:none">New agent</a>
               <a href="/agent-builder.html" style="color:var(--accent)">Open Agent Builder →</a>
             </span>
           </div>
@@ -514,7 +516,7 @@
   <div class="modal-card">
     <div class="modal-h">
       <h3>Purchase &amp; Provision Phone Number</h3>
-      <button class="btn ghost sm" id="btnClosePurchaseModal">✕</button>
+      <button class="btn ghost sm" id="btnClosePurchaseModal"></button>
     </div>
     <div class="modal-b">
       <div class="form-group">
@@ -545,7 +547,7 @@
     </div>
     <div class="modal-f">
       <button class="btn ghost" id="btnCancelPurchase">Cancel</button>
-      <button class="btn" id="btnConfirmPurchase">⚡ Confirm &amp; Purchase Number</button>
+      <button class="btn" id="btnConfirmPurchase">Confirm &amp; Purchase Number</button>
     </div>
   </div>
 </div>
@@ -554,8 +556,8 @@
 <div class="modal-overlay" id="modalEditNumber">
   <div class="modal-card">
     <div class="modal-h">
-      <h3>✏️ Edit Phone Number &amp; SIP Routing</h3>
-      <button class="btn ghost sm" id="btnCloseEditNumberModal">✕</button>
+      <h3>Edit Phone Number &amp; SIP Routing</h3>
+      <button class="btn ghost sm" id="btnCloseEditNumberModal"></button>
     </div>
     <div class="modal-b">
       <div class="form-group">
@@ -583,10 +585,10 @@
       </div>
     </div>
     <div class="modal-f" style="display:flex;justify-content:space-between;align-items:center">
-      <button class="btn ghost sm" id="btnDeleteNumberFromModal" style="color:var(--neg);border-color:rgba(163,47,38,.3)">🗑️ Remove Number</button>
+      <button class="btn ghost sm" id="btnDeleteNumberFromModal" style="color:var(--neg);border-color:rgba(163,47,38,.3)">Remove Number</button>
       <div style="display:flex;gap:8px">
         <button class="btn ghost" id="btnCancelEditNumber">Cancel</button>
-        <button class="btn" id="btnConfirmEditNumber">💾 Save Changes</button>
+        <button class="btn" id="btnConfirmEditNumber">Save Changes</button>
       </div>
     </div>
   </div>
@@ -596,8 +598,8 @@
 <div class="modal-overlay" id="modalInboundTrunk">
   <div class="modal-card">
     <div class="modal-h">
-      <h3>➕ Create Inbound SIP Trunk</h3>
-      <button class="btn ghost sm" id="btnCloseInboundTrunkModal">✕</button>
+      <h3>Create Inbound SIP Trunk</h3>
+      <button class="btn ghost sm" id="btnCloseInboundTrunkModal"></button>
     </div>
     <div class="modal-b">
       <div class="form-group">
@@ -640,8 +642,8 @@
 <div class="modal-overlay" id="modalOutboundTrunk">
   <div class="modal-card">
     <div class="modal-h">
-      <h3>➕ Create Outbound SIP Trunk</h3>
-      <button class="btn ghost sm" id="btnCloseOutboundTrunkModal">✕</button>
+      <h3>Create Outbound SIP Trunk</h3>
+      <button class="btn ghost sm" id="btnCloseOutboundTrunkModal"></button>
     </div>
     <div class="modal-b">
       <div class="form-group">
@@ -856,7 +858,7 @@
             '</div>' +
             '<div style="display:flex;align-items:center;gap:8px">' +
               '<a class="btn ghost sm" href="/softphone.html">Softphone</a>' +
-              '<button class="btn sm ghost btn-hangup-call" data-id="' + CI.escapeHtml(c.call_id) + '" style="color:var(--neg);border-color:rgba(163,47,38,.3)">🔴 End Call</button>' +
+              '<button class="btn sm ghost btn-hangup-call" data-id="' + CI.escapeHtml(c.call_id) + '" style="color:var(--neg);border-color:rgba(163,47,38,.3)">End Call</button>' +
             '</div>' +
             '</div>';
         }).join("");
@@ -870,7 +872,7 @@
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ call_id: cid })
             }).then(function () {
-              showToast("🔴 Call ended: " + cid);
+              showToast("Call ended: " + cid);
               checkActiveCalls();
             });
           });
@@ -891,7 +893,7 @@
         body: JSON.stringify({})
       }).then(function () {
         btnEndAll.disabled = false;
-        showToast("🔴 All active calls ended");
+        showToast("All active calls ended");
         checkActiveCalls();
       }).catch(function () {
         btnEndAll.disabled = false;
@@ -1051,8 +1053,8 @@
           '<td><code style="font-size:11px">' + CI.escapeHtml(n.assigned_trunk_id || "trunk-inbound-primary") + '</code></td>' +
           '<td><span class="pill pos">active</span></td>' +
           '<td style="white-space:nowrap">' +
-            '<button class="btn sm ghost btn-edit-num" data-num="' + CI.escapeHtml(n.phone_number) + '" data-name="' + CI.escapeHtml(n.friendly_name || "") + '" data-agent="' + CI.escapeHtml(n.assigned_agent || "") + '" data-trunk="' + CI.escapeHtml(n.assigned_trunk_id || "trunk-inbound-primary") + '" data-carrier="' + CI.escapeHtml(n.carrier || "twilio") + '">✏️ Edit</button> ' +
-            '<button class="btn sm ghost btn-remove-num" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-num="' + CI.escapeHtml(n.phone_number) + '">🗑️ Remove</button>' +
+            '<button class="btn sm ghost btn-edit-num" data-num="' + CI.escapeHtml(n.phone_number) + '" data-name="' + CI.escapeHtml(n.friendly_name || "") + '" data-agent="' + CI.escapeHtml(n.assigned_agent || "") + '" data-trunk="' + CI.escapeHtml(n.assigned_trunk_id || "trunk-inbound-primary") + '" data-carrier="' + CI.escapeHtml(n.carrier || "twilio") + '">Edit</button> ' +
+            '<button class="btn sm ghost btn-remove-num" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-num="' + CI.escapeHtml(n.phone_number) + '">Remove</button>' +
           '</td>' +
           '</tr>';
       }).join("");
@@ -1074,10 +1076,10 @@
             })
           }).then(function (r) { return r.json(); }).then(function (res) {
             sel.disabled = false;
-            showToast("✅ " + num + " assigned to " + agentName);
+            showToast(num + " assigned to " + agentName);
           }).catch(function (e) {
             sel.disabled = false;
-            showToast("❌ Routing error: " + e.message);
+            showToast("Routing error: " + e.message);
           });
         });
       });
@@ -1132,11 +1134,11 @@
             '<span class="ph">' + CI.escapeHtml(n.friendly_name || n.phone_number) + '</span>' +
             carrierBadge(n.carrier) +
           '</div>' +
-          '<div class="reg">📍 ' + CI.escapeHtml(n.region) + ' (' + CI.escapeHtml(n.country) + ')</div>' +
+          '<div class="reg"> ' + CI.escapeHtml(n.region) + ' (' + CI.escapeHtml(n.country) + ')</div>' +
           '<div class="caps">' + capsHtml + '</div>' +
           '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">' +
             '<span class="price">$' + (n.monthly_cost || 1.50).toFixed(2) + ' <small style="font-size:11px;color:var(--ink-faint)">/ mo</small></span>' +
-            '<button class="btn sm btn-buy-did" data-num="' + CI.escapeHtml(n.phone_number) + '" data-name="' + CI.escapeHtml(n.friendly_name) + '" data-price="' + n.monthly_cost + '" data-carrier="' + CI.escapeHtml(n.carrier || "telnyx") + '">⚡ Buy &amp; Assign</button>' +
+            '<button class="btn sm btn-buy-did" data-num="' + CI.escapeHtml(n.phone_number) + '" data-name="' + CI.escapeHtml(n.friendly_name) + '" data-price="' + n.monthly_cost + '" data-carrier="' + CI.escapeHtml(n.carrier || "telnyx") + '">Buy &amp; Assign</button>' +
           '</div>' +
         '</div>';
       }).join("");
@@ -1161,14 +1163,14 @@
       $("#inboundTrunksList").innerHTML = inTrunks.length ? inTrunks.map(function (t) {
         return '<div class="agent-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><strong>' + CI.escapeHtml(t.name) + '</strong> <span class="pill pos">connected</span><br>' +
           '<code style="font-size:11px">id: ' + CI.escapeHtml(t.trunk_id) + ' · ' + (t.numbers ? t.numbers.length : 0) + ' DIDs mapped</code></div>' +
-          '<button class="btn sm ghost btn-del-trunk" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-id="' + CI.escapeHtml(t.trunk_id) + '" data-name="' + CI.escapeHtml(t.name) + '">🗑️ Delete</button>' +
+          '<button class="btn sm ghost btn-del-trunk" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-id="' + CI.escapeHtml(t.trunk_id) + '" data-name="' + CI.escapeHtml(t.name) + '">Delete</button>' +
           '</div>';
       }).join("") : '<div class="empty">No inbound trunks configured.</div>';
 
       $("#outboundTrunksList").innerHTML = outTrunks.length ? outTrunks.map(function (t) {
         return '<div class="agent-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><strong>' + CI.escapeHtml(t.name) + '</strong> <span class="pill pos">active</span><br>' +
           '<code style="font-size:11px">gateway: ' + CI.escapeHtml(t.address) + ' · transport: ' + CI.escapeHtml(t.transport || "udp") + '</code></div>' +
-          '<button class="btn sm ghost btn-del-trunk" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-id="' + CI.escapeHtml(t.trunk_id) + '" data-name="' + CI.escapeHtml(t.name) + '">🗑️ Delete</button>' +
+          '<button class="btn sm ghost btn-del-trunk" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-id="' + CI.escapeHtml(t.trunk_id) + '" data-name="' + CI.escapeHtml(t.name) + '">Delete</button>' +
           '</div>';
       }).join("") : '<div class="empty">No outbound trunks configured.</div>';
 
@@ -1192,14 +1194,14 @@
             body: JSON.stringify({ trunk_id: tid })
           }).then(function (r) { return r.json(); }).then(function (res) {
             if (res && res.status === "ok") {
-              showToast("🗑️ Trunk '" + tname + "' deleted.");
+              showToast("Trunk '" + tname + "' deleted.");
               loadTrunksAndRules();
               loadOwnedNumbers();
             } else {
-              showToast("❌ Delete failed: " + ((res && res.error) || "unknown error"));
+              showToast("Delete failed: " + ((res && res.error) || "unknown error"));
             }
           }).catch(function (e) {
-            showToast("❌ Delete error: " + e.message);
+            showToast("Delete error: " + e.message);
           });
         });
       });
@@ -1285,16 +1287,16 @@
       body: JSON.stringify(payload)
     }).then(function (r) { return r.json(); }).then(function (res) {
       btn.disabled = false;
-      btn.textContent = "⚡ Confirm & Purchase Number";
-      if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Provisioning failed")); return; }
+      btn.textContent = "Confirm & Purchase Number";
+      if (!res || res.status !== "ok") { showToast(((res && res.error) || "Provisioning failed")); return; }
       closePurchaseModal();
-      showToast("🎉 Number " + payload.phone_number + " activated & assigned to " + payload.agent_name + "!");
+      showToast("Number " + payload.phone_number + " activated & assigned to " + payload.agent_name + "!");
       loadTelephony();
       document.querySelector("#telNav button[data-tv='owned']").click();
     }).catch(function (e) {
       btn.disabled = false;
-      btn.textContent = "⚡ Confirm & Purchase Number";
-      showToast("❌ Provisioning error: " + e.message);
+      btn.textContent = "Confirm & Purchase Number";
+      showToast("Provisioning error: " + e.message);
     });
   });
 
@@ -1345,15 +1347,15 @@
       body: JSON.stringify(payload)
     }).then(function (r) { return r.json(); }).then(function (res) {
       btn.disabled = false;
-      btn.textContent = "💾 Save Changes";
-      if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Update failed")); return; }
+      btn.textContent = "Save Changes";
+      if (!res || res.status !== "ok") { showToast(((res && res.error) || "Update failed")); return; }
       closeEditNumberModal();
-      showToast("✅ Number " + payload.phone_number + " updated successfully!");
+      showToast("Number " + payload.phone_number + " updated successfully!");
       loadOwnedNumbers();
     }).catch(function (e) {
       btn.disabled = false;
-      btn.textContent = "💾 Save Changes";
-      showToast("❌ Update error: " + e.message);
+      btn.textContent = "Save Changes";
+      showToast("Update error: " + e.message);
     });
   });
 
@@ -1373,14 +1375,14 @@
       body: JSON.stringify({ phone_number: num, purge: true })
     }).then(function (r) { return r.json(); }).then(function (res) {
       if (res && res.status === "ok") {
-        showToast("🗑️ Phone number " + num + " removed.");
+        showToast("Phone number " + num + " removed.");
         loadOwnedNumbers();
         loadAvailableNumbers();
       } else {
-        showToast("❌ Remove failed: " + ((res && res.error) || "unknown error"));
+        showToast("Remove failed: " + ((res && res.error) || "unknown error"));
       }
     }).catch(function (e) {
-      showToast("❌ Error: " + e.message);
+      showToast("Error: " + e.message);
     });
   }
 
@@ -1439,14 +1441,14 @@
       }).then(function (r) { return r.json(); }).then(function (res) {
         btn.disabled = false;
         btn.textContent = "Create Inbound Trunk";
-        if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Trunk creation failed")); return; }
+        if (!res || res.status !== "ok") { showToast(((res && res.error) || "Trunk creation failed")); return; }
         closeInboundTrunkModal();
-        showToast("✅ Inbound Trunk " + name + " created successfully");
+        showToast("Inbound Trunk " + name + " created successfully");
         loadTrunksAndRules();
       }).catch(function (e) {
         btn.disabled = false;
         btn.textContent = "Create Inbound Trunk";
-        showToast("❌ Trunk creation error: " + e.message);
+        showToast("Trunk creation error: " + e.message);
       });
     });
   }
@@ -1502,14 +1504,14 @@
       }).then(function (r) { return r.json(); }).then(function (res) {
         btn.disabled = false;
         btn.textContent = "Create Outbound Trunk";
-        if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Trunk creation failed")); return; }
+        if (!res || res.status !== "ok") { showToast(((res && res.error) || "Trunk creation failed")); return; }
         closeOutboundTrunkModal();
-        showToast("✅ Outbound Trunk " + name + " created successfully");
+        showToast("Outbound Trunk " + name + " created successfully");
         loadTrunksAndRules();
       }).catch(function (e) {
         btn.disabled = false;
         btn.textContent = "Create Outbound Trunk";
-        showToast("❌ Trunk creation error: " + e.message);
+        showToast("Trunk creation error: " + e.message);
       });
     });
   }
@@ -1523,11 +1525,11 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone_number: num })
     }).then(function (r) { return r.json(); }).then(function (res) {
-      if (!res || res.status !== "ok") { showToast("❌ " + ((res && res.error) || "Release failed")); return; }
-      showToast("🗑 Number " + num + " released successfully");
+      if (!res || res.status !== "ok") { showToast(((res && res.error) || "Release failed")); return; }
+      showToast("Number " + num + " released successfully");
       loadTelephony();
     }).catch(function (e) {
-      showToast("❌ Release failed: " + e.message);
+      showToast("Release failed: " + e.message);
     });
   }
 
@@ -1543,7 +1545,7 @@
           "<code>rev " + a.revision + " · " + CI.escapeHtml(a.llm_model) + " · " +
           (a.tools ? a.tools.length : 0) + " tools</code></span>" +
           '<span style="display:flex;gap:6px">' +
-          (a.active ? '' : '<button class="btn ghost btn-set-live" style="padding:6px 12px" data-id="' + CI.escapeHtml(a.agent_id) + '" title="Make this agent answer live calls">📞 Set live</button>') +
+          (a.active ? '' : '<button class="btn ghost btn-set-live" style="padding:6px 12px" data-id="' + CI.escapeHtml(a.agent_id) + '" title="Make this agent answer live calls">Set live</button>') +
           '<a class="btn ghost" style="padding:6px 12px" href="/agent-builder.html?agent=' + encodeURIComponent(a.agent_id) + '">Edit</a></span></div>';
       }).join("") : '<div class="empty">No agents configured.</div>';
       Array.prototype.forEach.call(document.querySelectorAll("#agentList .btn-set-live"), function (b) {
@@ -1628,13 +1630,13 @@
       body: JSON.stringify(payload)
     }).then(function (r) { return r.json(); }).then(function () {
       btn.disabled = false;
-      btn.textContent = "⚡ Simulate Inbound Call";
-      showToast("✅ Live Call Processed: " + callId + " (" + scenario.agent + ")");
+      btn.textContent = "Simulate Inbound Call";
+      showToast("Live Call Processed: " + callId + " (" + scenario.agent + ")");
       refreshAll();
     }).catch(function (err) {
       btn.disabled = false;
-      btn.textContent = "⚡ Simulate Inbound Call";
-      showToast("❌ Simulation failed: " + err.message);
+      btn.textContent = "Simulate Inbound Call";
+      showToast("Simulation failed: " + err.message);
     });
   }
 
@@ -1661,12 +1663,12 @@
     autoSync = !autoSync;
     var btn = $("#btnSyncToggle");
     if (autoSync) {
-      btn.textContent = "● Live Sync: ON (3s)";
+      btn.textContent = "Live Sync: ON (3s)";
       btn.style.color = "var(--pos)";
       startPolling();
       showToast("Live Sync Enabled (polling every 3s)");
     } else {
-      btn.textContent = "⏸ Live Sync: PAUSED";
+      btn.textContent = "Live Sync: PAUSED";
       btn.style.color = "var(--neg)";
       stopPolling();
       showToast("Live Sync Paused");
@@ -1733,7 +1735,7 @@
           live.style.fontStyle = "italic";
           box.appendChild(live);
         }
-        live.textContent = "🗣️ You (speaking): " + text;
+        live.textContent = "You (speaking): " + text;
       } else {
         var live = box.querySelector(".voice-interim");
         if (live) { live.remove(); }
@@ -1744,7 +1746,7 @@
         row.style.borderRadius = "6px";
         row.style.background = isAI ? "var(--accent-soft)" : "var(--panel)";
         row.style.border = isAI ? "1px solid var(--accent-border)" : "1px solid var(--line)";
-        row.innerHTML = '<b style="color:' + (isAI ? 'var(--accent)' : 'var(--pos)') + '">' + (isAI ? '🤖 AI Assistant' : '👤 You') + ':</b> ' + text;
+        row.innerHTML = '<b style="color:' + (isAI ? 'var(--accent)' : 'var(--pos)') + '">' + (isAI ? 'AI Assistant' : 'You') + ':</b> ' + text;
         box.appendChild(row);
       }
       box.scrollTop = box.scrollHeight;
@@ -1794,7 +1796,7 @@
             var b = $(s);
             if (b) b.style.display = "inline-block";
           });
-          addVoiceLog("System", "🔊 Audio stream active! Assistant speech will play through your speakers.", false);
+          addVoiceLog("System", "Audio stream active! Assistant speech will play through your speakers.", false);
         }
       });
 
@@ -1808,14 +1810,14 @@
             addVoiceLog("AI Assistant", msg.text, false);
           } else if (topic === "agent_state") {
             if (msg.state === "speaking") {
-              setAllDtStatus("SPEAKING 🔊", "pos");
+              setAllDtStatus("SPEAKING", "pos");
             } else if (msg.state === "thinking") {
-              setAllDtStatus("THINKING 🧠", "neu");
+              setAllDtStatus("THINKING", "neu");
             } else {
-              setAllDtStatus("CONNECTED 🟢", "pos");
+              setAllDtStatus("CONNECTED", "pos");
             }
           } else if (topic === "vad") {
-            setAllDtVad(msg.state === "speaking" ? "🗣️ Speaking" : "👂 Listening", msg.state === "speaking" ? "pos" : "neu");
+            setAllDtVad(msg.state === "speaking" ? "Speaking" : "Listening", msg.state === "speaking" ? "pos" : "neu");
           }
         } catch (e) {}
       });
@@ -1826,16 +1828,16 @@
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           await dtRoom.localParticipant.setMicrophoneEnabled(true);
-          addVoiceLog("System", "🎤 Microphone connected. Speak aloud to converse with AI!", false);
+          addVoiceLog("System", "Microphone connected. Speak aloud to converse with AI!", false);
         } else {
-          addVoiceLog("System", "⚠️ Insecure browser context (Mic disabled). You can still listen to AI speech and send typed prompts!", false);
+          addVoiceLog("System", "Insecure browser context (Mic disabled). You can still listen to AI speech and send typed prompts!", false);
         }
       } catch (micErr) {
-        addVoiceLog("System", "⚠️ Microphone permission not granted. Listening mode active.", false);
+        addVoiceLog("System", "Microphone permission not granted. Listening mode active.", false);
       }
 
       dtIsConnected = true;
-      setAllDtStatus("CONNECTED 🟢", "pos");
+      setAllDtStatus("CONNECTED", "pos");
 
       // Update UI Buttons
       ["#dtBtnCall", "#vtBtnCall"].forEach(function (s) { var b = $(s); if (b) { b.style.display = "none"; b.disabled = false; } });
@@ -1845,8 +1847,8 @@
       showToast("Voice Assistant Connected.");
 
     } catch (err) {
-      setAllDtStatus("ERROR ❌", "neg");
-      addVoiceLog("System", "❌ Connection failed: " + err.message, false);
+      setAllDtStatus("ERROR", "neg");
+      addVoiceLog("System", "Connection failed: " + err.message, false);
       ["#dtBtnCall", "#vtBtnCall"].forEach(function (s) { var b = $(s); if (b) { b.style.display = "inline-flex"; b.disabled = false; } });
       ["#dtBtnHangup", "#vtBtnHangup"].forEach(function (s) { var b = $(s); if (b) b.style.display = "none"; });
     }
@@ -1866,7 +1868,7 @@
     ["#dtBtnHangup", "#vtBtnHangup"].forEach(function (s) { var b = $(s); if (b) b.style.display = "none"; });
     var bgb = $("#dtBtnBargein"); if (bgb) bgb.style.display = "none";
 
-    addVoiceLog("System", "📴 Voice call disconnected.", false);
+    addVoiceLog("System", "Voice call disconnected.", false);
     showToast("Voice Call Disconnected.");
   }
 
@@ -1878,7 +1880,7 @@
       await new Promise(function (r) { setTimeout(r, 1200); });
     }
     if (dtRoom && dtRoom.localParticipant) {
-      addVoiceLog("AI Assistant", "🔊 Speaking: \"" + phrase + "\"...", false);
+      addVoiceLog("AI Assistant", "Speaking: \"" + phrase + "\"...", false);
       try {
         await dtRoom.localParticipant.publishData(
           new TextEncoder().encode(JSON.stringify({ action: "test_tts", text: phrase })),

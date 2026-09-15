@@ -134,21 +134,19 @@ class Handler(SimpleHTTPRequestHandler):
         self._send_json({"status": "error", "error": "Sign in required", "login": "/login.html"}, 401)
         return False
 
-    # Routes only workspace admins may use. Members get 403 and never see keys, numbers, trunks,
-    # users or storage internals.
-    # Signed-in users have the whole dashboard except provider API keys and member management.
+    # Two roles: admin and user. Users get the whole dashboard — every agent, every call, webhooks —
+    # except the API Keys & Providers page and member management, which are admin-only (403 / redirect).
     ADMIN_GET_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces")
     ADMIN_POST_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces", "/api/v1/auth/users")
-    ADMIN_PAGES = ("/api-keys.html",)
+    ADMIN_PAGES = ("/api-keys.html", "/admin-guide.html", "/cost-comparison.html")
 
     def _viewer(self) -> Dict[str, Any]:
-        """Who is looking. owner=None means unrestricted (admin, or a localhost tool without a session)."""
+        """Who is looking. Agents and calls are shared workspace-wide, so owner is always None
+        (unrestricted); is_admin only gates the admin-only routes and pages above."""
         u = self._session_user()
         if u is None:
             return {"user": None, "is_admin": True, "owner": None, "agents": None}
-        is_admin = u.role == "admin"
-        owner = None if is_admin else u.user_id
-        return {"user": u, "is_admin": is_admin, "owner": owner, "agents": agent_builder.visible_agent_names(owner)}
+        return {"user": u, "is_admin": u.role == "admin", "owner": None, "agents": None}
 
     def _enforce_role(self, parsed, method: str) -> bool:
         """Admin-only routes/pages. Returns False after sending a response when access is denied."""
@@ -446,9 +444,8 @@ class Handler(SimpleHTTPRequestHandler):
         elif parsed.path == "/api/agents/voices":
             vq = parse_qs(parsed.query)
             refresh = (vq.get("refresh") or ["0"])[0] in ("1", "true", "yes")
-            from agent.retell_voices import get_retell_api_key
             from agent.voice_synthesizer import voice_engine_readiness
-            voices = agent_builder.list_voices(refresh_retell=refresh)
+            voices = agent_builder.list_voices(refresh=refresh)
             for v in voices:
                 r = voice_engine_readiness(v.get("voice_id", ""), v.get("provider", ""), v.get("gender", "female"))
                 v["api_ready"] = bool(r["ready"])
@@ -458,7 +455,6 @@ class Handler(SimpleHTTPRequestHandler):
                 "status": "ok",
                 "voices": voices,
                 "models": agent_builder.list_models(),
-                "retell_configured": bool(get_retell_api_key()),
             })
             return
         elif parsed.path == "/api/agents/voice-audio":
@@ -805,7 +801,7 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 ws_id = v["user"].workspace_id if v["user"] else (auth_manager.get_profile().get("workspace_id") or "ws-default")
                 user = auth_manager.add_member(ws_id, str(payload.get("email") or ""), str(payload.get("password") or ""),
-                                               role=str(payload.get("role") or "operator"), name=str(payload.get("name") or ""),
+                                               role=str(payload.get("role") or "user"), name=str(payload.get("name") or ""),
                                                phone=str(payload.get("phone") or ""))
             except (ValueError, KeyError) as e:
                 self._send_json({"status": "error", "error": str(e)}, 400)
@@ -1787,9 +1783,9 @@ class Handler(SimpleHTTPRequestHandler):
         # --- Task 4.3: REST API & Multi-Tenant v1 POST Endpoints ---
         elif parsed.path == "/api/v1/auth/token":
             # Issues signed JWT Bearer token
-            subject = payload.get("username", payload.get("email", payload.get("subject", "operator")))
+            subject = payload.get("username", payload.get("email", payload.get("subject", "user")))
             ws_id = payload.get("workspace_id", "ws-default")
-            role = payload.get("role", "operator")
+            role = payload.get("role", "user")
             ttl = int(payload.get("ttl_seconds", 3600))
             token = auth_manager.issue_token(workspace_id=ws_id, subject=subject, role=role, ttl_seconds=ttl)
             self._send_json({"status": "ok", "token": token, "token_type": "Bearer", "expires_in": ttl, "workspace_id": ws_id})
@@ -1842,7 +1838,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
                 return
             email = payload.get("email", "").strip()
-            role = payload.get("role", "operator").strip()
+            role = payload.get("role", "user").strip()
             ws_id = payload.get("workspace_id", ctx["workspace_id"])
             try:
                 user = auth_manager.create_user(workspace_id=ws_id, email=email, role=role)

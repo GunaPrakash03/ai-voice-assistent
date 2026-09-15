@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Guide — Call Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/guide.css">
+<style>pre{margin:6px 0 10px;background:var(--sunk);border:1px solid var(--line-soft);border-radius:8px;padding:10px 12px;font-family:var(--f-mono);font-size:12px;overflow:auto;color:var(--ink)}</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div class="nav">
+      <a href="/">Overview</a>
+      <a href="/#calls">Calls</a>
+      <a href="/#agents">Agents</a>
+      <a href="/webhooks.html">Webhooks &amp; Data</a>
+      <a href="/api-keys.html">API Keys &amp; Providers</a>
+      <a href="/profile.html">My Profile</a>
+      <a href="/cost-comparison.html" data-admin-only>Cost Calculator</a>
+      <a href="/competitor-analysis.html">Competitors &amp; Features</a>
+      <a href="/admin-guide.html" class="active" data-admin-only>Admin Guide</a>
+      <a href="/user-guide.html">User Guide</a>
+    </div>
+    <div class="rail-foot"><!-- profile card injected by /profile.js --></div>
+  </nav>
+  <div>
+    <main>
+      <div class="page-header">
+        <div><div class="crumb">HELP · FOR WORKSPACE ADMINS</div><h1>Admin guide</h1></div>
+        <a class="btnlike" href="/">← Back to Call Desk</a>
+      </div>
+      <p class="lead">Everything an admin owns: first-run setup, provider keys, the team and their roles, phone numbers and trunks, the workspace webhook endpoints, where the data is stored, and how to operate the stack. Day-to-day agent work is covered in the <a href="/user-guide.html" style="color:var(--accent)">User guide</a>; per-minute costs are on the <a href="/cost-comparison.html" style="color:var(--accent)">Cost calculator</a> page.</p>
+
+      <div class="layout">
+        <aside class="toc">
+          <div class="h">Setup</div>
+          <a href="#first">1. First run</a>
+          <a href="#keys">2. Provider keys</a>
+          <a href="#models">3. Model &amp; voice plans</a>
+          <div class="h">Workspace</div>
+          <a href="#team">4. Team &amp; roles</a>
+          <a href="#agents">5. Agents overview</a>
+          <a href="#numbers">6. Numbers &amp; SIP trunks</a>
+          <a href="#webhooks">7. Webhook endpoints</a>
+          <div class="h">Platform</div>
+          <a href="#storage">8. Storage &amp; backups</a>
+          <a href="#security">9. Sign-in &amp; security</a>
+          <a href="#ops">10. Running the stack</a>
+          <a href="#limits">11. Known limits</a>
+        </aside>
+
+        <div>
+          <section class="card" id="first">
+            <h2>1. First run</h2>
+            <ol class="steps">
+              <li>Start the stack (section 10) and open the site. With no password on file it shows <b>Create your admin sign-in</b>: confirm your email and choose a password (8+ characters).</li>
+              <li>Open <b>API Keys &amp; Providers</b> and add at least Deepgram (speech) and Google Gemini (dialogue). See section 2.</li>
+              <li>Open <b>My Profile</b>, set your name and phone, and add your teammates (section 4).</li>
+              <li>Build or review the live agent, then set a phone number to route to it (sections 5 and 6).</li>
+            </ol>
+          </section>
+
+          <section class="card" id="keys">
+            <h2>2. Provider keys <span class="pill accent">admin only</span></h2>
+            <p>Keys are saved to the server's <code>.env</code> file and loaded into the running server immediately. The <b>agent worker container</b> reads <code>.env</code> only at start, so restart it after adding a key that live calls need (Gemini, ElevenLabs): <code>docker compose up -d agent</code>.</p>
+            <table>
+              <thead><tr><th>Provider</th><th>Used for</th><th>Notes</th></tr></thead>
+              <tbody>
+                <tr><td>Gemini</td><td>Hears the caller (audio goes straight to the model) and drives the dialogue</td><td>Required.</td></tr>
+                <tr><td>Deepgram</td><td>Aura voices only</td><td>Required for Aura voices; ElevenLabs otherwise.</td></tr>
+                <tr><td>Google Gemini</td><td>Dialogue in test calls and live calls; field suggestion and extraction</td><td>Without it a fixed rule script answers and the builder shows an amber notice.</td></tr>
+                <tr><td>ElevenLabs</td><td>Premium voices, streamed on live calls</td><td>Free plan: premade voices only; professional / Voice Library voices return 402.</td></tr>
+                <tr><td>Twilio</td><td>Phone numbers, SIP trunks, SMS sign-in codes</td><td>Trial accounts text verified numbers only.</td></tr>
+                <tr><td>Telnyx</td><td>Phone number inventory and orders</td><td></td></tr>
+                <tr><td>OpenAI, Cartesia</td><td>Alternative models and voices</td><td>Optional; used only when a voice or model from that provider is selected.</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="card" id="models">
+            <h2>3. Model &amp; voice plans</h2>
+            <ul>
+              <li><b>Gemini 3.5 Flash Lite</b> is the default: good enough for intake and the most generous free-tier rate limit. <b>Gemini 3.6 Flash</b> is smarter but limited to 5 requests per minute on the free tier, which a live call exceeds. Retired ids (gemini-2.0, 1.5) are remapped automatically.</li>
+              <li><b>Voices that are real today:</b> all ElevenLabs premade voices, all Deepgram Aura voices, and the Neural Voice entries in the browser. Live calls stream ElevenLabs and Aura only; anything else falls back to Aura with the reason logged and shown to the caller-side log.</li>
+              <li>The voice picker's <span class="btnlike">Sync accounts</span> pulls voices you add to your ElevenLabs account; <span class="btnlike">Real voices only</span> hides fallbacks.</li>
+            </ul>
+          </section>
+
+          <section class="card" id="team">
+            <h2>4. Team &amp; roles</h2>
+            <p>On <b>My Profile → Members</b> add a member with name, email, optional phone, role and a temporary password. They change the password on their own profile. <span class="btnlike">Remove</span> deactivates the account and ends its sessions. The workspace always keeps at least one admin.</p>
+            <table>
+              <thead><tr><th>Role</th><th>Sees</th><th>Can do</th></tr></thead>
+              <tbody>
+                <tr><td>Admin</td><td>All agents, all calls, all settings</td><td>Everything, including API Keys &amp; Providers and members</td></tr>
+                <tr><td>User</td><td>All agents and all calls</td><td>Whole dashboard: build, test, set live, route numbers, webhooks, call history. Cannot open API Keys &amp; Providers or manage members</td></tr>
+              </tbody>
+            </table>
+            <div class="note"><b>Sharing model:</b> agents, calls and webhooks are shared across the workspace. Every signed-in member can open and edit any agent; the only admin-only areas are the API Keys &amp; Providers page, member management, the admin guide and the cost comparison.</div>
+          </section>
+
+          <section class="card" id="agents">
+            <h2>5. Agents overview</h2>
+            <p>The <b>Agents</b> tab lists every agent with its owner. <span class="btnlike">Set live</span> chooses the agent that answers calls without specific routing; only one agent is live at a time. <span class="btnlike">Edit</span> opens any agent in the builder. Each save keeps a revision; the builder can roll back.</p>
+            <p>Test calls, recordings and extracted data are attributed to the agent that handled them, and every member sees the same call history.</p>
+          </section>
+
+          <section class="card" id="numbers">
+            <h2>6. Numbers &amp; SIP trunks</h2>
+            <ol class="steps">
+              <li><b>Buy Phone Numbers</b>: Telnyx and Twilio inventory in separate tabs; buying records the carrier, assigns a trunk and an agent.</li>
+              <li><b>SIP Trunks &amp; DIDs</b>: owned numbers with an agent dropdown each (per-number routing), inbound and outbound trunks, and dispatch rules. Edit or remove numbers and trunks here.</li>
+              <li>The live worker reads the dialled number on an incoming SIP call and answers with the agent assigned to it; unassigned numbers use the live agent.</li>
+            </ol>
+            <div class="note"><b>Real calls need a SIP gateway.</b> The compose stack runs LiveKit, Redis, Postgres and the worker but no LiveKit SIP service yet, so outbound dialling and inbound calls to the Twilio number are simulated. To go live: add the <code>livekit/sip</code> container, expose it on a public address, and point the Twilio (or Telnyx) trunk at it.</div>
+          </section>
+
+          <section class="card" id="webhooks">
+            <h2>7. Webhook endpoints</h2>
+            <p>On <b>Webhooks &amp; Data</b> add an endpoint URL, choose events, and optionally set the signing secret (one is generated otherwise). Press <span class="btnlike">Test</span>: a signed test event is posted and the result shows the HTTP code and round trip. The health pill reflects the last delivery. Recent deliveries list status, attempts and errors, with <span class="btnlike">Replay</span>.</p>
+            <p>Endpoints are workspace-wide; whether a call posts anything is decided per agent by its <b>Webhook &amp; data extraction</b> toggle. The payload carries <code>call</code>, <code>extracted</code> (the agent's fields, filled by Gemini), <code>summary</code>, <code>sentiment</code> and <code>transcript</code>, signed with <code>X-Signature-256</code> (HMAC-SHA256 of the body). Failed deliveries retry with back-off, then land in the dead-letter list.</p>
+          </section>
+
+          <section class="card" id="storage">
+            <h2>8. Storage &amp; backups</h2>
+            <p>Everything is written through to <b>PostgreSQL</b> (container <code>voice-postgres</code>, host port 5433, volume <code>voice_pgdata</code>): agents and revisions, phone numbers, trunks and rules, users, sessions and API keys, post-call jobs, and every recording as bytes. The JSON files under <code>config/</code> and the WAVs under <code>recordings/</code> remain the working copy; at start-up anything missing or older on disk is restored from the database.</p>
+            <ul>
+              <li>Connection: <code>DATABASE_URL</code> in <code>.env</code> (empty = files only).</li>
+              <li>Status: <b>My Profile → Data &amp; storage</b>, or <code>GET /api/storage/status</code>.</li>
+              <li>Backup: <code>docker exec voice-postgres pg_dump -U voice voice_agent &gt; backup.sql</code>.</li>
+              <li>If you edit a config JSON by hand, restart the server afterwards, otherwise the newer database copy is restored over it.</li>
+            </ul>
+            <p>The pipeline's archive copies in <code>recordings/archive/</code> carry a placeholder <code>s3://</code> URL; there is no cloud upload yet.</p>
+          </section>
+
+          <section class="card" id="security">
+            <h2>9. Sign-in &amp; security</h2>
+            <ul>
+              <li>Passwords are stored as PBKDF2-SHA256 hashes. Sessions are HttpOnly cookies (12 h, or 30 days with "keep me signed in") and are stored hashed.</li>
+              <li>The SMS step is on for any account with a phone on its profile. Codes last 5 minutes, 5 attempts, resend after 30 s. Sender: the workspace's SMS-capable Twilio number (<code>TWILIO_SMS_FROM</code> overrides).</li>
+              <li>Every page redirects to sign-in when signed out. JSON API calls from <b>this machine</b> are allowed without a session so the test suites and tools keep working; set <code>AUTH_TRUST_LOOPBACK=0</code> in <code>.env</code> to require a session everywhere.</li>
+              <li>Provider keys and member management are admin-only on the server, not just hidden in the UI.</li>
+            </ul>
+          </section>
+
+          <section class="card" id="ops">
+            <h2>10. Running the stack</h2>
+<pre>docker compose up -d redis livekit postgres agent   # media server, cache, database, AI worker
+python3 scripts/serve.py                            # dashboard + API on http://localhost:8091
+docker compose up -d agent                          # restart the worker after key changes
+docker compose logs -f agent                        # live worker log (voice engine, dialogue backend, tool calls)
+python3 scripts/run_all_tests.py                    # 20 verification suites</pre>
+            <ul>
+              <li>Live suites (1.4, 1.5, 1.6, 1.7, 2.5, 2.6) can flake when anything else touches LiveKit at the same time; rerun one alone before calling it a regression.</li>
+              <li>The worker logs <code>Agent '…' loaded for this call</code> with the dialled number, voice engine and any fallback reason, and <code>Dialogue backend: gemini</code> when the model is connected.</li>
+            </ul>
+          </section>
+
+          <section class="card" id="limits">
+            <h2>11. Known limits</h2>
+            <table>
+              <thead><tr><th>Area</th><th>Today</th><th>To lift it</th></tr></thead>
+              <tbody>
+                <tr><td>Real phone calls</td><td>Simulated (no SIP gateway)</td><td>Add the LiveKit SIP container and point the carrier trunk at it</td></tr>
+                <tr><td>SMS sign-in codes</td><td>Twilio trial: verified numbers only</td><td>Verify numbers in Twilio, or upgrade</td></tr>
+                <tr><td>ElevenLabs voices</td><td>Free plan: premade only</td><td>Starter plan or higher for Voice Library / professional voices</td></tr>
+                <tr><td>Gemini</td><td>Free tier rate limits</td><td>Paid tier for 3.6 Flash on busy lines</td></tr>
+                <tr><td>Recording archive</td><td>Local folder, placeholder URL</td><td>Choose cloud storage and wire the archive step</td></tr>
+              </tbody>
+            </table>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="/profile.js"></script>
+</body>
+</html>

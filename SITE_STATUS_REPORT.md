@@ -12,7 +12,7 @@ removal, builder new-agent mode, user guide, softphone suite fix).
 | Area | Result |
 |---|---|
 | Sign-in | Password, then SMS code (Twilio) when a phone is on the profile; first-run admin setup; HttpOnly sessions; sign-out |
-| Users & roles | Admin / operator / analyst. Members: full dashboard except API keys and member management; private agents and calls |
+| Users & roles | Two roles: admin / user. Users: full dashboard (all agents, calls, webhooks) except API keys & providers and member management |
 | Agents | Owned per user; builder with Save/revisions; "new agent" mode; Set live; per-number routing |
 | Dialogue | Gemini drives sandbox and live calls (retired model ids remapped, thinking budget fixed); tools via function calling |
 | Voice | Real engines streamed (ElevenLabs premade, Deepgram Aura); honest fallback labels; picker readiness chips |
@@ -420,22 +420,26 @@ Agents tab lists them all with their own Edit buttons.
 - **Twilio is a Trial account.** Trial accounts can only text numbers verified in the Twilio console,
   so add your phone under Verified Caller IDs (or upgrade) before enabling the SMS step.
 
-### 7.22 Permissions: admin-only pages, per-user agents and calls
-*(Updated later the same day per user: signed-in members now have the whole dashboard — telephony,
-webhooks, set-live for their own agents — except the API Keys & Providers page and member management.
-Data scoping to their own agents/calls is unchanged.)*
-- Roles: `admin` sees everything; `operator` / `analyst` see only their own agents and the calls those
-  agents handled. Agents carry `owner_id`; `list_agents(owner_id)`, `can_access()`, and
-  `visible_agent_names()` scope the API; `call_history.list_calls/stats/export` take `visible_agents`
-  and `can_view()` guards detail/audio/waveform. Server: `_viewer()`, `_enforce_role()` (403 on
-  `/api/providers`, `/api/telephony`, `/api/webhooks`, `/api/pipeline`, `/api/storage`, `/api/v1/users`,
-  `/api/v1/api-keys`, `/api/agents/activate`; `/api-keys.html` and `/webhooks.html` redirect), and
-  `_agent_allowed()` (404 for other users' agents). Members cannot set an agent live or change owners.
-- UI: `data-admin-only` elements are hidden for members (SIP tab, Buy Numbers, Simulate, Set live,
-  API Keys / Webhooks links). Profile page: admins add/remove members (name, email, phone, role,
-  temporary password); members see only themselves.
-- Verified with a real operator account: no agents until they create one, Maya → 404, keys → 403,
-  api-keys page → redirect, set live → 403, calls list shows only their agent's calls, admin still sees all.
+### 7.22 Permissions: two roles, shared agents and calls
+*(Updated 2026-09-15 per user: the operator / analyst roles and the per-user agent privacy model were
+removed. There are now two roles and everything in the workspace is shared.)*
+- Roles: `admin` and `user` (`agent/auth_manager.py` `UserRole`). Legacy `operator` / `analyst` values
+  in `config/auth_store.json` or in token payloads are folded into `user` by `normalize_role()`.
+- `user` gets the whole dashboard: every agent, all call history, webhooks, telephony, set-live.
+  Admin-only: `/api-keys.html`, `/admin-guide.html`, `/cost-comparison.html` (redirect to `/?denied=admin`)
+  and `/api/providers`, `/api/v1/users`, `/api/v1/api-keys`, `/api/v1/workspaces`, `/api/v1/auth/users`
+  (403). Enforced by `_enforce_role()` in `scripts/serve.py`.
+- `_viewer()` now always returns `owner=None` / `agents=None`, so `list_agents`, `can_access`,
+  `visible_agent_names` and `call_history` scoping are unrestricted for every signed-in member. The
+  `owner_id` field on agents is still recorded (shown as the creator) but no longer gates access.
+- UI: `data-admin-only` hides only the API Keys, Admin guide and Cost comparison links plus the
+  member-management card on the profile page. Role picker offers User / Admin.
+- Storage: users, workspaces, API keys and sessions are read from and written to PostgreSQL only
+  (`app_documents` collections `users` / `workspaces` / `api_keys` / `sessions`); `config/auth_store.json`
+  is gone (imported once on first start, then deleted; now git-ignored). The JSON file is used only when
+  `DATABASE_URL` is unset (the tenant test runs with `env -u DATABASE_URL`). Verified 2026-09-15:
+  member created via API → login → sees both agents incl. another user's, calls, webhooks; api-keys
+  page 302, /api/providers and /api/v1/users 403; `verify_api_tenant.py` 57/57.
 
 ### 7.23 Webhook & AI data extraction (optional per agent)
 - Agent Builder gained a **Webhook & data extraction** card with an **Enable** toggle. When on:
@@ -466,3 +470,50 @@ Data scoping to their own agents/calls is unchanged.)*
   agent" form; saving creates their own agent (server no longer falls back to the live agent for them).
 - Full regression: 20/20 suites pass individually (`verify_softphone.py` now mints a dev session for
   the page fetch). 11 pages clean.
+
+### 7.25 Two guides + cost comparison page
+- `web/user-guide.html` (operators/analysts, 11 sections) and `web/admin-guide.html` (admins, 11
+  sections; admin-only, server-gated) share `web/guide.css`; both linked in every sidebar.
+- `web/cost-comparison.html` (admin-only): interactive per-minute and per-month comparison of Call
+  Desk's provider costs vs Retell AI's bundled price, by model (OpenAI GPT-4o mini / 4.1 mini / 4.1 /
+  5.1 / 5.2 / 5.4 / 5.4 mini / 5.6 Luna, Gemini 2.5 Flash-Lite / 3.5 Flash Lite / 3.6 Flash / 3.5
+  Flash, Claude Haiku 4.5 / Sonnet 4.5), voice (Deepgram Aura-1/2, ElevenLabs), telephony, prompt
+  size, turns/min, caching, volume, numbers, server cost. List prices captured 14 Sep 2026 with sources.
+- Headline (GPT-4.1, Aura-2, Twilio inbound, 2.5k-token prompt, 4 turns/min, caching on):
+  Call Desk ≈ $0.035/min vs Retell $0.13/min (−73%); at 5,000 min/month ≈ $236 vs $654 including a
+  $60 server and two numbers. With Maya's 13k-token prompt: $0.043/min cached, $0.137/min uncached.
+  With an ElevenLabs voice: $0.074 vs $0.155.
+
+### 7.24 Site cleanup: no icons, Retell AI removed
+*(2026-09-15, per user: "no symbol need to show anywhere" and "remove the retell ai".)*
+- Every emoji / dingbat / icon glyph was stripped from all `web/*.html` and JS (661 characters across
+  17 files, plus entity-encoded ones in softphone, live-console, task-plan, code-walkthrough). Buttons
+  keep their text labels; the password-eye toggle became Show / Hide; the voice cards lost the TTFA,
+  "100% Free" and engine chips (an amber fallback warning still appears only when a voice cannot be
+  synthesised). Plain arrows (← Back, →) were kept. Headless Chromium pass: 15 pages, 0 JS errors,
+  0 icon glyphs in rendered text or CSS pseudo-content.
+- Retell AI is gone end to end: `agent/retell_voices.py`, `audio/retell/`, the 18 `retell-*` catalog
+  voices and neural aliases, the provider card and `RETELL_API_KEY`, the builder tab, the
+  `retell_configured` flag on `/api/agents/voices` (now 75 voices), and the Playwright F7 check.
+  `cost-comparison.html` is now a Call Desk-only cost calculator; `competitor-analysis.html` compares
+  against Vapi, Bland, ElevenLabs Agent and Synthflow. Earlier sections that mention Retell describe
+  history and are left as written.
+
+### 7.25 Gemini hears the caller; Deepgram is voice-only
+*(2026-09-15, per user: "no need use the tts and stt in the other platform, use our llm for this; only the
+voice is enough for the deepgram". Confirmed: Gemini (current default) listens to the audio directly.)*
+- `agent/gemini_stt.py`: a LiveKit non-streaming `stt.STT`. Silero VAD segments the caller (LiveKit wraps
+  it in `StreamAdapter` automatically); each utterance is resampled to 16 kHz mono WAV and posted inline
+  to Gemini `generateContent` with a transcription-only instruction (temperature 0, thinking minimal,
+  keep-alive HTTP session). Returns one FINAL transcript per utterance; no interim results.
+- `agent/worker.py`: `STT_PROVIDER=gemini` (default) builds `GeminiSTT`; `deepgram` keeps Nova; missing
+  `GEMINI_API_KEY` falls back to Deepgram with a warning. Compose passes `STT_PROVIDER`, `GEMINI_STT_MODEL`.
+- Verified in a real room (`scripts/publish_audio.py` from inside the worker, `samples/caller_test.wav`,
+  6 s of Aura speech): transcript "I'd like to book an appointment for tomorrow morning at 9:30. My name
+  is Priya Sharma." → Gemini reply → Aura TTS (TTFA 263 ms).
+- **Latency trade-off:** Gemini transcription is model-bound at ~1.3-1.8 s for a 1-2 s utterance and
+  ~3.3 s for a 5 s utterance (gemini-3.5-flash-lite; 2.5-flash-lite similar, 3.6-flash slower), versus
+  ~0.3 s for Deepgram Nova streaming. Every caller turn therefore waits roughly 1-3 s longer before the
+  agent starts answering. Set `STT_PROVIDER=deepgram` to get the old behaviour back.
+- Pages: API Keys card is "Deepgram Aura (voice)"; admin guide provider table; cost calculator's
+  "Speech-to-text" line became "Hearing the caller" = caller audio tokens (32/s) at the model's input price.

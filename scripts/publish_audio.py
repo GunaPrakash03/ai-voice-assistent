@@ -110,7 +110,7 @@ async def main():
 
     for frame in frames:
         await source.capture_frame(frame)
-    await asyncio.sleep(3)          # let the last final transcript land
+    await asyncio.sleep(float(os.environ.get("TAIL_SECS", "3")))   # let the last final transcript land
     await room.disconnect()
 
     if WAV:

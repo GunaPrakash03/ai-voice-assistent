@@ -1,9 +1,10 @@
 """
 PostgreSQL persistence for everything the service keeps.
 
-The managers (agents, phone numbers, SIP trunks, auth store, post-call jobs, recordings) were
-written around JSON files and WAVs on disk. Rather than rewrite each of them, this module makes
-Postgres the durable copy behind those files:
+The managers (agents, phone numbers, SIP trunks, post-call jobs, recordings) were written around
+JSON files and WAVs on disk. Rather than rewrite each of them, this module makes Postgres the
+durable copy behind those files. (Users, workspaces, API keys and sessions are the exception: the
+auth manager reads and writes their collections here directly and keeps no JSON file.)
 
   * write-through  – every time a manager saves its JSON file it also upserts the same documents
                      into ``app_documents`` (one row per agent / number / trunk / job / user…),
@@ -71,10 +72,6 @@ FILE_COLLECTIONS: Dict[str, List[Tuple[str, str, str]]] = {
     os.path.join(CONFIG_DIR, "sip_trunks.json"): [("sip_trunks_inbound", "inbound", "trunk_id"),
                                                   ("sip_trunks_outbound", "outbound", "trunk_id"),
                                                   ("sip_dispatch_rules", "rules", "rule_id")],
-    os.path.join(CONFIG_DIR, "auth_store.json"): [("workspaces", "workspaces", "workspace_id"),
-                                                  ("users", "users", "user_id"),
-                                                  ("api_keys", "api_keys", "key_id"),
-                                                  ("sessions", "sessions", "token_hash")],
     os.path.join(RECORDINGS_DIR, "pipeline_jobs.json"): [("call_jobs", "jobs", "job_id")],
 }
 # Keys of a file that are not lists of documents but must round-trip (e.g. agent revisions).

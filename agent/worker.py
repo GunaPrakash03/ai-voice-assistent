@@ -53,6 +53,9 @@ log = logging.getLogger("dialogue-worker")
 amd_manager = AMDManager()
 
 # Model configuration
+# STT_PROVIDER=gemini (default): the Gemini model listens to the caller's audio itself (agent/gemini_stt.py).
+# STT_PROVIDER=deepgram: Deepgram Nova streaming recogniser (legacy).
+STT_PROVIDER = os.getenv("STT_PROVIDER", "gemini").strip().lower()
 STT_MODEL = os.getenv("STT_MODEL", "nova-3")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 TTS_MODEL = os.getenv("TTS_MODEL", "sonic-3")
@@ -151,6 +154,19 @@ def resolve_agent_for_call(ctx: agents.JobContext):
     return agent_builder.get_active_agent(), dialled
 
 
+def build_stt():
+    """The caller's ears: Gemini hears the audio directly unless STT_PROVIDER=deepgram."""
+    from agent.gemini_stt import GeminiSTT, gemini_api_key
+    if STT_PROVIDER != "deepgram":
+        if gemini_api_key():
+            engine = GeminiSTT(language="en")
+            log.info("STT: Gemini listens to the caller directly (%s)", engine.model)
+            return engine
+        log.warning("STT_PROVIDER=%s but no GEMINI_API_KEY; falling back to Deepgram %s", STT_PROVIDER, STT_MODEL)
+    log.info("STT: Deepgram %s streaming", STT_MODEL)
+    return deepgram.STT(model=STT_MODEL, language="en", interim_results=True, punctuate=True)
+
+
 async def entrypoint(ctx: agents.JobContext):
     await ctx.connect()
     log.info("joined room %s", ctx.room.name)
@@ -185,12 +201,7 @@ async def entrypoint(ctx: agents.JobContext):
 
     session = AgentSession(
         vad=vad,
-        stt=deepgram.STT(
-            model=STT_MODEL,
-            language="en",
-            interim_results=True,
-            punctuate=True,
-        ),
+        stt=build_stt(),
         tts=tts_manager.tts,
         turn_handling={
             "turn_detection": "vad",

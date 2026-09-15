@@ -107,7 +107,7 @@
     <span style="color:var(--ink-faint)">/</span>
     <span>My Profile</span>
   </div>
-  <div><a class="btn btn-ghost" href="/api-keys.html">🔑 API Keys &amp; Providers</a></div>
+  <div><a class="btn btn-ghost" href="/api-keys.html">API Keys &amp; Providers</a></div>
 </header>
 
 <div class="app">
@@ -119,10 +119,12 @@
       <a href="/#detail">Call detail</a>
       <a href="/#telephony">SIP Trunks &amp; DIDs</a>
       <a href="/#agents">Agents</a>
-      <a href="/api-keys.html" data-admin-only>API Keys &amp; Providers<span class="ct">🔑</span></a>
-      <a href="/webhooks.html">Webhooks &amp; Data<span class="ct">⚡</span></a>
-      <a href="/profile.html" class="active">My Profile<span class="ct">👤</span></a>
-      <a href="/user-guide.html">How to use<span class="ct">📘</span></a>
+      <a href="/api-keys.html" data-admin-only>API Keys &amp; Providers</a>
+      <a href="/webhooks.html">Webhooks &amp; Data</a>
+      <a href="/cost-comparison.html" data-admin-only>Cost Calculator</a>
+      <a href="/competitor-analysis.html">Competitors &amp; Features</a>
+      <a href="/admin-guide.html" data-admin-only>Admin Guide</a>
+      <a href="/user-guide.html">User Guide</a>
     </div>
     <div class="rail-foot">
       <!-- profile card is injected here by /profile.js -->
@@ -162,7 +164,7 @@
                   <div class="field"><label for="fPhone">Phone (SMS sign-in code)</label><input id="fPhone" name="phone" type="tel" placeholder="+91 93459 96508" autocomplete="tel"><div class="hint">With a phone set, sign-in asks for a 6-digit code texted here after your password.</div></div>
                 </div>
                 <div class="actions">
-                  <button type="submit" class="btn btn-primary" id="btnSave">💾 Save profile</button>
+                  <button type="submit" class="btn btn-primary" id="btnSave">Save profile</button>
                   <button type="button" class="btn btn-ghost" id="btnReset">Reset</button>
                   <span class="msg" id="msg"></span>
                 </div>
@@ -180,7 +182,7 @@
                   <div class="field"><label for="pwNew">New password</label><input id="pwNew" type="password" autocomplete="new-password" minlength="8"><div class="hint">At least 8 characters.</div></div>
                 </div>
                 <div class="actions">
-                  <button type="submit" class="btn btn-primary" id="btnPw">🔒 Change password</button>
+                  <button type="submit" class="btn btn-primary" id="btnPw">Change password</button>
                   <button type="button" class="btn btn-ghost" id="btnSignOut">Sign out</button>
                   <span class="msg" id="pwMsg"></span>
                 </div>
@@ -200,7 +202,7 @@
                 <dt>Rate limit</dt><dd id="wsRate">—</dd>
               </dl>
               <div class="actions" style="margin-top:14px">
-                <button type="button" class="btn btn-primary" id="btnSaveWs">💾 Save workspace</button>
+                <button type="button" class="btn btn-primary" id="btnSaveWs">Save workspace</button>
                 <span class="msg" id="wsMsg"></span>
               </div>
             </div>
@@ -227,13 +229,12 @@
                   <div class="field"><label for="mPhone">Phone (SMS code)</label><input id="mPhone" type="tel" placeholder="+1 555 010 0000"></div>
                   <div class="field"><label for="mRole">Role</label>
                     <select id="mRole" style="width:100%;padding:9px 11px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13.5px">
-                      <option value="operator">Operator — own agents, test calls, own call history</option>
-                      <option value="analyst">Analyst — read-only on own agents' calls</option>
+                      <option value="user">User — whole dashboard except API keys &amp; providers and members</option>
                       <option value="admin">Admin — everything</option>
                     </select></div>
                 </div>
                 <div class="field"><label for="mPass">Temporary password</label><input id="mPass" type="password" minlength="8" required placeholder="At least 8 characters"><div class="hint">Share it with the member; they can change it on their profile.</div></div>
-                <div class="actions"><button type="submit" class="btn btn-primary" id="btnAddMember">＋ Add member</button><span class="msg" id="memberMsg"></span></div>
+                <div class="actions"><button type="submit" class="btn btn-primary" id="btnAddMember">Add member</button><span class="msg" id="memberMsg"></span></div>
               </form>
             </div>
           </div>
@@ -312,7 +313,7 @@
     Array.prototype.forEach.call(document.querySelectorAll(".btn-remove-member"), function (b) {
       b.addEventListener("click", function () {
         fetch("/api/v1/auth/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remove", user_id: b.dataset.id }) })
-          .then(function (r) { return r.json(); }).then(function (d) { if (d.status === "ok") { toast("Member removed"); load(); } else { toast("❌ " + (d.error || "Could not remove")); } });
+          .then(function (r) { return r.json(); }).then(function (d) { if (d.status === "ok") { toast("Member removed"); load(); } else { toast(d.error || "Could not remove"); } });
       });
     });
     if (window.applyRoleVisibility) window.applyRoleVisibility();
@@ -339,7 +340,7 @@
     return fetch("/api/v1/auth/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (d.status === "ok") { profile = d.profile; render(); setMsg(msgEl, okText, true); toast("✅ " + okText); }
+        if (d.status === "ok") { profile = d.profile; render(); setMsg(msgEl, okText, true); toast(okText); }
         else { setMsg(msgEl, d.error || "Could not save", false); }
       }).catch(function () { setMsg(msgEl, "Network error", false); });
   }
@@ -364,7 +365,7 @@
       body: JSON.stringify({ name: $("mName").value, email: $("mEmail").value, phone: $("mPhone").value, role: $("mRole").value, password: $("mPass").value }) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (d.status === "ok") { setMsg($("memberMsg"), "Added " + d.user.email, true); toast("✅ Member added"); $("memberForm").reset(); load(); }
+        if (d.status === "ok") { setMsg($("memberMsg"), "Added " + d.user.email, true); toast("Member added"); $("memberForm").reset(); load(); }
         else { setMsg($("memberMsg"), d.error || "Could not add member", false); }
       }).catch(function () { setMsg($("memberMsg"), "Network error", false); });
   });
