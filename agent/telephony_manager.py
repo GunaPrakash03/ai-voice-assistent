@@ -249,7 +249,10 @@ class TelephonyManager:
         self._calls: Dict[str, TelephonyCallRecord] = {}
         self._owned_numbers: Dict[str, PhoneNumberRecord] = {}
 
-        if not self._load_trunks():
+        loaded = self._load_trunks()
+        log.warning("DIAG _load_trunks()=%s file=%s isfile=%s inbound_ids=%s",
+                    loaded, SIP_TRUNKS_FILE, os.path.isfile(SIP_TRUNKS_FILE), list(self._inbound_trunks.keys()))
+        if not loaded:
             self._init_default_demo_trunks()
         self._load_phone_numbers()
         self._rebind_numbers_to_trunks()
