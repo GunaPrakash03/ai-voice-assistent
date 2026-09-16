@@ -300,6 +300,19 @@ def _file_stamp(path: str) -> float:
         return 0.0
 
 
+def db_collections() -> set:
+    """Set of collection names that already exist in PostgreSQL (have a collection_meta row)."""
+    if not available():
+        return set()
+    try:
+        with _connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT collection FROM collection_meta")
+            return {r[0] for r in cur.fetchall()}
+    except Exception as e:
+        log.warning("Cannot read collection list: %s", e)
+        return set()
+
+
 def restore_files() -> List[str]:
     """Rebuilds JSON files that are missing or older than the database copy. Returns what it restored."""
     if not available():
@@ -378,8 +391,17 @@ def bootstrap(label: str = "") -> Dict[str, Any]:
         return {"connected": False, "error": _state.get("error", "")}
     files = restore_files()
     recs = restore_recordings()
+    # PostgreSQL is authoritative once seeded. Only push a file to the DB to SEED a collection the DB
+    # has never held — never to overwrite one it already has. Otherwise a stale config/*.json baked
+    # into the container image would clobber real data (deleted numbers reappear, re-routes revert,
+    # trunk edits undone) on every boot. Restore above already pulled DB -> file for the running
+    # process; runtime writes (user actions) still push through sync_file() as normal.
+    existing = db_collections()
     pushed = 0
-    for path in FILE_COLLECTIONS:
+    for path, specs in FILE_COLLECTIONS.items():
+        path_cols = {c for c, _, _ in specs}
+        if path_cols & existing:
+            continue  # DB already owns this data — do not overwrite from a (possibly stale) file
         if os.path.isfile(path) and sync_file(path):
             pushed += 1
     uploaded = sync_recordings_dir()
