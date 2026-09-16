@@ -902,7 +902,7 @@
         }).join("");
 
         Array.prototype.forEach.call(document.querySelectorAll(".btn-hangup-call"), function (btn) {
-          btn.addEventListener("click", function () {
+          btn.addEventListener("click", async function () {
             var cid = btn.dataset.id;
             btn.disabled = true;
             fetch("/api/telephony/calls/end", {
@@ -1221,10 +1221,10 @@
 
       // Bind delete trunk buttons
       Array.prototype.forEach.call(document.querySelectorAll(".btn-del-trunk"), function (btn) {
-        btn.addEventListener("click", function () {
+        btn.addEventListener("click", async function () {
           var tid = btn.dataset.id;
           var tname = btn.dataset.name || tid;
-          if (!confirm("Are you sure you want to delete the SIP Trunk '" + tname + "'?")) {
+          if (!(await uiConfirm("Delete the SIP trunk '" + tname + "'? This cannot be undone.", {title:"Delete SIP trunk", okText:"Delete"}))) {
             return;
           }
           btn.disabled = true;
@@ -1406,8 +1406,8 @@
     removeNumber(num);
   });
 
-  function removeNumber(num) {
-    if (!confirm("Are you sure you want to remove/release phone number " + num + "?")) {
+  async function removeNumber(num) {
+    if (!(await uiConfirm("Remove phone number " + num + "? This releases it from the carrier and cannot be undone.", {title:"Remove number", okText:"Remove"}))) {
       return;
     }
     fetch("/api/telephony/numbers/delete", {
@@ -1557,8 +1557,8 @@
     });
   }
 
-  function releaseNumber(num) {
-    if (!confirm("Are you sure you want to release phone number " + num + "? Incoming calls to this DID will stop.")) {
+  async function releaseNumber(num) {
+    if (!(await uiConfirm("Release phone number " + num + "? Incoming calls to this number will stop.", {title:"Release number", okText:"Release"}))) {
       return;
     }
     fetch("/api/telephony/numbers/release", {
