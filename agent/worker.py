@@ -143,6 +143,25 @@ def resolve_agent_for_call(ctx: agents.JobContext):
             return cfg, ""
         log.warning("Test room names unknown agent id %s; using the live agent", m.group(1))
 
+    # Outbound calls: telephony_manager.dial_phone_number() stamps the room it creates with the
+    # caller-ID number's assigned agent (set on that number via "Assign to Voice Agent" when it was
+    # bought), so an outbound call sounds like the agent that owns the number placing it, not
+    # whichever agent happens to be live.
+    try:
+        meta = json.loads(ctx.room.metadata or "{}")
+    except Exception:
+        meta = {}
+    outbound_agent = meta.get("outbound_agent")
+    if outbound_agent:
+        wanted = str(outbound_agent).strip().lower()
+        for a in agent_builder.list_agents():
+            if a["name"].strip().lower() == wanted or a["agent_id"] == wanted:
+                cfg = agent_builder.get_agent(a["agent_id"])
+                if cfg:
+                    log.info("Outbound call: caller-ID number is assigned to agent '%s'; using it", cfg.name)
+                    return cfg, ""
+        log.warning("Outbound call room asks for agent '%s' but no such agent exists; using the live agent", outbound_agent)
+
     dialled = ""
     for p in list(ctx.room.remote_participants.values()):
         attrs = getattr(p, "attributes", {}) or {}

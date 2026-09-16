@@ -40,6 +40,15 @@ def _storage_sync(path: str) -> None:
         storage.sync_file(path)
     except Exception as e:
         log.debug("storage sync skipped for %s: %s", path, e)
+
+
+def _peek_file_stamp(path: str):
+    """DIAG helper: read a file's own updated_at without disturbing anything."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f).get("updated_at")
+    except Exception as e:
+        return f"<unreadable: {e}>"
 VALID_TRANSPORTS = ("udp", "tcp", "tls")
 
 
@@ -255,7 +264,13 @@ class TelephonyManager:
         if not loaded:
             self._init_default_demo_trunks()
         self._load_phone_numbers()
+        rec = self._owned_numbers.get("+19517177889")
+        log.warning("DIAG _load_phone_numbers() +19517177889 assigned_trunk_id=%s file=%s isfile=%s file_stamp=%s",
+                    rec.assigned_trunk_id if rec else None, PHONE_NUMBERS_FILE,
+                    os.path.isfile(PHONE_NUMBERS_FILE), _peek_file_stamp(PHONE_NUMBERS_FILE))
         self._rebind_numbers_to_trunks()
+        rec2 = self._owned_numbers.get("+19517177889")
+        log.warning("DIAG after _rebind_numbers_to_trunks() assigned_trunk_id=%s", rec2.assigned_trunk_id if rec2 else None)
 
     # ── Trunk persistence ────────────────────────────────────────────────────
     def _load_trunks(self) -> bool:
@@ -1178,11 +1193,22 @@ class TelephonyManager:
             trunk.trunk_id,
         )
 
+        # The caller-ID number's own "Assign to Voice Agent" (set when it was purchased) decides who
+        # speaks on outbound calls placed from it — stamped onto the room so the worker's
+        # resolve_agent_for_call() picks it up instead of falling back to whichever agent is live.
+        caller_rec = self._owned_numbers.get(selected_caller_id)
+        outbound_agent = caller_rec.assigned_agent if caller_rec and caller_rec.assigned_agent else None
+
         try:
             if self.api_key and self.api_secret and "127.0.0.1" not in self.livekit_url:
                 from livekit import api
                 lk_api = api.LiveKitAPI(self.livekit_url, self.api_key, self.api_secret)
                 try:
+                    if outbound_agent:
+                        await lk_api.room.create_room(api.CreateRoomRequest(
+                            name=target_room,
+                            metadata=json.dumps({"outbound_agent": outbound_agent}),
+                        ))
                     sip_call_req = api.CreateSIPParticipantRequest(
                         sip_trunk_id=trunk.trunk_id,
                         sip_call_to=norm_dest,
