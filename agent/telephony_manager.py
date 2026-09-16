@@ -460,6 +460,14 @@ class TelephonyManager:
     def register_inbound_trunk(self, trunk: SIPInboundTrunk, persist: bool = True) -> None:
         trunk.numbers = [normalize_phone_number(n) for n in trunk.numbers]
         self._inbound_trunks[trunk.trunk_id] = trunk
+        # A DID belongs to exactly one inbound trunk. If this trunk claims a number that already sits
+        # on another trunk (e.g. re-typed into the Create Inbound Trunk form), take it off the other
+        # trunk so it isn't registered twice and doesn't end up routed to two agents.
+        for num in trunk.numbers:
+            for other_id, other in self._inbound_trunks.items():
+                if other_id != trunk.trunk_id and num in other.numbers:
+                    other.numbers.remove(num)
+                    log.info("Number %s moved to trunk %s; removed from trunk %s", num, trunk.trunk_id, other_id)
         log.info("Registered Inbound SIP Trunk: %s (%s numbers)", trunk.trunk_id, len(trunk.numbers))
         if persist:
             self._save_trunks()
