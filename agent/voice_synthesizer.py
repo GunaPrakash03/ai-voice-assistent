@@ -302,7 +302,7 @@ NEURAL_VOICE_MAP = {
     "studio-lucas":       {"neural": "en-US-EricNeural",        "rate": "+2%", "pitch": "-1Hz"},  # Confident modern assistant (Lucas)
     "studio-danica":      {"neural": "en-US-MichelleNeural",    "rate": "+2%", "pitch": "-2Hz"},  # Efficient service dispatcher (Danica)
     "studio-melanie":     {"neural": "en-US-AnaNeural",         "rate": "+2%", "pitch": "+0Hz"},  # Articulate support advisor (Melanie)
-    "studio-madeline":    {"neural": "en-GB-RyanNeural",        "rate": "+2%", "pitch": "-2Hz"},  # Charming British assistant (Madeline)
+    "studio-madeline":    {"neural": "en-GB-MaisieNeural",      "rate": "+2%", "pitch": "-2Hz"},  # Charming British assistant (Madeline)
     "studio-alana":       {"neural": "es-US-PalomaNeural",      "rate": "+3%", "pitch": "+0Hz"},  # Warm bilingual care (Alana)
     "studio-alana-es":    {"neural": "es-US-PalomaNeural",      "rate": "+3%", "pitch": "+0Hz"},  # Asistente en español (Alana ES)
 
@@ -314,8 +314,8 @@ NEURAL_VOICE_MAP = {
     "b7d50908-b17c-442d-ad8d-810c63997ed9": {"neural": "en-US-EricNeural",     "rate": "+3%", "pitch": "-2Hz"},  # Leo
     "3656c123-289b-449e-9d29-c89b4f9fb338": {"neural": "en-GB-LibbyNeural",    "rate": "+2%", "pitch": "+1Hz"},  # Evelyn
     "c885cf83-7c50-482a-a9f0-28ec36081e66": {"neural": "en-GB-ThomasNeural",   "rate": "+3%", "pitch": "-3Hz"},  # George
-    "829ccd10-f8b3-43cd-a8c0-96aa29f3be6f": {"neural": "en-AU-WilliamMultilingualNeural", "rate": "+4%", "pitch": "-2Hz"}, # Sarah / AU
-    "a216d649-14a5-48b2-b430-81f1e3100346": {"neural": "es-US-PalomaNeural",   "rate": "+5%", "pitch": "+0Hz"},  # Mateo
+    "829ccd10-f8b3-43cd-a8c0-96aa29f3be6f": {"neural": "en-AU-NatashaNeural", "rate": "+4%", "pitch": "-2Hz"}, # Sarah / AU
+    "a216d649-14a5-48b2-b430-81f1e3100346": {"neural": "es-US-AlonsoNeural",  "rate": "+5%", "pitch": "+0Hz"},  # Mateo
 
     # Deepgram Aura
     "aura-asteria-en": {"neural": "en-US-JennyNeural",       "rate": "+2%", "pitch": "+1Hz"},

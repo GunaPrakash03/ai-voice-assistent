@@ -119,8 +119,8 @@ VOICE_CATALOG: List[VoiceOption] = [
                 "Friendly, clear Indian English advisor", "male", 130, 0.000),
 
     # Studio Pro Ultra-Realistic Platform Voices (18 Studio Personas · 0 API Keys Needed)
-    VoiceOption("studio-calvin", "Camille (Studio Pro)", "studio", "studio-neural-v2",
-                "American · Middle Aged · Calm, friendly & warm conversational concierge", "female", 110, 0.000),
+    VoiceOption("studio-calvin", "Calvin (Studio Pro)", "studio", "studio-neural-v2",
+                "American · Middle Aged · Calm, friendly & warm conversational advisor", "male", 110, 0.000),
     VoiceOption("studio-kaitlyn", "Kaitlyn (Studio Pro)", "studio", "studio-neural-v2",
                 "American · Middle Aged · Friendly, upbeat customer support lead", "female", 108, 0.000),
     VoiceOption("studio-maya", "Maya (Studio Pro)", "studio", "studio-neural-v2",
