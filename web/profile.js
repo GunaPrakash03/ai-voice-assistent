@@ -1,7 +1,7 @@
 /*
  * Sidebar profile card.
  * Injected into the ".rail-foot" WORKSPACE block on every page: avatar initials, name, email,
- * role and workspace. Click opens /profile.html. The dashboard has no sign-in yet, so this is the
+ * role and workspace. Click opens /profile. The dashboard has no sign-in yet, so this is the
  * workspace admin the server runs as.
  */
 (function () {
@@ -77,10 +77,10 @@
     if (e.target && e.target.id === "rpSignOut") {
       e.preventDefault(); e.stopPropagation();
       fetch("/api/v1/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
-        .then(function () { location.href = "/login.html"; }).catch(function () { location.href = "/login.html"; });
+        .then(function () { location.href = "/login"; }).catch(function () { location.href = "/login"; });
       return;
     }
-    if (location.pathname.indexOf("/profile.html") === -1) { location.href = "/profile.html"; }
+    if (location.pathname.indexOf("/profile") === -1) { location.href = "/profile"; }
   });
 
   load();

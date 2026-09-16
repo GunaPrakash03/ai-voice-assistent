@@ -82,7 +82,7 @@ def test_softphone_asset_and_ui_integrity():
     # Check Log Container & Navigation
     assert 'id="softphone-log"' in html, "Missing telemetry log container #softphone-log"
     assert 'href="/"' in html, "Missing link back to Live Console"
-    assert 'href="/call-desk.html"' in html, "Missing link to Call Desk Analytics"
+    assert 'href="/call-desk"' in html, "Missing link to Call Desk Analytics"
 
     return f"softphone.html ({len(html)} bytes) with complete LCD, 12-key dialpad, in-call actions & telemetry validated"
 
@@ -190,8 +190,8 @@ def test_softphone_rest_endpoints():
     except Exception:
         pass
 
-    # 1. GET /softphone.html
-    req = urllib.request.Request(f"{base_url}/softphone.html", headers={"Cookie": cookie} if cookie else {})
+    # 1. GET /softphone
+    req = urllib.request.Request(f"{base_url}/softphone", headers={"Cookie": cookie} if cookie else {})
     with urllib.request.urlopen(req, timeout=5) as r:
         assert r.status == 200
         content = r.read().decode("utf-8")
@@ -264,7 +264,7 @@ def test_softphone_rest_endpoints():
         res = json.loads(r.read().decode())
         assert res.get("status") == "ok"
 
-    return "GET /softphone.html, /token & POST /dial, /hold, /dtmf, /transfer 200 OK"
+    return "GET /softphone, /token & POST /dial, /hold, /dtmf, /transfer 200 OK"
 
 
 def test_live_webrtc_softphone_dispatch():

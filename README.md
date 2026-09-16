@@ -325,7 +325,7 @@ Provides a comprehensive, standalone WebRTC SIP softphone interface (`web/softph
   - Real-time dual-channel recording trigger (`/api/telephony/recording/start` & `/stop`).
   - Warm / attended and blind call transfer dispatch (`/api/telephony/transfer`).
 - **Interactive Verification**:
-  - Open `http://localhost:8091/softphone.html` in any browser, select audio hardware, dial any phone number or select a preset, and talk live with the AI voice assistant.
+  - Open `http://localhost:8091/softphone` in any browser, select audio hardware, dial any phone number or select a preset, and talk live with the AI voice assistant.
 
 ```bash
 python3 scripts/verify_softphone.py # verifies all 6/6 checks for Task 2.6

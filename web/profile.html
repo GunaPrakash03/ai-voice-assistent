@@ -107,7 +107,7 @@
     <span style="color:var(--ink-faint)">/</span>
     <span>My Profile</span>
   </div>
-  <div><a class="btn btn-ghost" href="/api-keys.html">API Keys &amp; Providers</a></div>
+  <div><a class="btn btn-ghost" href="/api-keys">API Keys &amp; Providers</a></div>
 </header>
 
 <div class="app">
@@ -115,16 +115,12 @@
     <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
     <div class="nav">
       <a href="/">Overview</a>
-      <a href="/#calls">Calls</a>
-      <a href="/#detail">Call detail</a>
-      <a href="/#telephony">SIP Trunks &amp; DIDs</a>
-      <a href="/#agents">Agents</a>
-      <a href="/api-keys.html" data-admin-only>API Keys &amp; Providers</a>
-      <a href="/webhooks.html">Webhooks &amp; Data</a>
-      <a href="/cost-comparison.html" data-admin-only>Cost Calculator</a>
-      <a href="/competitor-analysis.html">Competitors &amp; Features</a>
-      <a href="/admin-guide.html" data-admin-only>Admin Guide</a>
-      <a href="/user-guide.html">User Guide</a>
+      <a href="/calls">Calls</a>
+      <a href="/call-detail">Call detail</a>
+      <a href="/sip-trunks">SIP Trunks &amp; DIDs</a>
+      <a href="/agents">Agents</a>
+      <a href="/api-keys" data-admin-only>API Keys &amp; Providers</a>
+      <a href="/webhooks">Webhooks &amp; Data</a>
     </div>
     <div class="rail-foot">
       <!-- profile card is injected here by /profile.js -->
@@ -241,7 +237,7 @@
 
           <!-- API keys -->
           <div class="card" data-admin-only>
-            <div class="card-h"><h2>API keys</h2><a class="meta" href="/api-keys.html" style="color:var(--accent);text-decoration:none">Manage →</a></div>
+            <div class="card-h"><h2>API keys</h2><a class="meta" href="/api-keys" style="color:var(--accent);text-decoration:none">Manage →</a></div>
             <div class="card-b" style="padding:0 6px 6px">
               <table id="keysTable">
                 <thead><tr><th>Name</th><th>Prefix</th><th>Scopes</th><th>Status</th></tr></thead>
@@ -356,7 +352,7 @@
     save({ current_password: $("pwCurrent").value, new_password: $("pwNew").value }, $("pwMsg"), "Password changed").then(function () { $("pwCurrent").value = ""; $("pwNew").value = ""; });
   });
   $("btnSignOut").addEventListener("click", function () {
-    fetch("/api/v1/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(function () { location.href = "/login.html"; });
+    fetch("/api/v1/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(function () { location.href = "/login"; });
   });
   $("btnSaveWs").addEventListener("click", function () { save({ workspace: $("fWs").value }, $("wsMsg"), "Workspace saved"); });
   $("memberForm").addEventListener("submit", function (e) {

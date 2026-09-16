@@ -51,7 +51,7 @@
   .nav button,.nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);
     font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s}
   .nav button:hover,.nav a:hover{background:rgba(255,255,255,.06);color:var(--rail-on)}
-  .nav button[aria-selected="true"]{background:var(--accent);color:#fff;font-weight:600}
+  .nav [aria-selected="true"]{background:var(--accent);color:#fff;font-weight:600}
   .nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
   .nav .ct{font-family:var(--f-mono);font-size:11px;opacity:.85}
   .rail-foot{margin-top:auto;padding:14px 18px 0;border-top:1px solid rgba(255,255,255,.07)}
@@ -238,18 +238,14 @@
   <nav class="rail">
     <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
     <div class="nav" role="tablist">
-      <button role="tab" aria-selected="true" data-v="overview">Overview<span class="ct" id="ctOverview">…</span></button>
-      <button role="tab" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls">…</span></button>
-      <button role="tab" aria-selected="false" data-v="detail">Call detail</button>
-      <button role="tab" aria-selected="false" data-v="telephony">SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></button>
-      <button role="tab" aria-selected="false" data-v="market" style="color:var(--accent);font-weight:600">Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></button>
-      <button role="tab" aria-selected="false" data-v="agents">Agents<span class="ct" id="ctAgents">…</span></button>
-      <a href="/api-keys.html" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers</a>
-      <a href="/webhooks.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Webhooks &amp; Data</a>
-      <a href="/cost-comparison.html" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Cost Calculator</a>
-      <a href="/competitor-analysis.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Competitors &amp; Features</a>
-      <a href="/admin-guide.html" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Admin Guide</a>
-      <a href="/user-guide.html" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">User Guide</a>
+      <a role="tab" href="/call-desk" aria-selected="true" data-v="overview">Overview<span class="ct" id="ctOverview">…</span></a>
+      <a role="tab" href="/call-desk/calls" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls">…</span></a>
+      <a role="tab" href="/call-desk/call-detail" aria-selected="false" data-v="detail">Call detail</a>
+      <a role="tab" href="/call-desk/sip-trunks" aria-selected="false" data-v="telephony">SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></a>
+      <a role="tab" href="/call-desk/phone-numbers" aria-selected="false" data-v="market" style="color:var(--accent);font-weight:600">Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></a>
+      <a role="tab" href="/call-desk/agents" aria-selected="false" data-v="agents">Agents<span class="ct" id="ctAgents">…</span></a>
+      <a href="/api-keys" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers</a>
+      <a href="/webhooks" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Webhooks &amp; Data</a>
     </div>
     <div class="rail-foot">
       <!-- profile card is injected here by /profile.js -->
@@ -494,8 +490,8 @@
           <div class="card-h">
             <h2>Configured agents</h2>
             <span class="meta" style="display:flex;gap:10px;align-items:center">
-              <a class="btn sm" href="/agent-builder.html?new=1" style="text-decoration:none">New agent</a>
-              <a href="/agent-builder.html" style="color:var(--accent)">Open Agent Builder →</a>
+              <a class="btn sm" href="/agent-builder?new=1" style="text-decoration:none">New agent</a>
+              <a href="/agent-builder" style="color:var(--accent)">Open Agent Builder →</a>
             </span>
           </div>
           <div class="card-b" id="agentList"><div class="empty">Loading…</div></div>
@@ -723,7 +719,7 @@
   // ── Navigation ────────────────────────────────────────────────────────────
   function show(view) {
     if (view === "market") {
-      Array.prototype.forEach.call(document.querySelectorAll(".nav button"), function (b) {
+      Array.prototype.forEach.call(document.querySelectorAll(".nav [data-v]"), function (b) {
         b.setAttribute("aria-selected", String(b.dataset.v === "market"));
       });
       Array.prototype.forEach.call(document.querySelectorAll(".view"), function (v) {
@@ -739,7 +735,7 @@
       return;
     }
 
-    Array.prototype.forEach.call(document.querySelectorAll(".nav button"), function (b) {
+    Array.prototype.forEach.call(document.querySelectorAll(".nav [data-v]"), function (b) {
       b.setAttribute("aria-selected", String(b.dataset.v === view));
     });
     Array.prototype.forEach.call(document.querySelectorAll(".view"), function (v) {
@@ -751,11 +747,52 @@
 
     if (view === "telephony") {
       loadTelephony();
+      var pressed = document.querySelector("#telNav button[aria-pressed='true']");
+      syncPath("telephony", pressed ? pressed.dataset.tv : "owned");
+    } else {
+      syncPath(view);
     }
   }
-  Array.prototype.forEach.call(document.querySelectorAll(".nav button"), function (b) {
-    b.addEventListener("click", function () { show(b.dataset.v); });
+  Array.prototype.forEach.call(document.querySelectorAll(".nav [data-v]"), function (b) {
+    b.addEventListener("click", function (e) { e.preventDefault(); show(b.dataset.v); });
   });
+
+  // URL ↔ view. Every sidebar item is a real link (/calls, /agents, /sip-trunks/trunks, /phone-numbers)
+  // so refresh, back/forward, open-in-new-tab and sharing keep the tab. show() and the telephony
+  // sub-tabs call syncPath(); applyPath() does the reverse on load and on back/forward.
+  var BASE = location.pathname.indexOf("/call-desk") === 0 ? "/call-desk" : "";
+  var ROUTES = { overview: "/", calls: "/calls", detail: "/call-detail", telephony: "/sip-trunks", market: "/phone-numbers", agents: "/agents" };
+  var applyingPath = false;
+  function pathFor(view, sub) {
+    if (view === "telephony" && sub === "market") { return BASE + "/phone-numbers"; }
+    if (view === "telephony" && sub && sub !== "owned") { return BASE + "/sip-trunks/" + sub; }
+    var p = ROUTES[view] || "/";
+    return p === "/" ? (BASE || "/") : BASE + p;
+  }
+  function syncPath(view, sub) {
+    if (applyingPath) { return; }
+    var target = pathFor(view, sub) + location.search;
+    if (location.pathname + location.search !== target) { history.pushState(null, "", target); }
+  }
+  function applyPath() {
+    var view = "overview", sub = "";
+    var legacy = location.hash.replace("#", "");            // old /#agents, /#telephony/trunks links
+    var rest = location.pathname.slice(BASE.length).replace(/^\/+/, "").split("/");
+    if (legacy) { view = legacy.split("/")[0]; sub = legacy.split("/")[1] || ""; }
+    else if (rest[0] === "sip-trunks") { view = "telephony"; sub = rest[1] || ""; }
+    else if (rest[0]) { for (var k in ROUTES) { if (ROUTES[k] === "/" + rest[0]) { view = k; } } }
+    if (!ROUTES[view]) { return; }
+    applyingPath = true;
+    try {
+      show(view);
+      if (view === "telephony") {
+        var b = document.querySelector("#telNav button[data-tv='" + (sub || "owned") + "']");
+        if (b) { b.click(); }
+      }
+    } finally { applyingPath = false; }
+    if (legacy) { history.replaceState(null, "", pathFor(view, sub) + location.search); }
+  }
+  window.addEventListener("popstate", applyPath);
 
   // ── Overview ──────────────────────────────────────────────────────────────
   function renderStats(stats) {
@@ -849,7 +886,7 @@
             '<span class="agent">→ ' + CI.escapeHtml(c.metadata && c.metadata.agent_name ? c.metadata.agent_name : (c.agent_name || "AI Agent")) + '</span>' +
             '<span class="pill pos">' + CI.escapeHtml(c.status) + '</span>' +
             '<span class="timer">' + CI.formatDuration(dur) + '</span>' +
-            '<a class="btn ghost sm" href="/softphone.html">Softphone</a>' +
+            '<a class="btn ghost sm" href="/softphone">Softphone</a>' +
             '</div>';
         }).join("");
       } else {
@@ -967,10 +1004,12 @@
 
   // ── SIP Trunks & Phone Numbers ────────────────────────────────────────────
   function loadTelephony() {
+    // Resolves once the numbers are in, so show("market") can switch to the marketplace sub-tab.
     loadAgents();
-    loadOwnedNumbers();
+    var owned = loadOwnedNumbers();
     loadAvailableNumbers();
     loadTrunksAndRules();
+    return Promise.resolve(owned).catch(function () {});
   }
 
   function loadOwnedNumbers() {
@@ -1179,6 +1218,7 @@
     $("#sub-rules").style.display = tv === "rules" ? "block" : "none";
 
     if (tv === "market") { loadAvailableNumbers(); }
+    syncPath("telephony", tv);
   });
 
   $("#marketCarrierTabs").addEventListener("click", function (event) {
@@ -1503,7 +1543,7 @@
           (a.tools ? a.tools.length : 0) + " tools</code></span>" +
           '<span style="display:flex;gap:6px">' +
           (a.active ? '' : '<button class="btn ghost btn-set-live" style="padding:6px 12px" data-id="' + CI.escapeHtml(a.agent_id) + '" title="Make this agent answer live calls">Set live</button>') +
-          '<a class="btn ghost" style="padding:6px 12px" href="/agent-builder.html?agent=' + encodeURIComponent(a.agent_id) + '">Edit</a></span></div>';
+          '<a class="btn ghost" style="padding:6px 12px" href="/agent-builder?agent=' + encodeURIComponent(a.agent_id) + '">Edit</a></span></div>';
       }).join("") : '<div class="empty">No agents configured.</div>';
       Array.prototype.forEach.call(document.querySelectorAll("#agentList .btn-set-live"), function (b) {
         b.addEventListener("click", function () {
@@ -1655,12 +1695,7 @@
   loadTelephony();
   startPolling();
 
-  if (window.location.hash) {
-    var h = window.location.hash.replace("#", "");
-    if (h === "market" || h === "telephony" || h === "calls" || h === "agents") {
-      show(h);
-    }
-  }
+  if (window.location.hash || location.pathname.replace(BASE, "") !== "/") { applyPath(); }
 })();
 </script>
 

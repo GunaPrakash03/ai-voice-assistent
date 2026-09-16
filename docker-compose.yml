@@ -52,12 +52,15 @@ services:
     build: .
     image: voice-agent:dev
     container_name: voice-agent-worker
+    # Hot reload for local dev; the Dockerfile default is the production "start".
+    command: ["python", "-m", "agent.worker", "dev"]
     depends_on:
       - livekit
       - postgres
     environment:
-      # The worker reaches LiveKit on the compose network, not localhost.
-      LIVEKIT_URL: ws://livekit:7880
+      # The worker reaches the local LiveKit on the compose network, not localhost; LIVEKIT_URL_WORKER
+      # in .env points it at LiveKit Cloud instead.
+      LIVEKIT_URL: ${LIVEKIT_URL_WORKER:-ws://livekit:7880}
       # Same database the dashboard uses, addressed on the compose network.
       DATABASE_URL: postgresql://${VOICE_DB_USER:-voice}:${VOICE_DB_PASSWORD:-voice_dev_password}@postgres:5432/${VOICE_DB_NAME:-voice_agent}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}

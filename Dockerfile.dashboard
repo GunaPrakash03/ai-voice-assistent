@@ -1,0 +1,14 @@
+# The web dashboard + REST API (scripts/serve.py). Needs the whole repo: web/ for the pages,
+# agent/ for the managers, config/ and samples/ as cold-start fallbacks (PostgreSQL restores
+# config/*.json and recordings/ at boot). Railway injects PORT.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+RUN mkdir -p recordings
+
+CMD ["sh", "-c", "python scripts/serve.py ${PORT:-8091}"]

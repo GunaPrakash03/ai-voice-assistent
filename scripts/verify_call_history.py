@@ -351,7 +351,7 @@ check("call desk has a pager",              'id="pager"' in desk_html)
 check("call desk has filters",              'id="filters"' in desk_html and 'id="searchBox"' in desk_html)
 check("call desk exports csv",              'id="exportLink"' in desk_html)
 check("call desk drops the mock dataset",   "555 0148" not in desk_html)
-check("call desk links to the builder",     "/agent-builder.html" in desk_html)
+check("call desk links to the builder",     "/agent-builder" in desk_html)
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
 passed = total_checks - len(failures)

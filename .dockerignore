@@ -1,0 +1,10 @@
+.env
+.git
+.github
+scratch/
+recordings/
+audio/
+docs/
+__pycache__/
+*.pyc
+node_modules/

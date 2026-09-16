@@ -99,7 +99,7 @@ async def run() -> int:
 
         # ── F1: page load ──────────────────────────────────────────────
         print("\nF1  Page load")
-        await page.goto(f"{BASE}/agent-builder.html", wait_until="networkidle", timeout=30000)
+        await page.goto(f"{BASE}/agent-builder", wait_until="networkidle", timeout=30000)
         await asyncio.sleep(1)
         check(not page_errors, "no uncaught JS errors on load", "; ".join(page_errors[:2]))
         check(not failed_requests, "no failed HTTP requests on load", str(failed_requests[:2]))

@@ -77,7 +77,15 @@
   .section-desc{font-size:12.5px;color:var(--ink-soft);margin:-8px 0 16px}
 
   .card-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(480px, 1fr));gap:16px}
-  @media(max-width:768px){.card-grid{grid-template-columns:1fr}}
+  @media(max-width:1000px){.card-grid{grid-template-columns:1fr}}
+  /* Same breakpoints as webhooks.html / profile.html: the rail goes away on narrow screens. */
+  @media(max-width:900px){.app{grid-template-columns:1fr}.rail{display:none}main{padding:18px 16px 48px}}
+  @media(max-width:768px){
+    .banner{flex-direction:column;align-items:flex-start}
+    .key-input-row{flex-wrap:wrap}
+    .key-input-row .btn-test{width:100%}
+    .pcard-h{flex-wrap:wrap;gap:8px}
+  }
 
   .pcard{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;position:relative;transition:all .15s ease}
   .pcard:hover{border-color:var(--accent-border);box-shadow:0 4px 16px rgba(0,0,0,.04)}
@@ -96,7 +104,7 @@
 
   .key-input-row{display:flex;gap:8px;margin-bottom:10px}
   .key-input-wrapper{position:relative;flex:1}
-  .key-input{width:100%;font-family:var(--f-mono);font-size:12px;padding:8px 34px 8px 10px;background:var(--ground);color:var(--ink);border:1px solid var(--line);border-radius:6px;outline:none}
+  .key-input{width:100%;font-family:var(--f-mono);font-size:12px;padding:8px 52px 8px 10px;background:var(--ground);color:var(--ink);border:1px solid var(--line);border-radius:6px;outline:none}
   .key-input:focus{border-color:var(--accent);background:var(--panel)}
   .btn-toggle-mask{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--ink-faint);cursor:pointer;padding:0;font-size:13px}
   .btn-toggle-mask:hover{color:var(--ink)}
@@ -137,16 +145,12 @@
     <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
     <div class="nav">
       <a href="/">Overview<span class="ct" id="navCtOverview">0 live</span></a>
-      <a href="/#calls">Calls<span class="ct" id="navCtCalls">0</span></a>
-      <a href="/#detail">Call detail</a>
-      <a href="/agent-builder.html">Agents<span class="ct" id="navCtAgents">1</span></a>
-      <a href="/api-keys.html" class="active" data-admin-only>API Keys &amp; Providers</a>
-      <a href="/webhooks.html">Webhooks &amp; Data</a>
-      <a href="/profile.html">My Profile</a>
-      <a href="/cost-comparison.html" data-admin-only>Cost Calculator</a>
-      <a href="/competitor-analysis.html">Competitors &amp; Features</a>
-      <a href="/admin-guide.html" data-admin-only>Admin Guide</a>
-      <a href="/user-guide.html">User Guide</a>
+      <a href="/calls">Calls<span class="ct" id="navCtCalls">0</span></a>
+      <a href="/call-detail">Call detail</a>
+      <a href="/agents">Agents<span class="ct" id="navCtAgents">1</span></a>
+      <a href="/api-keys" class="active" data-admin-only>API Keys &amp; Providers</a>
+      <a href="/webhooks">Webhooks &amp; Data</a>
+      <a href="/profile">My Profile</a>
     </div>
     <div class="rail-foot">
       <!-- profile card is injected here by /profile.js -->
@@ -172,7 +176,7 @@
           <b>Unified Voice &amp; LLM Key Management</b>
           <p>Configure API keys for ElevenLabs, Cartesia, Deepgram, Google Gemini, OpenAI, Claude, and Telephony. Keys are encrypted, securely stored in <code>.env</code>, and dynamically loaded into real-time voice sessions.</p>
         </div>
-        <a href="/agent-builder.html" class="btn btn-outline" style="white-space:nowrap">Open Agent Builder →</a>
+        <a href="/agent-builder" class="btn btn-outline" style="white-space:nowrap">Open Agent Builder →</a>
       </div>
 
       <!-- SECTION 1: Voice / TTS Providers -->
@@ -205,8 +209,6 @@
             <a href="https://elevenlabs.io/app/speech-synthesis" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">ElevenLabs Console</a>
             <span style="font-size:11.5px;color:var(--ink-faint)">Voice Studio: 46 total voices</span>
           </div>
-        </div>
-
         </div>
 
         <!-- Cartesia Sonic Card -->

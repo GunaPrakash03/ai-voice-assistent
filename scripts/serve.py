@@ -29,15 +29,22 @@ log = logging.getLogger("serve")
 
 # Default port is 8091; override with:
 #   python3 scripts/serve.py <port>
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8091
+# Railway (and other PaaS) inject PORT; an explicit argument still wins.
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.getenv("PORT", "8091"))
 WEB = os.path.join(ROOT, "web")
 
 
 def env(name):
-    for line in open(os.path.join(ROOT, ".env")):
-        if line.startswith(name + "="):
-            return line.split("=", 1)[1].strip()
-    raise SystemExit(f"{name} missing from .env")
+    """LiveKit credentials: the process environment first (Railway variables), then .env for local dev."""
+    val = (os.getenv(name) or "").strip()
+    if val:
+        return val
+    path = os.path.join(ROOT, ".env")
+    if os.path.exists(path):
+        for line in open(path):
+            if line.startswith(name + "="):
+                return line.split("=", 1)[1].strip()
+    raise SystemExit(f"{name} missing from the environment and .env")
 
 
 KEY, SECRET = env("LIVEKIT_API_KEY"), env("LIVEKIT_API_SECRET")
@@ -91,10 +98,38 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ── Browser sessions (login page) ───────────────────────────────────────
     SESSION_COOKIE = "va_session"
-    PUBLIC_PATHS = ("/login.html", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/session",
+    PUBLIC_PATHS = ("/login", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/session",
                     "/api/v1/auth/setup", "/api/v1/auth/otp/resend", "/api/v1/auth/otp/verify", "/api/v1/auth/dev-session",
                     "/api/v1/health", "/favicon.ico")
     STATIC_SUFFIXES = (".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".mp3", ".wav", ".map", ".d.ts")
+    # Pages have clean URLs: /api-keys serves web/api-keys.html. Anything else (/api/..., /token, files
+    # with an extension) is not a page.
+    PAGE_RE = re.compile(r"^/[a-z0-9-]+$")
+
+    # The Call Desk is one page with several views; each sidebar item has its own path so the links
+    # are real links. /sip-trunks/<sub> selects a telephony sub-tab. (call-desk.html, the older copy,
+    # gets the same views under /call-desk/…)
+    DESK_VIEWS = ("calls", "call-detail", "sip-trunks", "phone-numbers", "agents")
+
+    def _desk_view_file(self, path: str) -> Optional[str]:
+        for prefix, page in (("", "index.html"), ("/call-desk", "call-desk.html")):
+            rest = path[len(prefix):] if path.startswith(prefix) else None
+            if rest is None or not rest.startswith("/"):
+                continue
+            view = rest[1:].split("/", 1)[0]
+            if view in self.DESK_VIEWS and (rest == "/" + view or rest.startswith("/sip-trunks/")):
+                return os.path.join(WEB, page)
+        return None
+
+    def _page_file(self, path: str) -> Optional[str]:
+        """web/<name>.html behind a clean page URL, or None when the URL is not a page."""
+        desk = self._desk_view_file(path)
+        if desk:
+            return desk
+        if not self.PAGE_RE.match(path):
+            return None
+        f = os.path.join(WEB, path[1:] + ".html")
+        return f if os.path.isfile(f) else None
 
     def _session_token(self) -> str:
         raw = self.headers.get("Cookie", "") or ""
@@ -113,7 +148,7 @@ class Handler(SimpleHTTPRequestHandler):
     def _require_session(self, parsed) -> bool:
         """Login gate. Returns True when the request may proceed (a response was sent otherwise).
 
-        Pages redirect to /login.html; JSON routes get 401. Requests from this machine (verify
+        Pages redirect to /login; JSON routes get 401. Requests from this machine (verify
         suites, curl) may use the API without a session unless AUTH_TRUST_LOOPBACK=0.
         """
         path = parsed.path
@@ -121,24 +156,24 @@ class Handler(SimpleHTTPRequestHandler):
             return True
         if self._session_user():
             return True
-        is_page = path == "/" or path.endswith(".html") or path.endswith("/")
+        is_page = path == "/" or path.endswith("/") or self._page_file(path) is not None
         if is_page:
-            nxt = self.path if self.path not in ("/", "/index.html") else ""
+            nxt = self.path if self.path != "/" else ""
             self.send_response(302)
-            self.send_header("Location", "/login.html" + (("?next=" + urllib.parse.quote(nxt, safe="")) if nxt else ""))
+            self.send_header("Location", "/login" + (("?next=" + urllib.parse.quote(nxt, safe="")) if nxt else ""))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return False
         if self._is_loopback() and os.getenv("AUTH_TRUST_LOOPBACK", "1") != "0":
             return True
-        self._send_json({"status": "error", "error": "Sign in required", "login": "/login.html"}, 401)
+        self._send_json({"status": "error", "error": "Sign in required", "login": "/login"}, 401)
         return False
 
     # Two roles: admin and user. Users get the whole dashboard — every agent, every call, webhooks —
     # except the API Keys & Providers page and member management, which are admin-only (403 / redirect).
     ADMIN_GET_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces")
     ADMIN_POST_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces", "/api/v1/auth/users")
-    ADMIN_PAGES = ("/api-keys.html", "/admin-guide.html", "/cost-comparison.html")
+    ADMIN_PAGES = ("/api-keys", "/admin-guide", "/cost-comparison")
 
     def _viewer(self) -> Dict[str, Any]:
         """Who is looking. Agents and calls are shared workspace-wide, so owner is always None
@@ -221,6 +256,14 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path.endswith(".html"):
+            # Old bookmarks and links: /api-keys.html → /api-keys (permanent, so browsers update).
+            clean = "/" if parsed.path == "/index.html" else parsed.path[:-len(".html")]
+            self.send_response(301)
+            self.send_header("Location", clean + (("?" + parsed.query) if parsed.query else ""))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
         if not self._require_session(parsed) or not self._enforce_role(parsed, "GET"):
             return
         if parsed.path == "/api/v1/auth/session":
@@ -691,9 +734,9 @@ class Handler(SimpleHTTPRequestHandler):
             q = parse_qs(parsed.query)
             self._send_json({"status": "ok", "workspace_id": ctx["workspace_id"], **call_history.list_calls(page=int((q.get("page") or ["1"])[0] or 1), page_size=int((q.get("page_size") or ["25"])[0] or 25))})
             return
-
-
-
+        page = self._page_file(parsed.path)
+        if page:
+            self.path = "/" + os.path.basename(page) + (("?" + parsed.query) if parsed.query else "")
         return super().do_GET()
 
 
