@@ -261,8 +261,52 @@ class Handler(SimpleHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
+    # LiveKit Cloud SIP domain; a call's TwiML bridges the caller here so LiveKit's SIP service
+    # answers and dispatches the agent. Overridable via env if the project is renamed.
+    LIVEKIT_SIP_DOMAIN = os.getenv("LIVEKIT_SIP_DOMAIN", "voice-agent-kuxp4ocs.sip.livekit.cloud")
+
+    def _maybe_twiml_webhook(self, parsed) -> bool:
+        """Twilio Programmable Voice webhook for inbound PSTN calls. Twilio POSTs here (no session);
+        we return TwiML that dials the LiveKit Cloud SIP URI, so the call reaches the agent without
+        Elastic SIP Trunk origination. This mirrors how Retell connects a Twilio number and works on
+        trial accounts. Returns True when it handled the request."""
+        if parsed.path != "/api/telephony/voice/inbound":
+            return False
+        # Which DID was dialled — Twilio sends "To"/"Called"; default to our number.
+        params = {}
+        try:
+            if self.command == "POST":
+                length = int(self.headers.get("Content-Length", 0) or 0)
+                body = self.rfile.read(length).decode("utf-8", "replace") if length else ""
+                params = {k: v[0] for k, v in urllib.parse.parse_qs(body).items()}
+            params.update({k: v[0] for k, v in parse_qs(parsed.query).items()})
+        except Exception:
+            params = {}
+        dialed = (params.get("To") or params.get("Called") or "+19517177889").strip()
+        dialed = re.sub(r"[^\d+]", "", dialed) or "+19517177889"
+        sip_uri = f"sip:{dialed}@{self.LIVEKIT_SIP_DOMAIN}"
+        twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<Response><Dial answerOnBridge="true" timeout="30">'
+            f'<Sip>{sip_uri}</Sip>'
+            '</Dial></Response>'
+        )
+        body = twiml.encode("utf-8")
+        log.info("Twilio voice webhook: dialled=%s -> %s", dialed, sip_uri)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/xml; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        return True
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        if self._maybe_twiml_webhook(parsed):
+            return
         if parsed.path.endswith(".html"):
             # Old bookmarks and links: /api-keys.html → /api-keys (permanent, so browsers update).
             clean = "/" if parsed.path == "/index.html" else parsed.path[:-len(".html")]
@@ -749,6 +793,10 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        # Twilio's voice webhook (public, form-encoded body read inside the handler) must be caught
+        # before we read the body as JSON below.
+        if self._maybe_twiml_webhook(parsed):
+            return
         content_len = int(self.headers.get("Content-Length", 0))
         post_data = self.rfile.read(content_len) if content_len > 0 else b"{}"
         try:
