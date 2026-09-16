@@ -1028,7 +1028,21 @@ class Handler(SimpleHTTPRequestHandler):
                 auth_password=payload.get("auth_password"),
             )
             telephony_manager.register_inbound_trunk(trunk)
-            self._send_json({"status": "ok", "trunk": telephony_manager._public_trunk(trunk)})
+            # Any DID typed into the trunk form is also provisioned as an owned number, so it shows in
+            # Active Phone Numbers and can be assigned to an agent (the trunk alone doesn't do that).
+            default_agent = None
+            try:
+                active = agent_builder.get_active_agent()
+                default_agent = active.name if active else None
+            except Exception:
+                default_agent = None
+            provisioned = []
+            for num in (trunk.numbers or []):
+                rec = telephony_manager.ensure_owned_number(num, t_id, agent_name=default_agent, carrier="twilio")
+                if rec:
+                    provisioned.append(rec["phone_number"])
+            self._send_json({"status": "ok", "trunk": telephony_manager._public_trunk(trunk),
+                             "provisioned_numbers": provisioned})
             return
 
         elif parsed.path == "/api/telephony/numbers/update":

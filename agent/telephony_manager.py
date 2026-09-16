@@ -1017,6 +1017,40 @@ class TelephonyManager:
         log.info("Released phone number %s", norm)
         return True
 
+    def ensure_owned_number(self, phone_number: str, trunk_id: str,
+                            agent_name: Optional[str] = None, carrier: str = "twilio") -> Optional[dict]:
+        """Make a DID visible and manageable in Active Phone Numbers. Creating an inbound trunk with
+        numbers only records them on the trunk; this also gives each number an owned-number record so
+        it shows in the numbers list and can be assigned to an agent. Idempotent."""
+        norm = normalize_phone_number(phone_number)
+        if not is_valid_phone_number(norm):
+            return None
+        rec = self._owned_numbers.get(norm)
+        if rec:
+            rec.status = "active"
+            rec.assigned_trunk_id = trunk_id
+            if agent_name:
+                rec.assigned_agent = agent_name
+        else:
+            rec = PhoneNumberRecord(
+                phone_number=norm,
+                friendly_name=format_friendly_phone(norm),
+                country="US",
+                region="Direct Inward Dialing",
+                capabilities=["voice", "sip"],
+                monthly_cost=0.0,
+                status="active",
+                carrier=carrier,
+                assigned_trunk_id=trunk_id,
+                assigned_agent=agent_name or "Intake Agent",
+            )
+            self._owned_numbers[norm] = rec
+        self._ensure_number_rule(rec)
+        self._save_trunks()
+        self._save_phone_numbers()
+        log.info("Owned-number record ensured for %s (trunk=%s, agent=%s)", norm, trunk_id, rec.assigned_agent)
+        return asdict(rec)
+
     def update_number_routing(self, phone_number: str, agent_name: str, trunk_id: Optional[str] = None) -> Optional[dict]:
         norm = normalize_phone_number(phone_number)
         rec = self._owned_numbers.get(norm)
