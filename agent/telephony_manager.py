@@ -42,13 +42,6 @@ def _storage_sync(path: str) -> None:
         log.debug("storage sync skipped for %s: %s", path, e)
 
 
-def _peek_file_stamp(path: str):
-    """DIAG helper: read a file's own updated_at without disturbing anything."""
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f).get("updated_at")
-    except Exception as e:
-        return f"<unreadable: {e}>"
 VALID_TRANSPORTS = ("udp", "tcp", "tls")
 
 
@@ -258,19 +251,10 @@ class TelephonyManager:
         self._calls: Dict[str, TelephonyCallRecord] = {}
         self._owned_numbers: Dict[str, PhoneNumberRecord] = {}
 
-        loaded = self._load_trunks()
-        log.warning("DIAG _load_trunks()=%s file=%s isfile=%s inbound_ids=%s",
-                    loaded, SIP_TRUNKS_FILE, os.path.isfile(SIP_TRUNKS_FILE), list(self._inbound_trunks.keys()))
-        if not loaded:
+        if not self._load_trunks():
             self._init_default_demo_trunks()
         self._load_phone_numbers()
-        rec = self._owned_numbers.get("+19517177889")
-        log.warning("DIAG _load_phone_numbers() +19517177889 assigned_trunk_id=%s file=%s isfile=%s file_stamp=%s",
-                    rec.assigned_trunk_id if rec else None, PHONE_NUMBERS_FILE,
-                    os.path.isfile(PHONE_NUMBERS_FILE), _peek_file_stamp(PHONE_NUMBERS_FILE))
         self._rebind_numbers_to_trunks()
-        rec2 = self._owned_numbers.get("+19517177889")
-        log.warning("DIAG after _rebind_numbers_to_trunks() assigned_trunk_id=%s", rec2.assigned_trunk_id if rec2 else None)
 
     # ── Trunk persistence ────────────────────────────────────────────────────
     def _load_trunks(self) -> bool:
@@ -311,8 +295,35 @@ class TelephonyManager:
     def _number_rule_id(self, norm_number: str) -> str:
         return f"rule-{norm_number.replace('+', '')}"
 
+    def _dedupe_number_bindings(self, norm: str, keep_trunk_id: str) -> bool:
+        """Enforce: a DID lives in exactly ONE inbound trunk and is governed by exactly ONE dispatch
+        rule (its own rule-<number>). Without this a number can end up on two trunks / matched by two
+        rules and so appear to belong to two agents. Returns True if anything was changed."""
+        changed = False
+        # 1. The number belongs to keep_trunk_id only — strip it from every other trunk.
+        for tid, trunk in self._inbound_trunks.items():
+            if tid != keep_trunk_id and norm in trunk.numbers:
+                trunk.numbers.remove(norm)
+                changed = True
+                log.info("Deduped %s off trunk %s (canonical trunk is %s)", norm, tid, keep_trunk_id)
+        # 2. Any OTHER dispatch rule that routes this exact number's trunk is a duplicate of the
+        #    canonical per-number rule — drop it so one number never resolves to two agents.
+        canonical = self._number_rule_id(norm)
+        for rid in list(self._dispatch_rules.keys()):
+            if rid == canonical:
+                continue
+            r = self._dispatch_rules[rid]
+            if keep_trunk_id in (r.trunk_ids or []) and len(r.trunk_ids or []) == 1:
+                del self._dispatch_rules[rid]
+                changed = True
+                log.info("Removed duplicate dispatch rule %s (trunk %s already governed by %s)",
+                         rid, keep_trunk_id, canonical)
+        return changed
+
     def _ensure_number_rule(self, rec: "PhoneNumberRecord") -> SIPDispatchRule:
         """Each owned number gets its own dispatch rule so re-routing one DID never affects another."""
+        # Before (re)writing this number's rule, guarantee it isn't double-registered elsewhere.
+        self._dedupe_number_bindings(rec.phone_number, rec.assigned_trunk_id)
         rule_id = self._number_rule_id(rec.phone_number)
         rule = self._dispatch_rules.get(rule_id)
         if rule is None:
@@ -342,7 +353,11 @@ class TelephonyManager:
             elif rec.phone_number not in trunk.numbers:
                 trunk.numbers.append(rec.phone_number)
                 changed = True
-            if self._number_rule_id(rec.phone_number) not in self._dispatch_rules:
+            if trunk is not None:
+                # Always (re)point this DID's own rule at its current trunk/agent and run the dedup,
+                # even when the rule already exists, so a number that got double-registered or left
+                # a stale rule after a re-route is cleaned up on start instead of belonging to two
+                # agents. _ensure_number_rule() runs _dedupe_number_bindings() internally.
                 self._ensure_number_rule(rec)
                 changed = True
         if changed:
