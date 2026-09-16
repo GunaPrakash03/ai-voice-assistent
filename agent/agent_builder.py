@@ -467,9 +467,17 @@ class AgentBuilder:
     def __init__(self):
         self._agents: Dict[str, AgentConfig] = {}
         self._revisions: Dict[str, List[AgentRevision]] = {}
+        self._suppress_sync = False
         self._load_state()
         if not self._agents:
-            self._seed_default_agent()
+            # A missing/empty config/agents.json (e.g. an image built without config/ baked in)
+            # must never push a single default agent to PostgreSQL and clobber a real shared set —
+            # only an explicit save from user action should sync. See _save_state().
+            self._suppress_sync = True
+            try:
+                self._seed_default_agent()
+            finally:
+                self._suppress_sync = False
 
     # ── Persistence ──────────────────────────────────────────────────────────
     def _load_state(self):
@@ -501,7 +509,8 @@ class AgentBuilder:
                     },
                     "updated_at": time.time(),
                 }, f, indent=2)
-            _storage_sync(STATE_FILE)
+            if not self._suppress_sync:
+                _storage_sync(STATE_FILE)
         except Exception as e:
             log.warning("Failed to save agent configs: %s", e)
 

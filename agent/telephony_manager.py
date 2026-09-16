@@ -331,7 +331,10 @@ class TelephonyManager:
             self._save_trunks()
 
     def _init_default_demo_trunks(self):
-        """Pre-populate reference carrier trunks and dispatch rules."""
+        """Pre-populate reference carrier trunks and dispatch rules, in memory only. Never persisted:
+        a missing/unreadable config/sip_trunks.json (e.g. an image built without config/ baked in)
+        must not push these demo placeholders over real trunk data another instance already wrote
+        to a shared database."""
         inbound = SIPInboundTrunk(
             trunk_id="trunk-inbound-primary",
             name="Primary Inbound Carrier Trunk",
@@ -339,7 +342,7 @@ class TelephonyManager:
             allowed_addresses=["192.0.2.0/24", "198.51.100.0/24"],
             metadata={"carrier": "telnyx", "region": "us-east"},
         )
-        self.register_inbound_trunk(inbound)
+        self.register_inbound_trunk(inbound, persist=False)
 
         outbound = SIPOutboundTrunk(
             trunk_id="trunk-outbound-primary",
@@ -350,7 +353,7 @@ class TelephonyManager:
             auth_password=os.getenv("SIP_OUTBOUND_PASS", "secret_sip_pass"),
             metadata={"carrier": "telnyx"},
         )
-        self.register_outbound_trunk(outbound)
+        self.register_outbound_trunk(outbound, persist=False)
 
         rule = SIPDispatchRule(
             rule_id="rule-inbound-default",
@@ -359,7 +362,7 @@ class TelephonyManager:
             room_prefix="call-",
             agent_name="VoiceAssistantAgent",
         )
-        self.register_dispatch_rule(rule)
+        self.register_dispatch_rule(rule, persist=False)
 
     def _load_phone_numbers(self):
         """Seed or load persistent phone numbers."""
@@ -395,10 +398,17 @@ class TelephonyManager:
                 assigned_trunk_id="trunk-inbound-primary",
                 assigned_agent="Support Agent",
             )
-            self._save_phone_numbers()
+            # Local-file write only — NOT pushed to PostgreSQL. A missing config/phone_numbers.json
+            # (e.g. a container image built without config/ baked in) must never overwrite real
+            # provisioned numbers that another instance already wrote to a shared database; only an
+            # explicit action (purchase/edit/release, via _save_phone_numbers) should push state.
+            self._write_phone_numbers_file(sync=False)
 
     def _save_phone_numbers(self):
-        """Save phone numbers to disk."""
+        """Save phone numbers to disk and write through to PostgreSQL."""
+        self._write_phone_numbers_file(sync=True)
+
+    def _write_phone_numbers_file(self, sync: bool):
         try:
             os.makedirs(os.path.dirname(PHONE_NUMBERS_FILE), exist_ok=True)
             with open(PHONE_NUMBERS_FILE, "w", encoding="utf-8") as f:
@@ -406,7 +416,8 @@ class TelephonyManager:
                     "numbers": [asdict(n) for n in self._owned_numbers.values()],
                     "updated_at": time.time(),
                 }, f, indent=2)
-            _storage_sync(PHONE_NUMBERS_FILE)
+            if sync:
+                _storage_sync(PHONE_NUMBERS_FILE)
         except Exception as e:
             log.warning("Failed to save phone numbers: %s", e)
 

@@ -55,7 +55,8 @@
     $("rpWorkspace").textContent = profile.workspace || "Workspace";
     $("rpWorkspace").title = profile.workspace_id || "";
     var role = $("rpRole");
-    role.textContent = profile.role || "";
+    var ROLE_LABEL = { admin: "Product Admin", user: "User" };
+    role.textContent = ROLE_LABEL[profile.role] || profile.role || "";
     role.hidden = !profile.role;
   }
 

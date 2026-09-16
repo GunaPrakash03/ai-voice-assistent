@@ -9,4 +9,5 @@ livekit-plugins-openai~=1.0
 livekit-plugins-cartesia~=1.0
 livekit-plugins-elevenlabs~=1.0
 psycopg[binary]~=3.1
+edge-tts~=7.0  # Backs the "Studio Pro" / "Natural" voice tiers (no vendor key needed)
 

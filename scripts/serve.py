@@ -169,11 +169,18 @@ class Handler(SimpleHTTPRequestHandler):
         self._send_json({"status": "error", "error": "Sign in required", "login": "/login"}, 401)
         return False
 
-    # Two roles: admin and user. Users get the whole dashboard — every agent, every call, webhooks —
-    # except the API Keys & Providers page and member management, which are admin-only (403 / redirect).
+    # Two roles: Product Admin (stored role "admin") and User. A User's dashboard is Overview,
+    # Calls, Call detail and their own Profile — everything else (agents, telephony, webhooks,
+    # provider keys, member management, guides) is Product-Admin-only. Reads that those allowed
+    # pages themselves depend on at boot (e.g. Overview's live-call banner, the nav's agent/DID
+    # counts) stay unrestricted on GET; only mutating calls and full-page navigation are gated,
+    # so a hidden sidebar link can't be worked around with a direct API call or typed URL.
     ADMIN_GET_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces")
-    ADMIN_POST_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces", "/api/v1/auth/users")
-    ADMIN_PAGES = ("/api-keys", "/admin-guide", "/cost-comparison")
+    ADMIN_POST_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces",
+                           "/api/v1/auth/users", "/api/agents", "/api/telephony", "/api/webhooks")
+    ADMIN_PAGES = ("/api-keys", "/admin-guide", "/cost-comparison", "/agent-builder", "/webhooks",
+                   "/competitor-analysis", "/user-guide", "/agents", "/sip-trunks", "/phone-numbers",
+                   "/call-desk/agents", "/call-desk/sip-trunks", "/call-desk/phone-numbers")
 
     def _viewer(self) -> Dict[str, Any]:
         """Who is looking. Agents and calls are shared workspace-wide, so owner is always None
@@ -189,7 +196,7 @@ class Handler(SimpleHTTPRequestHandler):
         if v["is_admin"]:
             return True
         path = parsed.path
-        if path in self.ADMIN_PAGES:
+        if path.startswith(self.ADMIN_PAGES):
             self.send_response(302)
             self.send_header("Location", "/?denied=admin")
             self.end_headers()

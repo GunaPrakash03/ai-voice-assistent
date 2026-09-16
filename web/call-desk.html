@@ -241,11 +241,11 @@
       <a role="tab" href="/call-desk" aria-selected="true" data-v="overview">Overview<span class="ct" id="ctOverview">…</span></a>
       <a role="tab" href="/call-desk/calls" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls">…</span></a>
       <a role="tab" href="/call-desk/call-detail" aria-selected="false" data-v="detail">Call detail</a>
-      <a role="tab" href="/call-desk/sip-trunks" aria-selected="false" data-v="telephony">SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></a>
-      <a role="tab" href="/call-desk/phone-numbers" aria-selected="false" data-v="market" style="color:var(--accent);font-weight:600">Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></a>
-      <a role="tab" href="/call-desk/agents" aria-selected="false" data-v="agents">Agents<span class="ct" id="ctAgents">…</span></a>
+      <a role="tab" href="/call-desk/sip-trunks" aria-selected="false" data-v="telephony" data-admin-only>SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></a>
+      <a role="tab" href="/call-desk/phone-numbers" aria-selected="false" data-v="market" data-admin-only style="color:var(--accent);font-weight:600">Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></a>
+      <a role="tab" href="/call-desk/agents" aria-selected="false" data-v="agents" data-admin-only>Agents<span class="ct" id="ctAgents">…</span></a>
       <a href="/api-keys" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers</a>
-      <a href="/webhooks" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Webhooks &amp; Data</a>
+      <a href="/webhooks" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Webhooks &amp; Data</a>
     </div>
     <div class="rail-foot">
       <!-- profile card is injected here by /profile.js -->
@@ -491,7 +491,7 @@
             <h2>Configured agents</h2>
             <span class="meta" style="display:flex;gap:10px;align-items:center">
               <a class="btn sm" href="/agent-builder?new=1" style="text-decoration:none">New agent</a>
-              <a href="/agent-builder" style="color:var(--accent)">Open Agent Builder →</a>
+              <a href="/agent-builder" data-admin-only style="color:var(--accent)">Open Agent Builder →</a>
             </span>
           </div>
           <div class="card-b" id="agentList"><div class="empty">Loading…</div></div>

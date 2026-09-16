@@ -299,9 +299,9 @@
       <a href="/">Overview<span class="ct" id="navCtOverview">0 live</span></a>
       <a href="/calls">Calls<span class="ct" id="navCtCalls">0</span></a>
       <a href="/call-detail">Call detail</a>
-      <a href="/agents" class="active">Agents<span class="ct" id="navCtAgents">1</span></a>
+      <a href="/agents" data-admin-only class="active">Agents<span class="ct" id="navCtAgents">1</span></a>
       <a href="/api-keys" data-admin-only>API Keys &amp; Providers</a>
-      <a href="/webhooks">Webhooks &amp; Data</a>
+      <a href="/webhooks" data-admin-only>Webhooks &amp; Data</a>
       <a href="/profile">My Profile</a>
     </div>
     <div class="rail-foot">
@@ -457,7 +457,7 @@
               </label>
             </div>
             <div class="card-b" id="whBody" hidden>
-              <p style="margin:0 0 10px;font-size:12.5px;color:var(--ink-soft)">After each call the AI reads the transcript, fills these fields and posts them (signed) to your workspace webhook endpoints as <code>extracted</code>. Endpoints are managed by an admin on <a href="/webhooks" style="color:var(--accent)">Webhooks &amp; Data</a>.</p>
+              <p style="margin:0 0 10px;font-size:12.5px;color:var(--ink-soft)">After each call the AI reads the transcript, fills these fields and posts them (signed) to your workspace webhook endpoints as <code>extracted</code>. Endpoints are managed by an admin on <a href="/webhooks" data-admin-only style="color:var(--accent)">Webhooks &amp; Data</a>.</p>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
                 <button class="btn ghost sm" id="btnSuggestFields" type="button" style="color:var(--accent);border-color:var(--accent-border)">Suggest from prompt (AI)</button>
                 <button class="btn ghost sm" id="btnAddField" type="button">Add field</button>

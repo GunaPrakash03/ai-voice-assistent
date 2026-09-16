@@ -7,4 +7,11 @@ __pycache__/
 recordings/**
 !recordings/.gitkeep
 scratch/
+# Runtime state the app rewrites live (agents, owned numbers, SIP trunks, auth) — not seed data.
+# Kept on disk for each deploy/build, but not tracked: it diverges per environment (dev vs
+# production numbers/trunks) and, once DATABASE_URL is set, PostgreSQL is the source of truth
+# (see agent/storage.py bootstrap()); an empty file at boot is now handled safely (no auto-push).
 config/auth_store.json
+config/agents.json
+config/phone_numbers.json
+config/sip_trunks.json

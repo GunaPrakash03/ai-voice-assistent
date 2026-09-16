@@ -118,9 +118,9 @@
       <a href="/calls">Calls</a>
       <a href="/call-detail">Call detail</a>
       <a href="/sip-trunks">SIP Trunks &amp; DIDs</a>
-      <a href="/agents">Agents</a>
+      <a href="/agents" data-admin-only>Agents</a>
       <a href="/api-keys" data-admin-only>API Keys &amp; Providers</a>
-      <a href="/webhooks">Webhooks &amp; Data</a>
+      <a href="/webhooks" data-admin-only>Webhooks &amp; Data</a>
     </div>
     <div class="rail-foot">
       <!-- profile card is injected here by /profile.js -->
@@ -225,8 +225,8 @@
                   <div class="field"><label for="mPhone">Phone (SMS code)</label><input id="mPhone" type="tel" placeholder="+1 555 010 0000"></div>
                   <div class="field"><label for="mRole">Role</label>
                     <select id="mRole" style="width:100%;padding:9px 11px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13.5px">
-                      <option value="user">User — whole dashboard except API keys &amp; providers and members</option>
-                      <option value="admin">Admin — everything</option>
+                      <option value="user">User — Overview, Calls, Call detail &amp; their own profile only</option>
+                      <option value="admin">Product Admin — everything: agents, telephony, webhooks, API keys, members</option>
                     </select></div>
                 </div>
                 <div class="field"><label for="mPass">Temporary password</label><input id="mPass" type="password" minlength="8" required placeholder="At least 8 characters"><div class="hint">Share it with the member; they can change it on their profile.</div></div>
@@ -286,7 +286,8 @@
     $("avatar").textContent = initials(profile.name, profile.email);
     $("heroName").textContent = name;
     $("heroSub").textContent = [profile.title, profile.email].filter(Boolean).join(" · ");
-    $("heroRole").textContent = profile.role || ""; $("heroRole").hidden = !profile.role;
+    var ROLE_LABEL = { admin: "Product Admin", user: "User" };
+    $("heroRole").textContent = ROLE_LABEL[profile.role] || profile.role || ""; $("heroRole").hidden = !profile.role;
     $("heroWs").textContent = profile.workspace || ""; $("heroWs").hidden = !profile.workspace;
     $("fName").value = profile.name || ""; $("fTitle").value = profile.title || "";
     $("fEmail").value = profile.email || ""; $("fPhone").value = profile.phone || "";
@@ -302,7 +303,7 @@
     $("membersTable").querySelector("tbody").innerHTML = members.map(function (m) {
       return "<tr><td><b>" + esc(m.name || m.email.split("@")[0]) + "</b>" + (m.is_me ? ' <span class="pill accent" style="margin-left:6px">you</span>' : "") +
              '<div class="mono" style="color:var(--ink-faint)">' + esc(m.email) + "</div></td>" +
-             '<td><span class="pill ' + (m.role === "admin" ? "accent" : "neu") + '">' + esc(m.role) + "</span></td>" +
+             '<td><span class="pill ' + (m.role === "admin" ? "accent" : "neu") + '">' + esc(ROLE_LABEL[m.role] || m.role) + "</span></td>" +
              "<td>" + fmtDate(m.created_at) + "</td>" +
              '<td data-admin-only>' + (m.is_me ? "" : '<button type="button" class="btn btn-ghost btn-remove-member" style="padding:4px 10px;font-size:11.5px" data-id="' + esc(m.user_id) + '">Remove</button>') + "</td></tr>";
     }).join("");

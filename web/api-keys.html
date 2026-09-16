@@ -147,9 +147,9 @@
       <a href="/">Overview<span class="ct" id="navCtOverview">0 live</span></a>
       <a href="/calls">Calls<span class="ct" id="navCtCalls">0</span></a>
       <a href="/call-detail">Call detail</a>
-      <a href="/agents">Agents<span class="ct" id="navCtAgents">1</span></a>
+      <a href="/agents" data-admin-only>Agents<span class="ct" id="navCtAgents">1</span></a>
       <a href="/api-keys" class="active" data-admin-only>API Keys &amp; Providers</a>
-      <a href="/webhooks">Webhooks &amp; Data</a>
+      <a href="/webhooks" data-admin-only>Webhooks &amp; Data</a>
       <a href="/profile">My Profile</a>
     </div>
     <div class="rail-foot">
@@ -176,7 +176,7 @@
           <b>Unified Voice &amp; LLM Key Management</b>
           <p>Configure API keys for ElevenLabs, Cartesia, Deepgram, Google Gemini, OpenAI, Claude, and Telephony. Keys are encrypted, securely stored in <code>.env</code>, and dynamically loaded into real-time voice sessions.</p>
         </div>
-        <a href="/agent-builder" class="btn btn-outline" style="white-space:nowrap">Open Agent Builder →</a>
+        <a href="/agent-builder" data-admin-only class="btn btn-outline" style="white-space:nowrap">Open Agent Builder →</a>
       </div>
 
       <!-- SECTION 1: Voice / TTS Providers -->
