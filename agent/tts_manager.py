@@ -10,7 +10,9 @@ Components:
 5. Instant barge-in cut-off & buffer truncation (<50ms muting upon caller interruption).
 """
 
+from __future__ import annotations
 import asyncio
+import io
 import logging
 import math
 import os
@@ -18,10 +20,15 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterable, Callable, List, Optional
 
-from livekit import rtc
-from livekit.agents import tokenize, tts, utils
-from livekit.agents.types import APIConnectOptions, DEFAULT_API_CONNECT_OPTIONS
-from livekit.agents.utils import aio
+try:
+    from livekit import rtc
+    from livekit.agents import tokenize, tts, utils
+    from livekit.agents.types import APIConnectOptions, DEFAULT_API_CONNECT_OPTIONS
+    from livekit.agents.utils import aio
+except ImportError:
+    rtc, tokenize, tts, utils, APIConnectOptions, DEFAULT_API_CONNECT_OPTIONS, aio = (
+        None, None, None, None, None, None, None
+    )
 
 log = logging.getLogger("tts-manager")
 
@@ -79,18 +86,23 @@ def generate_speech_pcm_frames(
     return raw_chunks
 
 
-class SimulatedSynthesizeStream(tts.SynthesizeStream):
+_SynthesizeStreamBase = getattr(tts, "SynthesizeStream", object) if tts else object
+_TTSBase = getattr(tts, "TTS", object) if tts else object
+
+
+class SimulatedSynthesizeStream(_SynthesizeStreamBase):
     """
     Simulated streaming TTS stream that implements livekit.agents.tts.SynthesizeStream
     with low-latency chunking and clock-synchronized audio frame emission.
     """
 
-    def __init__(self, *, tts_instance: "SimulatedStreamingTTS", conn_options: APIConnectOptions):
-        super().__init__(tts=tts_instance, conn_options=conn_options)
+    def __init__(self, *, tts_instance: "SimulatedStreamingTTS", conn_options: Any = None):
+        if tts:
+            super().__init__(tts=tts_instance, conn_options=conn_options)
         self._sim_tts = tts_instance
 
-    async def _run(self, output_emitter: tts.AudioEmitter) -> None:
-        request_id = utils.shortuuid()
+    async def _run(self, output_emitter: Any) -> None:
+        request_id = utils.shortuuid() if utils else "req_0"
         output_emitter.initialize(
             request_id=request_id,
             sample_rate=self._sim_tts.sample_rate,
@@ -101,7 +113,7 @@ class SimulatedSynthesizeStream(tts.SynthesizeStream):
 
         segment_idx = 0
         async for item in self._input_ch:
-            if isinstance(item, self._FlushSentinel):
+            if hasattr(self, "_FlushSentinel") and isinstance(item, self._FlushSentinel):
                 output_emitter.flush()
                 continue
 
@@ -109,7 +121,8 @@ class SimulatedSynthesizeStream(tts.SynthesizeStream):
             if not text_chunk:
                 continue
 
-            self._mark_started()
+            if hasattr(self, "_mark_started"):
+                self._mark_started()
             segment_id = f"seg_{segment_idx}"
             segment_idx += 1
             output_emitter.start_segment(segment_id=segment_id)
@@ -130,19 +143,28 @@ class SimulatedSynthesizeStream(tts.SynthesizeStream):
         output_emitter.end_input()
 
 
-class SimulatedStreamingTTS(tts.TTS):
+class SimulatedStreamingTTS(_TTSBase):
     """
     Local simulated streaming TTS compliant with LiveKit Agents TTS API.
     Used when CARTESIA_API_KEY is not configured, ensuring offline acceptance checks
     and testing execute smoothly.
     """
 
-    def __init__(self, sample_rate: int = 24000) -> None:
-        super().__init__(
-            capabilities=tts.TTSCapabilities(streaming=True),
-            sample_rate=sample_rate,
-            num_channels=1,
-        )
+    def __init__(
+        self,
+        sample_rate: int = 24000,
+        *,
+        voice: str = "aura-asteria-en",
+        num_channels: int = 1,
+    ):
+        if tts:
+            super().__init__(
+                capabilities=tts.TTSCapabilities(streaming=True),
+                sample_rate=sample_rate,
+                num_channels=num_channels,
+            )
+        self.sample_rate = sample_rate
+        self.num_channels = num_channels
         self._label = "simulated.StreamingTTS"
 
     @property

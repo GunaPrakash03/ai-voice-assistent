@@ -342,6 +342,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         elif parsed.path == "/api/telephony/trunks":
             self._send_json({
+                "trunks": telephony_manager.list_trunks(),
                 "inbound": telephony_manager.list_inbound_trunks(),
                 "outbound": telephony_manager.list_outbound_trunks(),
                 "rules": telephony_manager.list_dispatch_rules(),
@@ -915,6 +916,12 @@ class Handler(SimpleHTTPRequestHandler):
             destination = payload.get("destination", "").strip()
             caller_id = payload.get("caller_id", "").strip() or None
             room_name = payload.get("room", "").strip() or None
+            agent_choice = (
+                payload.get("agent", "") or
+                payload.get("agent_id", "") or
+                payload.get("agent_name", "") or
+                payload.get("outbound_agent", "")
+            ).strip() or None
             if not destination:
                 self._send_json({"error": "Missing 'destination' phone number"}, 400)
                 return
@@ -925,6 +932,7 @@ class Handler(SimpleHTTPRequestHandler):
                         destination_number=destination,
                         caller_id=caller_id,
                         room_name=room_name,
+                        agent=agent_choice,
                     )
                 )
                 loop.close()
@@ -1004,6 +1012,60 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "ok", "numbers": numbers, "total": len(numbers)})
             except Exception as e:
                 self._send_json({"status": "error", "error": str(e)}, 500)
+            return
+
+        elif parsed.path == "/api/telephony/trunks":
+            from agent.telephony_manager import SIPTrunk, validate_unified_trunk_payload
+            t_id = str(payload.get("trunk_id", "")).strip() or f"trunk-{int(time.time())}"
+            name = str(payload.get("name") or "Custom SIP Trunk").strip()
+            address = str(payload.get("address") or "").strip()
+            numbers = payload.get("numbers", [])
+            allowed = payload.get("allowed_addresses") or ["0.0.0.0/0"]
+            transport = str(payload.get("transport") or "udp").lower()
+            direction = str(payload.get("direction") or "both").lower()
+            metadata = payload.get("metadata") or {}
+            errors = validate_unified_trunk_payload(
+                trunk_id=t_id,
+                name=name,
+                address=address,
+                numbers=numbers,
+                allowed_addresses=allowed,
+                transport=transport,
+                direction=direction,
+            )
+            if errors:
+                self._send_json({"status": "error", "error": "; ".join(errors), "errors": errors}, 400)
+                return
+            if telephony_manager.has_trunk(t_id) and not payload.get("replace"):
+                self._send_json({"status": "error", "error": f"Trunk id '{t_id}' already exists. Choose another id or pass replace=true."}, 409)
+                return
+            trunk = SIPTrunk(
+                trunk_id=t_id,
+                name=name,
+                address=address,
+                numbers=numbers,
+                allowed_addresses=allowed,
+                auth_username=payload.get("auth_username"),
+                auth_password=payload.get("auth_password"),
+                transport=transport,
+                direction=direction,
+                metadata=metadata,
+            )
+            telephony_manager.register_trunk(trunk)
+            default_agent = None
+            try:
+                active = agent_builder.get_active_agent()
+                default_agent = active.name if active else None
+            except Exception:
+                default_agent = None
+            provisioned = []
+            if trunk.is_inbound:
+                for num in (trunk.numbers or []):
+                    rec = telephony_manager.ensure_owned_number(num, t_id, agent_name=default_agent, carrier="twilio")
+                    if rec:
+                        provisioned.append(rec["phone_number"])
+            self._send_json({"status": "ok", "trunk": telephony_manager._public_trunk(trunk),
+                             "provisioned_numbers": provisioned})
             return
 
         elif parsed.path == "/api/telephony/trunks/inbound":
@@ -1109,9 +1171,8 @@ class Handler(SimpleHTTPRequestHandler):
             if not trunk_id:
                 self._send_json({"error": "Missing 'trunk_id' parameter"}, 400)
                 return
-            ok_in = telephony_manager.delete_inbound_trunk(trunk_id)
-            ok_out = telephony_manager.delete_outbound_trunk(trunk_id)
-            if not ok_in and not ok_out:
+            ok = telephony_manager.delete_trunk(trunk_id)
+            if not ok:
                 self._send_json({"status": "error", "error": f"Trunk '{trunk_id}' not found"}, 404)
                 return
             self._send_json({"status": "ok", "deleted": True})

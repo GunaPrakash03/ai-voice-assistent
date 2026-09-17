@@ -454,18 +454,28 @@
 
         <!-- Section: SIP Trunks & Gateways -->
         <div id="sub-trunks" style="display:none">
-          <div class="grid2">
+          <div class="card" style="margin-bottom:20px">
+            <div class="card-h">
+              <div>
+                <h2>SIP Trunks &amp; Gateways</h2>
+                <span class="meta">Single unified SIP trunks for both inbound DID routing and outbound PSTN dialing</span>
+              </div>
+              <button class="btn sm" id="btnAddUnifiedTrunk">+ New SIP Trunk</button>
+            </div>
+            <div class="card-b" id="unifiedTrunksList"><div class="empty">Loading SIP trunks…</div></div>
+          </div>
+          <div class="grid2" style="opacity:0.85">
             <div class="card">
               <div class="card-h">
-                <h2>Inbound SIP Trunks</h2>
-                <button class="btn sm ghost" id="btnAddInboundTrunk">New Inbound Trunk</button>
+                <h2>Inbound Trunks (Legacy)</h2>
+                <button class="btn sm ghost" id="btnAddInboundTrunk">New Inbound</button>
               </div>
               <div class="card-b" id="inboundTrunksList"></div>
             </div>
             <div class="card">
               <div class="card-h">
-                <h2>Outbound SIP Trunks</h2>
-                <button class="btn sm ghost" id="btnAddOutboundTrunk">New Outbound Trunk</button>
+                <h2>Outbound Trunks (Legacy)</h2>
+                <button class="btn sm ghost" id="btnAddOutboundTrunk">New Outbound</button>
               </div>
               <div class="card-b" id="outboundTrunksList"></div>
             </div>
@@ -581,6 +591,70 @@
         <button class="btn ghost" id="btnCancelEditNumber">Cancel</button>
         <button class="btn" id="btnConfirmEditNumber">Save Changes</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Unified SIP Trunk Modal -->
+<div class="modal-overlay" id="modalUnifiedTrunk">
+  <div class="modal-card">
+    <div class="modal-h">
+      <h3>Configure Single SIP Trunk</h3>
+      <button class="btn ghost sm" id="btnCloseUnifiedTrunkModal"></button>
+    </div>
+    <div class="modal-b">
+      <div class="form-group">
+        <label>Trunk Identifier (ID)</label>
+        <input type="text" id="modalUniTrunkId" placeholder="e.g. trunk-primary" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Trunk Display Name</label>
+        <input type="text" id="modalUniTrunkName" placeholder="e.g. Primary Unified SIP Trunk">
+      </div>
+      <div class="form-group">
+        <label>Trunk Direction / Capability</label>
+        <select id="modalUniTrunkDirection">
+          <option value="both" selected>Both (Inbound DIDs &amp; Outbound PSTN)</option>
+          <option value="inbound">Inbound Only (DID Routing)</option>
+          <option value="outbound">Outbound Only (Carrier Termination)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Carrier SIP Gateway Host (for Outbound)</label>
+        <input type="text" id="modalUniTrunkAddress" placeholder="sip.telnyx.com:5060" value="sip.telnyx.com:5060" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Assigned Phone Numbers / DIDs (comma-separated E.164)</label>
+        <input type="text" id="modalUniTrunkNumbers" placeholder="+18005550199, +18885550142" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Carrier Allowed IPs / Inbound Whitelist</label>
+        <input type="text" id="modalUniTrunkAllowed" value="0.0.0.0/0" placeholder="0.0.0.0/0" style="font-family:var(--f-mono)">
+      </div>
+      <div class="form-group">
+        <label>Transport</label>
+        <select id="modalUniTrunkTransport">
+          <option value="udp" selected>UDP (Port 5060)</option>
+          <option value="tcp">TCP (Port 5060)</option>
+          <option value="tls">TLS Encrypted (Port 5061)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>SIP Auth Username (Optional)</label>
+        <input type="text" id="modalUniTrunkUser" placeholder="Optional SIP username">
+      </div>
+      <div class="form-group">
+        <label>SIP Auth Password (Optional)</label>
+        <input type="password" id="modalUniTrunkPass" placeholder="Optional SIP password">
+      </div>
+      <div class="form-group">
+        <label>Assign Default Voice Agent</label>
+        <select id="modalUniTrunkAgent"></select>
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" id="btnCancelUnifiedTrunk">Cancel</button>
+      <button class="btn" id="btnConfirmUnifiedTrunk">Save SIP Trunk</button>
     </div>
   </div>
 </div>
@@ -1149,26 +1223,51 @@
 
   function loadTrunksAndRules() {
     return fetch("/api/telephony/trunks").then(function (r) { return r.json(); }).then(function (data) {
+      var uniTrunks = data.trunks || [];
       var inTrunks = data.inbound || [];
       var outTrunks = data.outbound || [];
       var rules = data.rules || [];
-      cachedTrunks = inTrunks;
+      cachedTrunks = uniTrunks.length ? uniTrunks : inTrunks;
 
-      $("#telStatTrunks").innerHTML = (inTrunks.length + outTrunks.length) + '<span class="delta" style="color:var(--pos)">trunks online</span>';
+      var totalTrunks = uniTrunks.length ? uniTrunks.length : (inTrunks.length + outTrunks.length);
+      $("#telStatTrunks").innerHTML = totalTrunks + '<span class="delta" style="color:var(--pos)">trunks online</span>';
+
+      var uniEl = $("#unifiedTrunksList");
+      if (uniEl) {
+        uniEl.innerHTML = uniTrunks.length ? uniTrunks.map(function (t) {
+          var dir = (t.direction || "both").toLowerCase();
+          var dirLabel = dir === "both" ? "Inbound & Outbound" : (dir === "inbound" ? "Inbound Only" : "Outbound Only");
+          var dirClass = dir === "both" ? "pos" : "neutral";
+          var didCount = (t.numbers && t.numbers.length) || 0;
+          return '<div class="agent-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px">' +
+            '<div><div style="display:flex;align-items:center;gap:8px"><strong>' + CI.escapeHtml(t.name) + '</strong> ' +
+            '<span class="pill ' + dirClass + '">' + dirLabel + '</span> ' +
+            (t.metadata && t.metadata.is_primary ? '<span class="pill pos" style="font-size:10px">Primary</span>' : '') + '</div>' +
+            '<div style="font-size:12px;color:var(--text-dim);margin-top:3px">' +
+            '<code style="font-size:11px">id: ' + CI.escapeHtml(t.trunk_id) + '</code> · ' +
+            '<span>Gateway: ' + CI.escapeHtml(t.address || "sip.telnyx.com:5060") + '</span> · ' +
+            '<span>' + didCount + ' DIDs mapped</span> · ' +
+            '<span>Transport: ' + CI.escapeHtml((t.transport || "udp").toUpperCase()) + '</span>' +
+            '</div></div>' +
+            '<div style="display:flex;gap:6px">' +
+            '<button class="btn sm ghost btn-del-trunk" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-id="' + CI.escapeHtml(t.trunk_id) + '" data-name="' + CI.escapeHtml(t.name) + '">Delete</button>' +
+            '</div></div>';
+        }).join("") : '<div class="empty">No SIP trunks configured. Click "+ New SIP Trunk" to add one.</div>';
+      }
 
       $("#inboundTrunksList").innerHTML = inTrunks.length ? inTrunks.map(function (t) {
         return '<div class="agent-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><strong>' + CI.escapeHtml(t.name) + '</strong> <span class="pill pos">connected</span><br>' +
           '<code style="font-size:11px">id: ' + CI.escapeHtml(t.trunk_id) + ' · ' + (t.numbers ? t.numbers.length : 0) + ' DIDs mapped</code></div>' +
           '<button class="btn sm ghost btn-del-trunk" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-id="' + CI.escapeHtml(t.trunk_id) + '" data-name="' + CI.escapeHtml(t.name) + '">Delete</button>' +
           '</div>';
-      }).join("") : '<div class="empty">No inbound trunks configured.</div>';
+      }).join("") : '<div class="empty">No legacy inbound trunks.</div>';
 
       $("#outboundTrunksList").innerHTML = outTrunks.length ? outTrunks.map(function (t) {
         return '<div class="agent-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><strong>' + CI.escapeHtml(t.name) + '</strong> <span class="pill pos">active</span><br>' +
           '<code style="font-size:11px">gateway: ' + CI.escapeHtml(t.address) + ' · transport: ' + CI.escapeHtml(t.transport || "udp") + '</code></div>' +
           '<button class="btn sm ghost btn-del-trunk" style="color:var(--neg);border-color:rgba(163,47,38,.3)" data-id="' + CI.escapeHtml(t.trunk_id) + '" data-name="' + CI.escapeHtml(t.name) + '">Delete</button>' +
           '</div>';
-      }).join("") : '<div class="empty">No outbound trunks configured.</div>';
+      }).join("") : '<div class="empty">No legacy outbound trunks.</div>';
 
       $("#dispatchRulesList").innerHTML = rules.length ? rules.map(function (r) {
         return '<div class="agent-card"><div><strong>' + CI.escapeHtml(r.name) + '</strong><br>' +
@@ -1380,6 +1479,83 @@
       }
     }).catch(function (e) {
       showToast("Error: " + e.message);
+    });
+  }
+
+  // ── Unified Single Trunk Modal Logic ──────────────────────────────────────
+  function openUnifiedTrunkModal() {
+    $("#modalUniTrunkId").value = "trunk-" + Date.now().toString().slice(-6);
+    $("#modalUniTrunkName").value = "";
+    $("#modalUniTrunkDirection").value = "both";
+    $("#modalUniTrunkAddress").value = "sip.telnyx.com:5060";
+    $("#modalUniTrunkNumbers").value = "";
+    $("#modalUniTrunkAllowed").value = "0.0.0.0/0";
+    $("#modalUniTrunkTransport").value = "udp";
+    $("#modalUniTrunkUser").value = "";
+    $("#modalUniTrunkPass").value = "";
+    var sel = $("#modalUniTrunkAgent");
+    if (sel) {
+      sel.innerHTML = cachedAgents.length ? cachedAgents.map(function (a) {
+        return '<option value="' + CI.escapeHtml(a.name) + '">' + CI.escapeHtml(a.name) + '</option>';
+      }).join("") : '<option value="Intake Agent">Intake Agent</option><option value="Support Agent">Support Agent</option>';
+    }
+    $("#modalUnifiedTrunk").classList.add("open");
+  }
+
+  function closeUnifiedTrunkModal() {
+    $("#modalUnifiedTrunk").classList.remove("open");
+  }
+
+  var btnAddUni = $("#btnAddUnifiedTrunk");
+  if (btnAddUni) { btnAddUni.addEventListener("click", openUnifiedTrunkModal); }
+  var btnCloseUni = $("#btnCloseUnifiedTrunkModal");
+  if (btnCloseUni) { btnCloseUni.addEventListener("click", closeUnifiedTrunkModal); }
+  var btnCancelUni = $("#btnCancelUnifiedTrunk");
+  if (btnCancelUni) { btnCancelUni.addEventListener("click", closeUnifiedTrunkModal); }
+
+  var btnConfirmUni = $("#btnConfirmUnifiedTrunk");
+  if (btnConfirmUni) {
+    btnConfirmUni.addEventListener("click", function () {
+      var btn = this;
+      var name = $("#modalUniTrunkName").value.trim() || "Single Unified SIP Trunk";
+      var tId = $("#modalUniTrunkId").value.trim() || ("trunk-" + Date.now());
+      var direction = $("#modalUniTrunkDirection").value || "both";
+      var address = $("#modalUniTrunkAddress").value.trim() || "sip.telnyx.com:5060";
+      var rawNums = $("#modalUniTrunkNumbers").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+      var rawAllowed = $("#modalUniTrunkAllowed").value.split(",").map(function(s){return s.trim();}).filter(Boolean);
+      if (!rawAllowed.length) { rawAllowed = ["0.0.0.0/0"]; }
+      var transport = $("#modalUniTrunkTransport").value || "udp";
+
+      btn.disabled = true;
+      btn.textContent = "Saving Trunk…";
+
+      fetch("/api/telephony/trunks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trunk_id: tId,
+          name: name,
+          direction: direction,
+          address: address,
+          numbers: rawNums,
+          allowed_addresses: rawAllowed,
+          transport: transport,
+          auth_username: $("#modalUniTrunkUser").value.trim() || null,
+          auth_password: $("#modalUniTrunkPass").value.trim() || null
+        })
+      }).then(function (r) { return r.json(); }).then(function (res) {
+        btn.disabled = false;
+        btn.textContent = "Save SIP Trunk";
+        if (!res || res.status !== "ok") { showToast(((res && res.error) || "Trunk creation failed")); return; }
+        closeUnifiedTrunkModal();
+        showToast("SIP Trunk " + name + " configured successfully");
+        loadTrunksAndRules();
+        loadOwnedNumbers();
+      }).catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = "Save SIP Trunk";
+        showToast("Trunk configuration error: " + e.message);
+      });
     });
   }
 

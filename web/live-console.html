@@ -277,9 +277,19 @@
 
     <!-- Outbound Dialing Form -->
     <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
-      <label for="tel-dest">Outbound Phone Number (E.164 format)</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+        <div>
+          <label for="tel-dest" style="font-size:12px">Outbound Phone Number (E.164)</label>
+          <input id="tel-dest" style="width:100%" value="+18005550199" placeholder="+1 (555) 000-0000">
+        </div>
+        <div>
+          <label for="tel-agent-select" style="font-size:12px">Voice Agent to Test</label>
+          <select id="tel-agent-select" style="width:100%;height:38px;padding:6px 10px;border-radius:4px;border:1px solid var(--rule);background:var(--bg);color:var(--text)">
+            <option value="">Auto / Default (Active Agent)</option>
+          </select>
+        </div>
+      </div>
       <div class="row">
-        <input id="tel-dest" style="flex:1;min-width:200px" value="+18005550199" placeholder="+1 (555) 000-0000">
         <button id="btn-dial-phone">Dial Outbound PSTN</button>
         <button id="btn-sim-inbound" class="ghost">Simulate Inbound DID</button>
         <button id="btn-hangup-phone" class="ghost" disabled style="color:var(--warn)">Hangup</button>
@@ -1161,13 +1171,15 @@
 
     // Call REST endpoint
     try {
+      var chosenAgent = $("tel-agent-select") ? $("tel-agent-select").value.trim() : "";
       var resp = await fetch("/api/telephony/dial", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           destination: dest,
           caller_id: "+18005550100",
-          room: $("room").value || "test-room"
+          room: $("room").value || "test-room",
+          agent: chosenAgent || undefined
         })
       });
       var data = await resp.json();
@@ -1181,7 +1193,7 @@
         tb.textContent = "Call Active (" + data.call.state + ")";
         tb.style.background = "var(--ok)";
         $("btn-hangup-phone").disabled = false;
-        log("Outbound call placed! Call ID: " + data.call.call_id + " -> room: " + data.call.room_name);
+        log("Outbound call placed! Call ID: " + data.call.call_id + " -> room: " + data.call.room_name + (chosenAgent ? " [Agent: " + chosenAgent + "]" : ""));
       } else {
         tb.textContent = "Dial Error";
         tb.style.background = "var(--err)";
@@ -1831,8 +1843,30 @@
     } catch (e) {}
   });
 
+  async function loadConsoleAgents() {
+    try {
+      var res = await fetch("/api/agents");
+      if (!res.ok) return;
+      var data = await res.json();
+      if (data.status === "ok" && Array.isArray(data.agents)) {
+        var sel = $("tel-agent-select");
+        if (!sel) return;
+        var activeId = data.active_agent;
+        sel.innerHTML = '<option value="">Auto / Default (Active Agent)</option>';
+        data.agents.forEach(function (a) {
+          var opt = document.createElement("option");
+          opt.value = a.agent_id;
+          var isLive = a.is_active || (a.agent_id === activeId);
+          opt.textContent = a.name + (isLive ? " [LIVE]" : "") + (a.voice_id ? " (" + a.voice_id + ")" : "");
+          sel.appendChild(opt);
+        });
+      }
+    } catch (e) {}
+  }
+
   $("go").addEventListener("click", join);
   $("stop").addEventListener("click", leave);
+  loadConsoleAgents();
 })();
 </script>
 </body>

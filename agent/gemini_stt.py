@@ -16,19 +16,27 @@ Configuration: GEMINI_API_KEY (or GOOGLE_API_KEY); GEMINI_STT_MODEL overrides th
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import logging
 import os
 import time
 import wave
-from typing import Optional
+from typing import Any, Optional
 
 import aiohttp
-from livekit import rtc
-from livekit.agents import APIConnectOptions, APIConnectionError, APIStatusError, stt, utils
-from livekit.agents.types import NOT_GIVEN, NotGivenOr
-from livekit.agents.utils import AudioBuffer
+try:
+    from livekit import rtc
+    from livekit.agents import APIConnectOptions, APIConnectionError, APIStatusError, stt, utils
+    from livekit.agents.types import NOT_GIVEN, NotGivenOr
+    from livekit.agents.utils import AudioBuffer
+except ImportError:
+    rtc, APIConnectOptions, APIConnectionError, APIStatusError, stt, utils, NOT_GIVEN, NotGivenOr, AudioBuffer = (
+        None, None, None, None, None, None, None, None, None
+    )
+
+_STTBase = getattr(stt, "STT", object) if stt else object
 
 log = logging.getLogger("gemini-stt")
 
@@ -102,7 +110,7 @@ def concat_wavs(clips: "list[bytes]", max_seconds: float = 30.0) -> bytes:
 AUDIO_MARK = "\u2063audio:"   # invisible separator + tag: a FINAL "transcript" that is really an audio handle
 
 
-class GeminiSTT(stt.STT):
+class GeminiSTT(_STTBase):
     """Non-streaming STT: one VAD-segmented utterance at a time.
 
     Two modes, switchable per call via ``hand_off_audio``:
@@ -114,7 +122,8 @@ class GeminiSTT(stt.STT):
 
     def __init__(self, *, model: Optional[str] = None, language: str = "en", api_key: Optional[str] = None,
                  min_audio_seconds: float = 0.25, hand_off_audio: bool = False) -> None:
-        super().__init__(capabilities=stt.STTCapabilities(streaming=False, interim_results=False))
+        if stt:
+            super().__init__(capabilities=stt.STTCapabilities(streaming=False, interim_results=False))
         from agent.agent_builder import resolve_gemini_model
         self._model = resolve_gemini_model(model or os.getenv("GEMINI_STT_MODEL") or os.getenv("GEMINI_MODEL") or "")
         self._language = language

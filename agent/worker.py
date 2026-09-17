@@ -18,6 +18,7 @@ Integrates:
    `tool_result`, `tools_list`.
 """
 
+from __future__ import annotations
 import asyncio
 import json
 import logging
@@ -29,9 +30,12 @@ import wave
 from typing import AsyncIterable, Optional
 
 from dotenv import load_dotenv
-from livekit import agents, rtc
-from livekit.agents import Agent, AgentSession
-from livekit.plugins import deepgram, silero
+try:
+    from livekit import agents, rtc
+    from livekit.agents import Agent, AgentSession
+    from livekit.plugins import deepgram, silero
+except ImportError:
+    agents, rtc, Agent, AgentSession, deepgram, silero = None, None, None, None, None, None
 
 from agent.llm_manager import (
     ClauseBoundarySplitter,
@@ -64,12 +68,16 @@ CARTESIA_VOICE_ID = os.getenv("CARTESIA_VOICE_ID", "f786b574-daa5-4673-aa0c-cbe3
 TTS_SAMPLE_RATE = int(os.getenv("TTS_SAMPLE_RATE", "24000"))
 
 
-class VoiceAssistantAgent(Agent):
+_AgentBase = Agent if Agent else object
+
+
+class VoiceAssistantAgent(_AgentBase):
     """Voice assistant agent with dialogue management capabilities."""
 
     def __init__(self) -> None:
-        super().__init__(
-            instructions=(
+        if Agent:
+            super().__init__(
+                instructions=(
                 "You are a friendly, helpful, and concise AI voice assistant. "
                 "Speak in conversational English without bullet points or emojis."
             )
@@ -126,6 +134,7 @@ def resolve_agent_for_call(ctx: agents.JobContext):
     Inbound SIP participants carry the dialled DID in their attributes. If that number is assigned
     to an agent on the Call Desk (SIP Trunks & DIDs tab), that agent answers, so several agents can
     each own a phone number. Otherwise the agent marked live in the builder answers.
+    Outbound calls can also choose a specific persona via room name, room metadata, or dial parameters.
     """
     from agent.agent_builder import agent_builder
     try:
@@ -133,49 +142,91 @@ def resolve_agent_for_call(ctx: agents.JobContext):
     except Exception:
         telephony_manager, normalize_phone_number = None, None
 
-    # Agent Builder test calls join a room named test-<agent_id>-<stamp>: that agent takes the call,
-    # whatever is marked live.
-    m = re.match(r"^test-(.+)-[a-z0-9]{6,}$", ctx.room.name or "")
+    # 1. Agent Builder test calls or test room naming: test-<agent_id>-<stamp>
+    m = re.match(r"^test-(.+?)-[a-z0-9]{4,}$", ctx.room.name or "")
     if m:
         cfg = agent_builder.get_agent(m.group(1))
         if cfg:
             log.info("Builder test call for agent '%s'", cfg.name)
             return cfg, ""
-        log.warning("Test room names unknown agent id %s; using the live agent", m.group(1))
+        # Check by name if ID was not matched
+        wanted = m.group(1).strip().lower()
+        for a in agent_builder.list_agents():
+            if a["name"].strip().lower() == wanted or a["agent_id"] == wanted:
+                cfg = agent_builder.get_agent(a["agent_id"])
+                if cfg:
+                    log.info("Builder test call matched agent '%s'", cfg.name)
+                    return cfg, ""
+        log.warning("Test room names unknown agent id %s; checking other indicators", m.group(1))
 
-    # Outbound calls: telephony_manager.dial_phone_number() stamps the room it creates with the
-    # caller-ID number's assigned agent (set on that number via "Assign to Voice Agent" when it was
-    # bought), so an outbound call sounds like the agent that owns the number placing it, not
-    # whichever agent happens to be live.
+    # 2. Softphone / Outbound room naming: (softphone|outbound)-<agent_id>-<stamp>
+    m_out = re.match(r"^(?:softphone|outbound)-([a-zA-Z0-9_-]+?)-(?:\d+|[a-z0-9]{4,})$", ctx.room.name or "")
+    if m_out:
+        candidate = m_out.group(1).strip()
+        # Ensure candidate is not a generic timestamp or string like 'user'
+        if candidate not in ("user", "call", "test") and not candidate.isdigit():
+            cfg = agent_builder.get_agent(candidate)
+            if not cfg:
+                wanted = candidate.lower()
+                for a in agent_builder.list_agents():
+                    if a["name"].strip().lower() == wanted or a["agent_id"] == wanted:
+                        cfg = agent_builder.get_agent(a["agent_id"])
+                        break
+            if cfg:
+                log.info("Room name '%s' specifies agent '%s'; using it", ctx.room.name, cfg.name)
+                return cfg, ""
+
+    # 3. Room metadata: outbound_agent, agent_id, or agent
     try:
         meta = json.loads(ctx.room.metadata or "{}")
     except Exception:
         meta = {}
-    outbound_agent = meta.get("outbound_agent")
+    outbound_agent = meta.get("outbound_agent") or meta.get("agent_id") or meta.get("agent")
     if outbound_agent:
         wanted = str(outbound_agent).strip().lower()
         for a in agent_builder.list_agents():
             if a["name"].strip().lower() == wanted or a["agent_id"] == wanted:
                 cfg = agent_builder.get_agent(a["agent_id"])
                 if cfg:
-                    log.info("Outbound call: caller-ID number is assigned to agent '%s'; using it", cfg.name)
+                    log.info("Room metadata specifies agent '%s'; using it", cfg.name)
                     return cfg, ""
-        log.warning("Outbound call room asks for agent '%s' but no such agent exists; using the live agent", outbound_agent)
+        log.warning("Outbound call room asks for agent '%s' but no such agent exists; checking DID routing", outbound_agent)
 
+    # 4. Participant attributes
+    for p in list(ctx.room.remote_participants.values()):
+        attrs = getattr(p, "attributes", {}) or {}
+        p_agent = attrs.get("agent") or attrs.get("agent_id") or attrs.get("outbound_agent")
+        if p_agent:
+            wanted = str(p_agent).strip().lower()
+            for a in agent_builder.list_agents():
+                if a["name"].strip().lower() == wanted or a["agent_id"] == wanted:
+                    cfg = agent_builder.get_agent(a["agent_id"])
+                    if cfg:
+                        log.info("Participant attribute specifies agent '%s'; using it", cfg.name)
+                        return cfg, ""
+
+    # 5. Inbound SIP participant attributes (dialed DID)
     dialled = ""
     for p in list(ctx.room.remote_participants.values()):
         attrs = getattr(p, "attributes", {}) or {}
-        dialled = attrs.get("sip.trunkPhoneNumber") or attrs.get("sip.calledNumber") or attrs.get("sip.toNumber") or dialled
+        dialled = (
+            attrs.get("sip.trunkPhoneNumber")
+            or attrs.get("sip.calledNumber")
+            or attrs.get("sip.toNumber")
+            or attrs.get("sip.dialedNumber")
+            or dialled
+        )
         if dialled:
             break
     if not dialled:
         # Only an explicit E.164 number in the room name counts; "softphone-1789381564553" is a timestamp.
-        m = re.search(r"(\+\d{10,15})", ctx.room.name or "")
-        dialled = m.group(1) if m else ""
+        m_num = re.search(r"(\+\d{10,15})", ctx.room.name or "")
+        dialled = m_num.group(1) if m_num else ""
 
     if dialled and telephony_manager is not None:
         try:
             norm = normalize_phone_number(dialled)
+            # Direct owned number match
             rec = telephony_manager._owned_numbers.get(norm)
             if rec and rec.status == "active" and rec.assigned_agent:
                 wanted = rec.assigned_agent.strip().lower()
@@ -186,6 +237,19 @@ def resolve_agent_for_call(ctx: agents.JobContext):
                             log.info("DID %s is assigned to agent '%s'; using it for this call", norm, cfg.name)
                             return cfg, norm
                 log.warning("DID %s is assigned to '%s' but no such agent exists; using the live agent", norm, rec.assigned_agent)
+            else:
+                # Inbound trunk / dispatch rule match fallback
+                for trunk in telephony_manager._inbound_trunks.values():
+                    if trunk.matches_number(norm):
+                        for rule in telephony_manager._dispatch_rules.values():
+                            if trunk.trunk_id in rule.trunk_ids and rule.agent_name:
+                                wanted = rule.agent_name.strip().lower()
+                                for a in agent_builder.list_agents():
+                                    if a["name"].strip().lower() == wanted or a["agent_id"] == wanted:
+                                        cfg = agent_builder.get_agent(a["agent_id"])
+                                        if cfg:
+                                            log.info("Trunk %s / Rule %s maps DID %s to agent '%s'", trunk.trunk_id, rule.rule_id, norm, cfg.name)
+                                            return cfg, norm
         except Exception as e:
             log.warning("DID → agent lookup failed (%s); using the live agent", e)
     return agent_builder.get_active_agent(), dialled

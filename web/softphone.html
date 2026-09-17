@@ -292,8 +292,17 @@
     
     <!-- LEFT COLUMN: The Telephone Handset & Dialpad -->
     <div>
-      <div class="panel" style="padding:16px">
-        
+        <!-- Voice Agent Selector for Outbound / Testing -->
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <label for="agent-select" style="font-size:12px;margin-bottom:0;color:var(--text);font-weight:600">Voice Agent (Persona for Outbound &amp; Testing)</label>
+            <span id="agent-status-tag" style="font-size:11px;color:var(--accent);font-weight:600">Auto (Active)</span>
+          </div>
+          <select id="agent-select" style="width:100%;padding:8px 10px;font-size:13px;border-radius:6px;border:1px solid var(--accent, #2563eb);background:var(--bg, #0d1117);color:var(--text);cursor:pointer">
+            <option value="">Auto / Default (Caller-ID Routing or Live Agent)</option>
+          </select>
+        </div>
+
         <!-- LCD Display -->
         <div class="lcd">
           <div class="lcd-status-row">
@@ -621,21 +630,70 @@
     $("lcd-timer").textContent = "00:00";
   }
 
+  var availableAgents = [];
+  var lastInboundRoute = null;
+
+  async function loadAgents() {
+    try {
+      var res = await fetch("/api/agents");
+      if (!res.ok) return;
+      var data = await res.json();
+      if (data.status === "ok" && Array.isArray(data.agents)) {
+        availableAgents = data.agents;
+        var sel = $("agent-select");
+        var activeId = data.active_agent;
+        sel.innerHTML = '<option value="">Auto / Default (Caller-ID Routing or Live Agent)</option>';
+        data.agents.forEach(function (a) {
+          var opt = document.createElement("option");
+          opt.value = a.agent_id;
+          var isLive = a.is_active || (a.agent_id === activeId);
+          opt.textContent = a.name + (isLive ? " [LIVE]" : "") + (a.voice_id ? " (" + a.voice_id + ")" : "");
+          sel.appendChild(opt);
+        });
+      }
+    } catch (e) {
+      log("Note: unable to fetch agent catalogue (" + e.message + ")");
+    }
+  }
+
+  $("agent-select").addEventListener("change", function () {
+    var val = $("agent-select").value;
+    var tag = $("agent-status-tag");
+    if (!val) {
+      tag.textContent = "Auto (Active)";
+      log("Voice Agent selection: Auto / Default routing");
+    } else {
+      var found = availableAgents.find(function (a) { return a.agent_id === val; });
+      var label = found ? found.name : val;
+      tag.textContent = label;
+      log("Voice Agent selected for test calls: " + label + (found && found.voice_id ? " [Voice: " + found.voice_id + ", Model: " + (found.llm_model || "default") + "]" : ""));
+    }
+  });
+
   // Dial Outbound Call
   async function dial() {
     var numberToCall = dialedDigits || "+18005550199";
-    log("Dialing destination: " + numberToCall + " via LiveKit SIP Gateway...");
+    var selectedAgentId = $("agent-select") ? $("agent-select").value.trim() : "";
+    var selectedAgentObj = availableAgents.find(function (a) { return a.agent_id === selectedAgentId; });
+    var agentDisplayName = selectedAgentObj ? selectedAgentObj.name : (selectedAgentId || "Auto (Default)");
+
+    log("Dialing destination: " + numberToCall + " via LiveKit SIP Gateway [Agent: " + agentDisplayName + "]...");
 
     $("lcd-state").textContent = "DIALING...";
     $("btn-dial").disabled = true;
     $("btn-hangup").disabled = false;
     startRingbackTone();
 
-    var roomName = "softphone-" + Date.now();
+    // Embed chosen agent in room name for instant worker dispatch
+    var roomName = selectedAgentId
+      ? ("softphone-" + selectedAgentId + "-" + Date.now().toString(36))
+      : ("softphone-" + Date.now().toString(36));
 
     try {
       // Fetch token from serve.py
-      var res = await fetch("/token?room=" + encodeURIComponent(roomName) + "&identity=softphone-user");
+      var tokenUrl = "/token?room=" + encodeURIComponent(roomName) + "&identity=softphone-user" +
+        (selectedAgentId ? "&agent=" + encodeURIComponent(selectedAgentId) : "");
+      var res = await fetch(tokenUrl);
       if (!res.ok) throw new Error("Failed to get join token");
       var tokenData = await res.json();
 
@@ -678,10 +736,9 @@
         if (isCallActive) { log("Media session closed"); hangup(); }
       });
 
-      // Join the LiveKit room. This was missing, so the microphone had nothing to publish to
-      // ("engine not connected within timeout") and no agent was ever dispatched to talk.
+      // Join the LiveKit room.
       await room.connect(tokenData.url, tokenData.token);
-      log("Joined media room; waiting for the AI agent to pick up…");
+      log("Joined media room; waiting for AI agent (" + agentDisplayName + ") to answer…");
 
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -703,21 +760,22 @@
       $("btn-xfer").disabled = false;
       startTimer();
 
-      // Trigger outbound dialer API
+      // Trigger outbound dialer API with chosen agent
       fetch("/api/telephony/dial", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           destination: numberToCall,
           room: roomName,
-          caller_id: "+18005550199"
+          caller_id: "+18005550199",
+          agent: selectedAgentId || undefined
         })
       }).catch(function () {});
 
       // Simulate VU meter activity
       simulateVUMeter();
 
-      log("Call connected successfully to " + numberToCall);
+      log("Call connected successfully to " + numberToCall + " [Agent: " + agentDisplayName + "]");
 
     } catch (err) {
       stopRingbackTone();
@@ -854,10 +912,25 @@
   // Simulate Inbound Call
   var inboundInterval = null;
   $("btn-trigger-inbound").addEventListener("click", function () {
-    var fromNum = $("sim-from-number").value || "+15559876543";
+    var fromNum = $("sim-from-number").value.trim() || "+15559876543";
+    var toNum = $("sim-to-number").value.trim() || "+18005550199";
     $("incoming-caller-id").textContent = fromNum;
+    $("incoming-caller-name").textContent = "Routing call to DID: " + toNum + "…";
     $("incoming-banner").style.display = "flex";
-    log("INCOMING CALL from " + fromNum + " on trunk +18005550199...");
+    log("INCOMING CALL: " + fromNum + " -> " + toNum + " (dispatching route)...");
+
+    fetch("/api/telephony/inbound/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: fromNum, to: toNum })
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data.status === "ok" && data.routed) {
+        lastInboundRoute = data.routed;
+        var rAgent = (data.routed.rule && data.routed.rule.agent_name) || "Assigned Voice Agent";
+        $("incoming-caller-name").textContent = "Assigned Persona: " + rAgent + " • DID: " + toNum;
+        log("Inbound dispatch route found: Agent=" + rAgent + " Room=" + (data.routed.room_name || "auto"));
+      }
+    }).catch(function () {});
 
     playInboundRingtone();
     if (inboundInterval) clearInterval(inboundInterval);
@@ -867,8 +940,9 @@
   $("btn-accept-call").addEventListener("click", function () {
     if (inboundInterval) clearInterval(inboundInterval);
     $("incoming-banner").style.display = "none";
-    log("Inbound call answered by softphone operator");
-    dialedDigits = $("incoming-caller-id").textContent;
+    var dialedDID = $("sim-to-number").value.trim() || "+18005550199";
+    log("Inbound call answered for DID " + dialedDID);
+    dialedDigits = dialedDID;
     updateLCD();
     dial();
   });
@@ -922,6 +996,7 @@
   $("btn-clear-log").addEventListener("click", function () { $("softphone-log").textContent = "Log cleared."; });
 
   enumerateAudioDevices();
+  loadAgents();
 })();
 </script>
 </body>
