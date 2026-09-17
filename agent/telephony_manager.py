@@ -1385,8 +1385,16 @@ class TelephonyManager:
                             name=target_room,
                             metadata=json.dumps({"outbound_agent": outbound_agent}),
                         ))
+                    # LiveKit only knows its own trunk ids (ST_*). Our local trunk_id is a
+                    # different namespace, so prefer the mapping stored on the trunk.
+                    lk_trunk_id = (trunk.metadata or {}).get("livekit_trunk_id") or trunk.trunk_id
+                    if not str(lk_trunk_id).startswith("ST_"):
+                        raise RuntimeError(
+                            f"Outbound trunk '{trunk.trunk_id}' has no LiveKit trunk id; set "
+                            f"metadata.livekit_trunk_id to the ST_* id from LiveKit Cloud"
+                        )
                     sip_call_req = api.CreateSIPParticipantRequest(
-                        sip_trunk_id=trunk.trunk_id,
+                        sip_trunk_id=lk_trunk_id,
                         sip_call_to=norm_dest,
                         room_name=target_room,
                         participant_identity=participant_identity,
@@ -1404,9 +1412,13 @@ class TelephonyManager:
                 record.answered_at = time.time()
                 log.info("Simulated outbound call connected successfully: %s (agent=%s)", call_id, outbound_agent or "default")
         except Exception as err:
-            log.warning("LiveKit SIP API unavailable or failed (%s); marked call active in simulated mode", err)
-            record.status = CallStatus.ACTIVE
-            record.answered_at = time.time()
+            # Never report a failed dial as connected — that hides carrier/trunk errors behind a
+            # green "active" call in the dashboard.
+            log.error("Outbound call %s failed: %s", call_id, err)
+            record.status = CallStatus.FAILED
+            record.ended_at = time.time()
+            record.metadata["error"] = str(err)
+            raise
 
         return record
 

@@ -17,6 +17,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from typing import Any, Dict, List, Optional, Tuple
 import urllib.parse
 from urllib.parse import urlparse, parse_qs
+from html import escape as xml_escape
 
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -262,8 +263,13 @@ class Handler(SimpleHTTPRequestHandler):
             pass
 
     # LiveKit Cloud SIP domain; a call's TwiML bridges the caller here so LiveKit's SIP service
-    # answers and dispatches the agent. Overridable via env if the project is renamed.
-    LIVEKIT_SIP_DOMAIN = os.getenv("LIVEKIT_SIP_DOMAIN", "voice-agent-kuxp4ocs.sip.livekit.cloud")
+    # answers and dispatches the agent. This is the project's SIP URI, which is NOT the WebRTC/server
+    # host: deriving it from LIVEKIT_URL lands on an ingress with none of our trunks and every INVITE
+    # comes back "404 No trunk found". Take it from the LiveKit Cloud dashboard (project id minus "p_").
+    LIVEKIT_SIP_DOMAIN = os.getenv("LIVEKIT_SIP_DOMAIN", "3k0byilfyuy.sip.livekit.cloud")
+    # The inbound trunk requires SIP digest auth, so the TwiML has to carry credentials.
+    LIVEKIT_SIP_USERNAME = os.getenv("LIVEKIT_SIP_USERNAME", "")
+    LIVEKIT_SIP_PASSWORD = os.getenv("LIVEKIT_SIP_PASSWORD", "")
 
     def _maybe_twiml_webhook(self, parsed) -> bool:
         """Twilio Programmable Voice webhook for inbound PSTN calls. Twilio POSTs here (no session);
@@ -285,10 +291,14 @@ class Handler(SimpleHTTPRequestHandler):
         dialed = (params.get("To") or params.get("Called") or "+19517177889").strip()
         dialed = re.sub(r"[^\d+]", "", dialed) or "+19517177889"
         sip_uri = f"sip:{dialed}@{self.LIVEKIT_SIP_DOMAIN}"
+        creds = ""
+        if self.LIVEKIT_SIP_USERNAME:
+            creds = (f' username="{xml_escape(self.LIVEKIT_SIP_USERNAME)}"'
+                     f' password="{xml_escape(self.LIVEKIT_SIP_PASSWORD)}"')
         twiml = (
             '<?xml version="1.0" encoding="UTF-8"?>'
             '<Response><Dial answerOnBridge="true" timeout="30">'
-            f'<Sip>{sip_uri}</Sip>'
+            f'<Sip{creds}>{xml_escape(sip_uri)}</Sip>'
             '</Dial></Response>'
         )
         body = twiml.encode("utf-8")
