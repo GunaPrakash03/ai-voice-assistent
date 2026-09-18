@@ -1147,7 +1147,7 @@ class Handler(SimpleHTTPRequestHandler):
                              "provisioned_numbers": provisioned})
             return
 
-        elif parsed.path == "/api/telephony/numbers/update":
+        elif parsed.path in ("/api/telephony/numbers/update", "/api/telephony/numbers/add"):
             number = payload.get("phone_number", "").strip()
             friendly = payload.get("friendly_name")
             agent_name = payload.get("agent_name")
@@ -1164,7 +1164,18 @@ class Handler(SimpleHTTPRequestHandler):
                 carrier=carrier,
             )
             if not res:
-                self._send_json({"status": "error", "error": f"Phone number '{number}' not found"}, 404)
+                # If number is not in owned numbers yet, register it directly
+                res = telephony_manager.ensure_owned_number(
+                    phone_number=number,
+                    trunk_id=trunk_id or "trunk-primary",
+                    agent_name=agent_name or "Intake Agent",
+                    carrier=carrier or "twilio",
+                )
+                if friendly and res:
+                    res = telephony_manager.update_phone_number(phone_number=number, friendly_name=friendly) or res
+
+            if not res:
+                self._send_json({"status": "error", "error": f"Invalid phone number '{number}'"}, 400)
                 return
             self._send_json({"status": "ok", "number": res})
             return
