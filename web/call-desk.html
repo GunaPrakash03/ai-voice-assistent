@@ -409,9 +409,12 @@
         <!-- Section: Active Owned Numbers -->
         <div id="sub-owned">
           <div class="card">
-            <div class="card-h">
-              <h2>Owned Phone Numbers (DIDs)</h2>
-              <span class="meta">Incoming PSTN calls routed directly to AI Agents</span>
+            <div class="card-h" style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <h2>Owned Phone Numbers (DIDs)</h2>
+                <span class="meta">Incoming PSTN calls routed directly to AI Agents</span>
+              </div>
+              <button class="btn sm" id="btnOpenAddNumberModal" style="background:var(--accent);color:#fff;font-weight:600;padding:6px 14px">+ Add Phone Number</button>
             </div>
             <div class="tw"><table>
               <thead><tr>
@@ -557,7 +560,7 @@
 <div class="modal-overlay" id="modalEditNumber">
   <div class="modal-card">
     <div class="modal-h">
-      <h3>Edit Phone Number &amp; SIP Routing</h3>
+      <h3 id="modalEditNumberTitle">Edit Phone Number &amp; Routing</h3>
       <button class="btn ghost sm" id="btnCloseEditNumberModal"></button>
     </div>
     <div class="modal-b">
@@ -1397,12 +1400,37 @@
   });
 
   // ── Edit Number & Remove Modal Logic ──────────────────────────────────────
+  function openAddNumberModal() {
+    $("#modalEditNumVal").value = "";
+    $("#modalEditNumVal").readOnly = false;
+    $("#modalEditNumVal").placeholder = "+1XXXXXXXXXX (e.g. +15155859366)";
+    $("#modalEditFriendly").value = "";
+    if ($("#modalEditCarrier")) $("#modalEditCarrier").value = "twilio";
+    if ($("#modalEditNumberTitle")) $("#modalEditNumberTitle").textContent = "Add Phone Number to Dashboard";
+    if ($("#btnDeleteNumberFromModal")) $("#btnDeleteNumberFromModal").style.display = "none";
+
+    var sel = $("#modalEditAgent");
+    sel.innerHTML = cachedAgents.length ? cachedAgents.map(function (a) {
+      return '<option value="' + CI.escapeHtml(a.name) + '">' + CI.escapeHtml(a.name) + '</option>';
+    }).join("") : '<option value="Maya - Bottini & Bottini">Maya - Bottini & Bottini</option><option value="Intake Agent">Intake Agent</option>';
+
+    var trunkSel = $("#modalEditTrunk");
+    trunkSel.innerHTML = cachedTrunks.length ? cachedTrunks.map(function (t) {
+      return '<option value="' + CI.escapeHtml(t.trunk_id) + '">' + CI.escapeHtml(t.name) + '</option>';
+    }).join("") : '<option value="trunk-primary">Primary Inbound Trunk</option>';
+
+    $("#modalEditNumber").classList.add("open");
+  }
+
   function openEditNumberModal(num, currentName, currentAgent, currentTrunk, currentCarrier) {
     $("#modalEditNumVal").value = num;
+    $("#modalEditNumVal").readOnly = true;
     $("#modalEditFriendly").value = currentName || num;
     if ($("#modalEditCarrier")) {
       $("#modalEditCarrier").value = (currentCarrier || "twilio").toLowerCase();
     }
+    if ($("#modalEditNumberTitle")) $("#modalEditNumberTitle").textContent = "Edit Phone Number & Routing";
+    if ($("#btnDeleteNumberFromModal")) $("#btnDeleteNumberFromModal").style.display = "";
 
     var sel = $("#modalEditAgent");
     sel.innerHTML = cachedAgents.length ? cachedAgents.map(function (a) {
@@ -1415,6 +1443,10 @@
     }).join("") : '<option value="trunk-inbound-primary">Primary Inbound Trunk</option>';
 
     $("#modalEditNumber").classList.add("open");
+  }
+
+  if ($("#btnOpenAddNumberModal")) {
+    $("#btnOpenAddNumberModal").addEventListener("click", openAddNumberModal);
   }
 
   function closeEditNumberModal() {
