@@ -267,15 +267,18 @@ class Handler(SimpleHTTPRequestHandler):
     # host: deriving it from LIVEKIT_URL lands on an ingress with none of our trunks and every INVITE
     # comes back "404 No trunk found". Take it from the LiveKit Cloud dashboard (project id minus "p_").
     LIVEKIT_SIP_DOMAIN = os.getenv("LIVEKIT_SIP_DOMAIN", "3k0byilfyuy.sip.livekit.cloud")
-    # The inbound trunk requires SIP digest auth, so the TwiML has to carry credentials.
+    # Inbound call routing mode: "media_stream" (direct Twilio WebSocket, Retell-style) or "sip" (LiveKit Cloud SIP)
+    TWILIO_CONNECTION_MODE = os.getenv("TWILIO_CONNECTION_MODE", "media_stream").strip().lower()
+
+    # The inbound trunk requires SIP digest auth if fallback to LiveKit SIP is used.
     LIVEKIT_SIP_USERNAME = os.getenv("LIVEKIT_SIP_USERNAME", "")
     LIVEKIT_SIP_PASSWORD = os.getenv("LIVEKIT_SIP_PASSWORD", "")
 
     def _maybe_twiml_webhook(self, parsed) -> bool:
-        """Twilio Programmable Voice webhook for inbound PSTN calls. Twilio POSTs here (no session);
-        we return TwiML that dials the LiveKit Cloud SIP URI, so the call reaches the agent without
-        Elastic SIP Trunk origination. This mirrors how Retell connects a Twilio number and works on
-        trial accounts. Returns True when it handled the request."""
+        """Twilio Programmable Voice webhook for inbound PSTN calls. Twilio POSTs here (no session).
+        In media_stream mode (default), returns TwiML <Connect><Stream> so Twilio streams audio directly
+        to our server over WebSockets (Retell AI style, zero LiveKit/SIP middleman).
+        In sip mode, falls back to dialing LiveKit Cloud SIP URI."""
         if parsed.path != "/api/telephony/voice/inbound":
             return False
         # Which DID was dialled — Twilio sends "To"/"Called"; default to our number.
@@ -290,19 +293,41 @@ class Handler(SimpleHTTPRequestHandler):
             params = {}
         dialed = (params.get("To") or params.get("Called") or "+19517177889").strip()
         dialed = re.sub(r"[^\d+]", "", dialed) or "+19517177889"
-        sip_uri = f"sip:{dialed}@{self.LIVEKIT_SIP_DOMAIN}"
-        creds = ""
-        if self.LIVEKIT_SIP_USERNAME:
-            creds = (f' username="{xml_escape(self.LIVEKIT_SIP_USERNAME)}"'
-                     f' password="{xml_escape(self.LIVEKIT_SIP_PASSWORD)}"')
-        twiml = (
-            '<?xml version="1.0" encoding="UTF-8"?>'
-            '<Response><Dial answerOnBridge="true" timeout="30">'
-            f'<Sip{creds}>{xml_escape(sip_uri)}</Sip>'
-            '</Dial></Response>'
-        )
+        caller = (params.get("From") or params.get("Caller") or "").strip()
+
+        if self.TWILIO_CONNECTION_MODE == "media_stream":
+            host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "localhost:8091"
+            proto = self.headers.get("X-Forwarded-Proto", "http").lower()
+            ws_scheme = "wss" if proto == "https" or "railway.app" in host or "ngrok" in host else "ws"
+            ws_url = f"{ws_scheme}://{host}/api/telephony/media-stream"
+
+            twiml = (
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<Response>\n'
+                '  <Connect>\n'
+                f'    <Stream url="{xml_escape(ws_url)}">\n'
+                f'      <Parameter name="called" value="{xml_escape(dialed)}" />\n'
+                f'      <Parameter name="caller" value="{xml_escape(caller)}" />\n'
+                '    </Stream>\n'
+                '  </Connect>\n'
+                '</Response>'
+            )
+            log.info("Twilio voice webhook: dialled=%s caller=%s -> direct Media Stream (%s)", dialed, caller, ws_url)
+        else:
+            sip_uri = f"sip:{dialed}@{self.LIVEKIT_SIP_DOMAIN}"
+            creds = ""
+            if self.LIVEKIT_SIP_USERNAME:
+                creds = (f' username="{xml_escape(self.LIVEKIT_SIP_USERNAME)}"'
+                         f' password="{xml_escape(self.LIVEKIT_SIP_PASSWORD)}"')
+            twiml = (
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<Response><Dial answerOnBridge="true" timeout="30">\n'
+                f'<Sip{creds}>{xml_escape(sip_uri)}</Sip>\n'
+                '</Dial></Response>'
+            )
+            log.info("Twilio voice webhook: dialled=%s -> fallback SIP (%s)", dialed, sip_uri)
+
         body = twiml.encode("utf-8")
-        log.info("Twilio voice webhook: dialled=%s -> %s", dialed, sip_uri)
         self.send_response(200)
         self.send_header("Content-Type", "text/xml; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -315,6 +340,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        # Direct Twilio Media Stream WebSocket upgrade
+        if parsed.path == "/api/telephony/media-stream" and self.headers.get("Upgrade", "").lower() == "websocket":
+            from agent.twilio_stream import handle_twilio_media_stream
+            handle_twilio_media_stream(self, parsed.path)
+            return
         if self._maybe_twiml_webhook(parsed):
             return
         if parsed.path.endswith(".html"):
