@@ -51,6 +51,11 @@ ATTEMPT_HEADER = "X-Webhook-Attempt"
 
 
 class WebhookEvent(str, Enum):
+    # Retell AI Event Standards
+    CALL_STARTED     = "call_started"
+    CALL_ENDED       = "call_ended"
+    CALL_ANALYZED_RETELL = "call_analyzed"
+    # Platform Events
     CALL_COMPLETED   = "call.completed"
     CALL_TRANSCRIBED = "call.transcribed"
     CALL_ANALYZED    = "call.analyzed"
@@ -78,9 +83,28 @@ class WebhookEndpoint:
     timeout_s: float = DEFAULT_TIMEOUT
     headers: Dict[str, str] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
+    schema_format: str = "standard"  # "standard" or "retell"
 
     def subscribes_to(self, event: str) -> bool:
-        return self.active and ("*" in self.events or event in self.events)
+        if not self.active:
+            return False
+        if "*" in self.events:
+            return True
+        if event in self.events:
+            return True
+        # Bidirectional aliases between Retell AI and internal events:
+        aliases = {
+            "call_started": ["call.started"],
+            "call.started": ["call_started"],
+            "call_ended": ["call.completed"],
+            "call.completed": ["call_ended"],
+            "call_analyzed": ["call.analyzed", "call.completed"],
+            "call.analyzed": ["call_analyzed"],
+        }
+        for alias in aliases.get(event, []):
+            if alias in self.events:
+                return True
+        return False
 
     def to_dict(self, redact_secret: bool = True) -> Dict[str, Any]:
         data = asdict(self)
@@ -128,6 +152,110 @@ class WebhookDelivery:
         return data
 
 
+def format_retell_payload(
+    event: str,
+    data: Dict[str, Any],
+    delivery_id: Optional[str] = None,
+    call_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Formats event data into the exact Retell AI webhook schema.
+    
+    Produces { "event": "call_started"|"call_ended"|"call_analyzed", "call": { ... } }
+    with full transcript, recording URL, call_analysis, and custom_analysis_data.
+    """
+    retell_event = event
+    if event in ("call.completed", "call_ended"):
+        retell_event = "call_ended"
+    elif event in ("call.analyzed", "call_analyzed"):
+        retell_event = "call_analyzed"
+    elif event in ("call.started", "call_started"):
+        retell_event = "call_started"
+    elif event == "call.failed":
+        retell_event = "call_ended"
+
+    call_data = data.get("call") if isinstance(data.get("call"), dict) else {}
+    cid = call_id or call_data.get("call_id") or data.get("call_id") or f"call_{secrets.token_hex(8)}"
+
+    started_at = call_data.get("started_at") or data.get("started_at") or time.time()
+    start_ts_ms = int(started_at * 1000) if started_at < 1e11 else int(started_at)
+    dur_s = call_data.get("duration_seconds") or data.get("duration_seconds") or 0
+    duration_ms = int(dur_s * 1000)
+    end_ts_ms = start_ts_ms + duration_ms if retell_event != "call_started" else None
+
+    raw_turns = data.get("transcript") or []
+    transcript_lines = []
+    transcript_objects = []
+    if isinstance(raw_turns, list):
+        for t in raw_turns:
+            if isinstance(t, dict):
+                speaker = (t.get("speaker") or t.get("role") or "user").lower()
+                role = "agent" if speaker in ("agent", "bot", "assistant") else "user"
+                content = t.get("text") or t.get("content") or ""
+                transcript_lines.append(f"{role.capitalize()}: {content}")
+                transcript_objects.append({"role": role, "content": content, "words": []})
+        formatted_transcript = "\n".join(transcript_lines)
+    elif isinstance(raw_turns, str):
+        formatted_transcript = raw_turns
+    else:
+        formatted_transcript = ""
+
+    if retell_event == "call_started":
+        call_status = "ongoing"
+        disconnection_reason = None
+    elif event == "call.failed":
+        call_status = "error"
+        disconnection_reason = data.get("disconnection_reason") or "error"
+    else:
+        call_status = "ended"
+        disconnection_reason = data.get("disconnection_reason") or "user_hangup"
+
+    call_obj: Dict[str, Any] = {
+        "call_id": cid,
+        "call_type": "phone_call" if (call_data.get("from_number") or call_data.get("to_number")) else "web_call",
+        "agent_id": call_data.get("agent_id") or "agent_default",
+        "call_status": call_status,
+        "start_timestamp": start_ts_ms,
+        "end_timestamp": end_ts_ms,
+        "duration_ms": duration_ms,
+        "transcript": formatted_transcript,
+        "transcript_object": transcript_objects,
+        "recording_url": data.get("archive_url") or call_data.get("archive_url") or "",
+        "disconnection_reason": disconnection_reason,
+        "from_number": call_data.get("from_number") or "",
+        "to_number": call_data.get("to_number") or "",
+        "direction": call_data.get("direction") or "inbound",
+        "metadata": data.get("metadata") or {},
+    }
+
+    if retell_event in ("call_analyzed", "call.completed", "call_ended"):
+        summary = data.get("summary")
+        summary_text = summary.get("executive_summary", "") if isinstance(summary, dict) else str(summary or "")
+
+        sentiment = data.get("sentiment")
+        if isinstance(sentiment, dict):
+            polarity = str(sentiment.get("overall_polarity", "Neutral")).capitalize()
+        else:
+            polarity = str(sentiment or "Neutral").capitalize()
+
+        extracted = data.get("extracted") or {}
+        call_obj["call_analysis"] = {
+            "call_summary": summary_text,
+            "user_sentiment": polarity,
+            "call_successful": data.get("call_successful", True),
+            "in_voicemail": data.get("in_voicemail", False),
+            "custom_analysis_data": extracted,
+        }
+
+    envelope: Dict[str, Any] = {
+        "event": retell_event,
+        "call": call_obj,
+    }
+    if delivery_id:
+        envelope["id"] = delivery_id
+    envelope["data"] = data
+    return envelope
+
+
 def generate_secret() -> str:
     """Mints an endpoint signing secret (whsec_ prefix mirrors common conventions)."""
     return "whsec_" + secrets.token_hex(24)
@@ -153,11 +281,7 @@ def verify_signature(
     tolerance_s: int = REPLAY_WINDOW_SECONDS,
     now: Optional[float] = None,
 ) -> Tuple[bool, str]:
-    """Verifies a received webhook. Returns (ok, reason).
-
-    Receivers get the same checks the dispatcher makes: the timestamp must be
-    inside the replay window and the signature must match in constant time.
-    """
+    """Verifies a received webhook. Returns (ok, reason). Supports Retell & standard HMAC."""
     try:
         ts = int(timestamp)
     except (TypeError, ValueError):
@@ -171,7 +295,15 @@ def verify_signature(
         return False, "timestamp_in_future"
 
     expected = sign_payload(secret, body, ts)
-    if not hmac.compare_digest(expected, signature or ""):
+    sig_str = signature or ""
+    if sig_str.startswith("v=1,"):
+        sig_str = sig_str.split("v=1,", 1)[1]
+    if not sig_str.startswith("sha256=") and not expected.endswith(sig_str):
+        expected_raw = expected.split("sha256=")[-1]
+        if hmac.compare_digest(expected_raw, sig_str):
+            return True, "ok"
+
+    if not hmac.compare_digest(expected, sig_str):
         return False, "signature_mismatch"
     return True, "ok"
 
@@ -234,6 +366,7 @@ class WebhookDispatcher:
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
         timeout_s: float = DEFAULT_TIMEOUT,
         headers: Optional[Dict[str, str]] = None,
+        schema_format: str = "standard",
     ) -> WebhookEndpoint:
         if not url.startswith(("http://", "https://")):
             raise ValueError("Webhook url must be http(s)")
@@ -253,10 +386,11 @@ class WebhookDispatcher:
             max_attempts=max_attempts,
             timeout_s=timeout_s,
             headers=headers or {},
+            schema_format=schema_format,
         )
         self._endpoints[ep.endpoint_id] = ep
         self._save_state()
-        log.info("Registered webhook endpoint %s -> %s (%s)", ep.endpoint_id, ep.url, ",".join(ep.events))
+        log.info("Registered webhook endpoint %s -> %s (%s, format=%s)", ep.endpoint_id, ep.url, ",".join(ep.events), schema_format)
         return ep
 
     def get_endpoint(self, endpoint_id: str) -> Optional[WebhookEndpoint]:
@@ -322,21 +456,33 @@ class WebhookDispatcher:
     ) -> Tuple[str, Dict[str, str], str]:
         """Returns (body, headers, signature) for one signed delivery attempt."""
         ts = int(time.time()) if timestamp is None else int(timestamp)
-        envelope = {
-            "id": delivery_id,
-            "event": event,
-            "created_at": ts,
-            "data": payload,
-        }
+        envelope = format_retell_payload(event, payload, delivery_id=delivery_id, call_id=call_id if 'call_id' in locals() else None)
+        envelope["created_at"] = ts
+
+        # For endpoints configured with format="retell", map dot-notation events to Retell standard names:
+        if getattr(endpoint, "schema_format", "standard") == "retell":
+            if event in ("call.completed", "call_ended"):
+                envelope["event"] = "call_ended"
+            elif event in ("call.analyzed", "call_analyzed"):
+                envelope["event"] = "call_analyzed"
+            elif event in ("call.started", "call_started"):
+                envelope["event"] = "call_started"
+            else:
+                envelope["event"] = event
+        else:
+            envelope["event"] = event
+
         body = canonical_body(envelope)
         signature = sign_payload(endpoint.secret, body, ts)
         headers = {
             "Content-Type": "application/json",
             "User-Agent": "voice-agent-webhooks/1.0",
             SIGNATURE_HEADER: signature,
+            "X-Retell-Signature": signature,
             TIMESTAMP_HEADER: str(ts),
             DELIVERY_HEADER: delivery_id,
             EVENT_HEADER: event,
+            "X-Retell-Event": envelope.get("event", event),
             ATTEMPT_HEADER: str(attempt),
         }
         headers.update(endpoint.headers or {})

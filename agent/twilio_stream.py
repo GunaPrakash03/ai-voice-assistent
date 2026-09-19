@@ -68,6 +68,22 @@ class TwilioMediaStreamSession:
         agent_name = getattr(self.agent_cfg, "name", "AI Agent")
         log.info("Bound phone call %s to voice agent: %s", self.call_sid, agent_name)
 
+        # Dispatch Retell AI compatible call_started webhook
+        try:
+            from agent.webhook_dispatcher import webhook_dispatcher
+            webhook_dispatcher.dispatch_soon("call_started", {
+                "call": {
+                    "call_id": self.call_sid,
+                    "agent_id": getattr(self.agent_cfg, "agent_id", "agent_default"),
+                    "direction": "inbound",
+                    "from_number": self.caller_number,
+                    "to_number": self.called_number,
+                    "started_at": self.started_at,
+                }
+            }, call_id=self.call_sid)
+        except Exception as ex:
+            log.warning("Could not dispatch call_started webhook: %s", ex)
+
         # Connect to Deepgram streaming STT over WebSocket
         await self._start_deepgram_stt()
 
@@ -204,13 +220,16 @@ class TwilioMediaStreamSession:
         try:
             from agent.agent_builder import agent_builder
 
-            # Generate reply using agent's prompt and LLM
-            reply_text = agent_builder._preview_reply(
-                self.agent_cfg,
-                user_text,
-                tool_name=None,
-                history=self.history,
-                turn_idx=len(self.history),
+            loop = asyncio.get_running_loop()
+            reply_text = await loop.run_in_executor(
+                None,
+                lambda: agent_builder._preview_reply(
+                    self.agent_cfg,
+                    user_text,
+                    tool_name=None,
+                    history=self.history,
+                    turn_idx=len(self.history),
+                ),
             )
             reply_text = (reply_text or "").strip()
             if not reply_text:
@@ -347,6 +366,25 @@ class TwilioMediaStreamSession:
         duration = time.time() - self.started_at
         log.info("Twilio Stream call completed: %s (duration: %.1fs)", self.call_sid, duration)
 
+        # Dispatch Retell AI compatible call_ended webhook
+        try:
+            from agent.webhook_dispatcher import webhook_dispatcher
+            webhook_dispatcher.dispatch_soon("call_ended", {
+                "call": {
+                    "call_id": self.call_sid,
+                    "agent_id": getattr(self.agent_cfg, "agent_id", "agent_default"),
+                    "direction": "inbound",
+                    "from_number": self.caller_number,
+                    "to_number": self.called_number,
+                    "started_at": self.started_at,
+                    "duration_seconds": round(duration, 2),
+                },
+                "transcript": self.history,
+                "disconnection_reason": "user_hangup",
+            }, call_id=self.call_sid)
+        except Exception as ex:
+            log.warning("Could not dispatch call_ended webhook: %s", ex)
+
         # Close Deepgram
         if self._deepgram_ws:
             try:
@@ -385,6 +423,46 @@ class TwilioMediaStreamSession:
             log.info("Recorded telephony call history for %s", rec.call_id)
         except Exception as ex:
             log.warning("Could not persist call record: %s", ex)
+
+        # File into pipeline worker for post-call intelligence, summaries, CRM extractions & Call History
+        try:
+            from agent.pipeline_worker import pipeline_worker
+            turns = []
+            for i, h in enumerate(self.history, start=1):
+                role = "user" if h.get("speaker") == "caller" else "assistant"
+                turns.append({
+                    "turn_index": i,
+                    "role": role,
+                    "speaker": "Customer" if role == "user" else getattr(self.agent_cfg, "name", "AI Agent"),
+                    "text": h.get("text", ""),
+                    "timestamp": self.started_at,
+                    "word_count": len(h.get("text", "").split()),
+                })
+            if turns:
+                call_id = self.call_sid or f"tw-{int(time.time())}"
+                job = pipeline_worker.enqueue_call(
+                    call_id=call_id,
+                    room_name=f"tw-stream-{self.stream_sid[:8] if self.stream_sid else 'call'}",
+                    transcript_turns=turns,
+                    metadata={
+                        "source": "twilio_media_stream",
+                        "agent_name": getattr(self.agent_cfg, "name", "AI Agent"),
+                        "agent_id": getattr(self.agent_cfg, "agent_id", ""),
+                        "direction": "inbound",
+                        "from_number": self.caller_number,
+                        "to_number": self.called_number,
+                        "voice_id": getattr(self.agent_cfg, "voice_id", ""),
+                        "started_at": self.started_at,
+                        "ended_at": time.time(),
+                        "duration_seconds": max(0.0, duration),
+                        "stream_sid": self.stream_sid,
+                    },
+                    priority=2,
+                )
+                await pipeline_worker.execute_job(job.job_id)
+                log.info("Twilio call %s processed by post-call pipeline (job %s)", call_id, job.job_id)
+        except Exception as ex:
+            log.warning("Could not execute post-call pipeline for Twilio call: %s", ex)
 
 
 # ── RFC 6455 WebSocket Framing & Server Handler ──────────────────────────────

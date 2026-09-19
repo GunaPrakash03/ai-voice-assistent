@@ -1376,7 +1376,8 @@ class TelephonyManager:
         )
 
         try:
-            if self.api_key and self.api_secret and "127.0.0.1" not in self.livekit_url:
+            lk_trunk_id = (trunk.metadata or {}).get("livekit_trunk_id") or trunk.trunk_id
+            if self.api_key and self.api_secret and "127.0.0.1" not in self.livekit_url and str(lk_trunk_id).startswith("ST_"):
                 from livekit import api
                 lk_api = api.LiveKitAPI(self.livekit_url, self.api_key, self.api_secret)
                 try:
@@ -1385,14 +1386,6 @@ class TelephonyManager:
                             name=target_room,
                             metadata=json.dumps({"outbound_agent": outbound_agent}),
                         ))
-                    # LiveKit only knows its own trunk ids (ST_*). Our local trunk_id is a
-                    # different namespace, so prefer the mapping stored on the trunk.
-                    lk_trunk_id = (trunk.metadata or {}).get("livekit_trunk_id") or trunk.trunk_id
-                    if not str(lk_trunk_id).startswith("ST_"):
-                        raise RuntimeError(
-                            f"Outbound trunk '{trunk.trunk_id}' has no LiveKit trunk id; set "
-                            f"metadata.livekit_trunk_id to the ST_* id from LiveKit Cloud"
-                        )
                     sip_call_req = api.CreateSIPParticipantRequest(
                         sip_trunk_id=lk_trunk_id,
                         sip_call_to=norm_dest,

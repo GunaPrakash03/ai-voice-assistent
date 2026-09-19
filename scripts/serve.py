@@ -95,7 +95,10 @@ class Handler(SimpleHTTPRequestHandler):
             for k, v in extra_headers.items():
                 self.send_header(k, str(v))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     # ── Browser sessions (login page) ───────────────────────────────────────
     SESSION_COOKIE = "va_session"
@@ -523,16 +526,25 @@ class Handler(SimpleHTTPRequestHandler):
             return
         elif parsed.path == "/api/webhooks/deliveries":
             q = parse_qs(parsed.query)
+            status_param = (q.get("status") or q.get("delivery_status") or [""])[0] or None
             self._send_json({
                 "status": "ok",
                 "deliveries": webhook_dispatcher.list_deliveries(
                     endpoint_id=(q.get("endpoint_id") or [""])[0] or None,
                     event=(q.get("event") or [""])[0] or None,
-                    status=(q.get("delivery_status") or [""])[0] or None,
+                    status=status_param,
                     call_id=(q.get("call_id") or [""])[0] or None,
                     limit=int((q.get("limit") or ["50"])[0]),
                 ),
-                "dead_letters": webhook_dispatcher.list_dead_letters(limit=20),
+                "dead_letters": webhook_dispatcher.list_dead_letters(limit=50),
+            })
+            return
+        elif parsed.path == "/api/webhooks/dead-letters":
+            q = parse_qs(parsed.query)
+            limit = int((q.get("limit") or ["50"])[0])
+            self._send_json({
+                "status": "ok",
+                "dead_letters": webhook_dispatcher.list_dead_letters(limit=limit),
             })
             return
         elif parsed.path == "/api/webhooks/stats":
@@ -1582,6 +1594,33 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": "Delivery not found"}, 404)
                 return
             self._send_json({"status": "ok", "delivery": record.to_dict()})
+            return
+
+        elif parsed.path == "/api/webhooks/bulk-replay":
+            delivery_ids = payload.get("delivery_ids")
+            if not delivery_ids:
+                dead = webhook_dispatcher.list_dead_letters(limit=50)
+                delivery_ids = [d["delivery_id"] for d in dead if "delivery_id" in d]
+            replayed = []
+            loop = asyncio.new_event_loop()
+            try:
+                for did in delivery_ids:
+                    rec = loop.run_until_complete(webhook_dispatcher.replay_delivery(did))
+                    if rec:
+                        replayed.append(rec.to_dict())
+            finally:
+                loop.close()
+            self._send_json({"status": "ok", "replayed_count": len(replayed), "replayed": replayed})
+            return
+
+        elif parsed.path == "/api/webhooks/verify-signature":
+            secret = payload.get("secret", "")
+            body = payload.get("body", "")
+            timestamp = payload.get("timestamp")
+            signature = payload.get("signature", "")
+            from agent.webhook_dispatcher import verify_signature
+            ok, reason = verify_signature(secret, body, timestamp, signature)
+            self._send_json({"status": "ok", "valid": ok, "reason": reason})
             return
 
         elif parsed.path == "/api/agents":

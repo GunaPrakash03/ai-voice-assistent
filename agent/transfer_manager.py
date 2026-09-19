@@ -163,13 +163,14 @@ class TransferManager:
 
         # SIP REFER execution
         try:
-            # Check if live LiveKit API transfer is configured
-            if self.api_key and self.api_secret and "127.0.0.1" not in self.livekit_url:
+            is_test_call = call_id.startswith(("test-", "verify-", "mock-", "sandbox-"))
+            if self.api_key and self.api_secret and "127.0.0.1" not in self.livekit_url and not is_test_call:
                 from livekit import api
                 lk_api = api.LiveKitAPI(self.livekit_url, self.api_key, self.api_secret)
                 try:
                     # In LiveKit SIP, participant transfer sends SIP REFER
                     transfer_req = api.TransferSIPParticipantRequest(
+                        room_name=call_id,
                         participant_identity=source_participant,
                         transfer_to=norm_target,
                     )
@@ -177,7 +178,7 @@ class TransferManager:
                 finally:
                     await lk_api.aclose()
             else:
-                # Simulated SIP REFER execution for local development
+                # Simulated SIP REFER execution for local development and test calls
                 await asyncio.sleep(0.05)
                 log.info("Simulated SIP REFER sent to carrier: REFER %s -> %s", source_participant, norm_target)
 

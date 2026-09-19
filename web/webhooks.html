@@ -3,367 +3,1041 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Webhooks & Data — Voice Agent Service</title>
+<title>Webhooks &amp; Data Hub — Voice Agent Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
 <style>
   :root{
-    --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
-    --rail-ink:#A8AEC4; --rail-on:#FFFFFF;
-    --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
-    --line:#DDE0E9; --line-soft:#EBEDF3;
-    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
-    --pos:#2F7A4F; --pos-soft:#E6F2EA; --neu:#5A6480; --neu-soft:#EDEFF4; --neg:#A32F26; --neg-soft:#FAEAE8;
+    --ground:#F3F4F8; --panel:#FFFFFF; --sunk:#EAECEF; --rail:#141724;
+    --rail-ink:#9CA3BA; --rail-on:#FFFFFF;
+    --ink:#121521; --ink-soft:#4B5267; --ink-faint:#7F869E;
+    --line:#DCDEE7; --line-soft:#E9EBF2;
+    --accent:#C2560F; --accent-soft:#FEF5EE; --accent-border:#E57B30;
+    --pos:#237A47; --pos-soft:#E5F4EB; --neu:#505973; --neu-soft:#ECEEF3; --neg:#A82820; --neg-soft:#FAE8E6;
+    --warn:#9E6B08; --warn-soft:#FEF7E6;
     --f-ui:"Archivo",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
     --f-mono:"DM Mono","SF Mono",Menlo,Consolas,monospace;
   }
   @media (prefers-color-scheme:dark){
     :root:not([data-theme="light"]){
-      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
-      --rail-ink:#767D96; --rail-on:#FFFFFF;
-      --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
-      --line:#262B3A; --line-soft:#1C2130;
-      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
-      --pos:#5FBF88; --pos-soft:#12251A; --neu:#8891AB; --neu-soft:#1A1F2C; --neg:#E0776C; --neg-soft:#2A1513;
+      --ground:#0C0E15; --panel:#151824; --sunk:#10131E; --rail:#090B11;
+      --rail-ink:#7B839E; --rail-on:#FFFFFF;
+      --ink:#E5E8F2; --ink-soft:#9EA6BE; --ink-faint:#6B728D;
+      --line:#232838; --line-soft:#1B1F2D;
+      --accent:#F0803C; --accent-soft:#29180A; --accent-border:#C2560F;
+      --pos:#5ABC85; --pos-soft:#11261B; --neu:#8A93AF; --neu-soft:#191E2B; --neg:#E57368; --neg-soft:#2B1412;
+      --warn:#F3B43C; --warn-soft:#2A1F06;
     }
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
-  .top-app-bar{background:var(--panel);border-bottom:1px solid var(--line);height:44px;padding:0 18px;display:flex;align-items:center;justify-content:space-between}
-  .app-dropdown{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:var(--ink)}
-  .app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:calc(100vh - 44px)}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .top-app-bar{background:var(--panel);border-bottom:1px solid var(--line);height:46px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:40}
+  .app-dropdown{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--ink)}
+  .app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:calc(100vh - 46px)}
   .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
   .brand{padding:0 18px 18px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
   .brand b{color:var(--rail-on);font-size:15px;font-weight:700;display:block}
   .brand span{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
-  .nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
-  .nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
+  .nav{display:flex;flex-direction:column;gap:2px;padding:0 10px}
+  .nav a{all:unset;cursor:pointer;padding:8px 12px;border-radius:6px;color:var(--rail-ink);font-size:13px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .12s,color .12s}
   .nav a:hover{background:rgba(255,255,255,.06);color:var(--rail-on)}
   .nav .active{background:var(--accent);color:#fff;font-weight:600}
-  .nav .ct{font-family:var(--f-mono);font-size:11px;opacity:.85}
   .rail-foot{margin-top:auto;padding:14px 18px 0;border-top:1px solid rgba(255,255,255,.07)}
-  .rail-foot div{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;line-height:1.7}
-  main{padding:22px 26px 40px;max-width:1240px}
+  main{padding:22px 30px 48px;max-width:1320px;margin:0 auto;width:100%}
+
   .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
-  .crumb{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.09em;text-transform:uppercase;margin-bottom:2px}
-  h1{margin:0;font-size:22px;font-weight:700}
-  .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
-  @media (max-width:1000px){.grid{grid-template-columns:1fr}}
-  @media (max-width:900px){.app{grid-template-columns:1fr}.rail{display:none}}
-  .stack{display:flex;flex-direction:column;gap:16px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-  .card-h{padding:12px 16px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-  .card-h h2{margin:0;font-size:14px;font-weight:700}
-  .card-h .meta{font-family:var(--f-mono);font-size:11px;color:var(--ink-faint)}
-  .card-b{padding:16px}
-  .banner{background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--ink-soft)}
-  .banner b{color:var(--ink)}
-  .field{margin-bottom:12px}
+  .crumb{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.09em;text-transform:uppercase;margin-bottom:3px}
+  h1{margin:0;font-size:24px;font-weight:700;letter-spacing:-.02em}
+
+  /* KPI Summary Banner */
+  .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:22px}
+  .kpi-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;position:relative;overflow:hidden}
+  .kpi-card .kpi-label{font-family:var(--f-mono);font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em}
+  .kpi-card .kpi-val{font-size:26px;font-weight:700;margin-top:4px;display:flex;align-items:baseline;gap:8px}
+  .kpi-card .kpi-sub{font-size:11.5px;color:var(--ink-soft);margin-top:2px}
+  .kpi-card.alert{border-color:var(--neg);background:var(--neg-soft)}
+
+  /* Tab Navigation */
+  .tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:20px;overflow-x:auto;padding-bottom:1px}
+  .tab-btn{background:none;border:none;border-bottom:2px solid transparent;color:var(--ink-soft);padding:9px 16px;font-size:13px;font-weight:600;font-family:var(--f-ui);cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;transition:all .15s}
+  .tab-btn:hover{color:var(--ink)}
+  .tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .tab-badge{font-family:var(--f-mono);font-size:10px;padding:1px 6px;border-radius:8px;background:var(--neu-soft);color:var(--neu)}
+  .tab-badge.red{background:var(--neg);color:#fff}
+
+  .tab-content{display:none}
+  .tab-content.active{display:block}
+
+  /* Cards & Layout */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px}
+  .card-h{padding:14px 18px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .card-h h2{margin:0;font-size:15px;font-weight:700}
+  .card-h .meta{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-faint)}
+  .card-b{padding:18px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media (max-width:960px){.grid2{grid-template-columns:1fr}.app{grid-template-columns:1fr}.rail{display:none}}
+
+  /* Forms & Inputs */
+  .field{margin-bottom:14px}
   .field label{display:block;font-size:11.5px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
-  .field input,.field select,.field textarea{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13px;font-family:var(--f-ui)}
+  .field input,.field select,.field textarea{width:100%;padding:8px 11px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13px;font-family:var(--f-ui)}
   .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft)}
-  .field .hint{font-size:11.5px;color:var(--ink-faint);margin-top:4px}
+  .field .hint{font-size:11px;color:var(--ink-faint);margin-top:4px}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .btn{display:inline-flex;align-items:center;justify-content:center;padding:7px 14px;border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s;text-decoration:none;font-family:var(--f-ui)}
+
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;justify-content:center;padding:7px 14px;border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s;text-decoration:none;font-family:var(--f-ui);gap:6px}
   .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
   .btn-primary:hover{opacity:.92}
   .btn-ghost{background:transparent;color:var(--ink-soft);border-color:var(--line)}
   .btn-ghost:hover{background:var(--sunk);color:var(--ink)}
+  .btn-danger{background:transparent;color:var(--neg);border-color:var(--line)}
+  .btn-danger:hover{background:var(--neg-soft);border-color:var(--neg)}
   .btn-sm{padding:4px 10px;font-size:11.5px}
-  .btn:disabled{opacity:.6;cursor:wait}
-  .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
-  .msg{font-size:12.5px;min-height:18px}
-  .msg.ok{color:var(--pos)} .msg.err{color:var(--neg)}
+  .btn:disabled{opacity:.55;cursor:wait}
+
+  /* Tables */
   table{width:100%;border-collapse:collapse;font-size:12.5px}
-  th{text-align:left;font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.06em;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line)}
-  td{padding:8px 10px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  th{text-align:left;font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.06em;text-transform:uppercase;padding:10px 12px;border-bottom:1px solid var(--line)}
+  td{padding:10px 12px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
   tr:last-child td{border-bottom:none}
-  td input,td select{width:100%;padding:5px 7px;border-radius:5px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:12.5px;font-family:var(--f-ui)}
-  .mono{font-family:var(--f-mono);font-size:12px}
+  tr:hover td{background:rgba(0,0,0,.015)}
+
+  .mono{font-family:var(--f-mono);font-size:11.5px}
   .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
-  .pill.pos{background:var(--pos-soft);color:var(--pos)} .pill.neg{background:var(--neg-soft);color:var(--neg)} .pill.neu{background:var(--neu-soft);color:var(--neu)} .pill.accent{background:var(--accent-soft);color:var(--accent)}
-  .empty{color:var(--ink-faint);font-size:13px;padding:12px 10px}
-  pre{margin:0;background:var(--sunk);border:1px solid var(--line-soft);border-radius:8px;padding:12px;font-family:var(--f-mono);font-size:11.5px;overflow:auto;max-height:320px;color:var(--ink)}
-  .test-result{margin-top:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--sunk);font-size:12.5px}
-  .test-result.ok{border-color:var(--pos);background:var(--pos-soft)} .test-result.bad{border-color:var(--neg);background:var(--neg-soft)}
-  .kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;font-size:12.5px}
-  .kv dt{color:var(--ink-faint);font-family:var(--f-mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding-top:2px} .kv dd{margin:0;overflow-wrap:anywhere}
-  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--ground);padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;transition:all .2s;pointer-events:none;max-width:90vw}
+  .pill.pos{background:var(--pos-soft);color:var(--pos)}
+  .pill.neg{background:var(--neg-soft);color:var(--neg)}
+  .pill.neu{background:var(--neu-soft);color:var(--neu)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.accent{background:var(--accent-soft);color:var(--accent)}
+
+  .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .empty{color:var(--ink-faint);font-size:13px;padding:22px 14px;text-align:center}
+  pre{margin:0;background:var(--sunk);border:1px solid var(--line-soft);border-radius:6px;padding:12px;font-family:var(--f-mono);font-size:11.5px;overflow:auto;max-height:340px;color:var(--ink)}
+
+  /* Filter bar */
+  .filter-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 16px;background:var(--sunk);border-bottom:1px solid var(--line);border-radius:8px 8px 0 0}
+  .filter-bar select,.filter-bar input{padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:12.5px}
+
+  /* Drawer / Modal Inspector */
+  .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(2px)}
+  .modal-overlay.open{display:flex}
+  .modal-box{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:90%;max-width:760px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 12px 38px rgba(0,0,0,.25)}
+  .modal-h{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .modal-b{padding:20px;overflow-y:auto}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--ground);padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:all .2s;pointer-events:none;z-index:200;box-shadow:0 6px 16px rgba(0,0,0,.2)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
 </head>
 <body>
+
 <header class="top-app-bar">
-  <div class="app-dropdown"><span>Call Desk</span><span style="color:var(--ink-faint)">/</span><span>Webhooks &amp; Data</span></div>
-  <div><a class="btn btn-ghost" href="/api-keys">API Keys &amp; Providers</a></div>
+  <div class="app-dropdown">
+    <span style="font-weight:700">Call Desk</span>
+    <span style="color:var(--ink-faint)">/</span>
+    <span>Webhooks &amp; Data Hub</span>
+  </div>
+  <div class="actions">
+    <button class="btn btn-ghost btn-sm" id="btnRefreshAll">🔄 Refresh Data</button>
+    <a class="btn btn-ghost btn-sm" href="/api-keys">API Keys &amp; Providers</a>
+  </div>
 </header>
+
 <div class="app">
   <nav class="rail">
-    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div class="brand">
+      <b>Call Desk</b>
+      <span>AI Assistant Voice</span>
+    </div>
     <div class="nav">
       <a href="/">Overview</a>
       <a href="/calls">Calls</a>
       <a href="/agents" data-admin-only>Agents</a>
       <a href="/api-keys">API Keys &amp; Providers</a>
       <a href="/webhooks" data-admin-only class="active">Webhooks &amp; Data</a>
+      <a href="/user-guide">User Guide</a>
     </div>
     <div class="rail-foot"><!-- profile card injected by /profile.js --></div>
   </nav>
+
   <div>
     <main>
       <div class="page-header">
-        <div><div class="crumb">INTEGRATIONS</div><h1>Webhooks &amp; extracted call data</h1></div>
-        <a class="btn btn-ghost" href="/">← Back to Call Desk</a>
-      </div>
-      <div class="banner">
-        <b>How it works.</b> After every call the AI reads the transcript, fills in the data fields you define per agent
-        (name, phone, matter, …) and the result is posted as <span class="mono">extracted</span> in the
-        <span class="mono">call.completed</span> webhook, signed with your endpoint secret. Use <b>Suggest from prompt</b> to let the AI propose the fields from the agent's own instructions.
+        <div>
+          <div class="crumb">REAL-TIME INTEGRATIONS · LOCAL ENVIRONMENT</div>
+          <h1>Webhooks &amp; Event Dispatcher</h1>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="btnOpenNewEndpoint">+ New Endpoint</button>
+        </div>
       </div>
 
-      <div class="grid">
-        <div class="stack">
-          <!-- Endpoints -->
-          <div class="card">
-            <div class="card-h"><h2>Webhook endpoints</h2><span class="meta" id="epMeta"></span></div>
-            <div class="card-b" style="padding:0 6px 6px">
-              <table id="epTable"><thead><tr><th>Endpoint</th><th>Events</th><th>Health</th><th></th></tr></thead><tbody></tbody></table>
-              <div class="empty" id="epEmpty" hidden>No endpoints yet. Add one below.</div>
-              <div id="testResult" hidden class="test-result" style="margin:10px"></div>
-              <form id="epForm" style="padding:12px 10px 6px;border-top:1px solid var(--line-soft);margin-top:6px">
-                <div style="font-size:11.5px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Add an endpoint</div>
-                <div class="row2">
-                  <div class="field"><label for="epName">Name</label><input id="epName" placeholder="e.g. HubSpot intake"></div>
-                  <div class="field"><label for="epUrl">URL</label><input id="epUrl" type="url" placeholder="https://example.com/hooks/calls" required></div>
-                </div>
-                <div class="row2">
-                  <div class="field"><label for="epSecret">Signing secret</label><input id="epSecret" placeholder="leave empty to generate"><div class="hint">Sent as an HMAC-SHA256 signature header on every delivery.</div></div>
-                  <div class="field"><label>Events</label>
-                    <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:12.5px;padding-top:6px">
-                      <label><input type="checkbox" class="ev" value="call.completed" checked> call.completed</label>
-                      <label><input type="checkbox" class="ev" value="call.extracted" checked> call.extracted</label>
-                      <label><input type="checkbox" class="ev" value="call.analyzed"> call.analyzed</label>
-                      <label><input type="checkbox" class="ev" value="call.transcribed"> call.transcribed</label>
-                      <label><input type="checkbox" class="ev" value="call.failed"> call.failed</label>
-                    </div></div>
-                </div>
-                <div class="actions"><button type="submit" class="btn btn-primary" id="epAdd">Add endpoint</button><span class="msg" id="epMsg"></span></div>
-              </form>
-            </div>
+      <!-- KPI Summary Cards -->
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">Total Deliveries</div>
+          <div class="kpi-val" id="kpiTotal">0</div>
+          <div class="kpi-sub" id="kpiAttempts">0 total attempts</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Success Rate</div>
+          <div class="kpi-val" id="kpiRate">100%</div>
+          <div class="kpi-sub" id="kpiDelivered">0 acknowledged (2xx)</div>
+        </div>
+        <div class="kpi-card" id="kpiDlqCard">
+          <div class="kpi-label">Dead-Letter Queue</div>
+          <div class="kpi-val" id="kpiDlq">0</div>
+          <div class="kpi-sub">Permanently parked events</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Average Latency</div>
+          <div class="kpi-val" id="kpiLatency">0 ms</div>
+          <div class="kpi-sub">Round-trip execution</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Active Endpoints</div>
+          <div class="kpi-val" id="kpiEndpoints">0</div>
+          <div class="kpi-sub" id="kpiEpSub">0 registered endpoints</div>
+        </div>
+      </div>
+
+      <!-- Tabbed Navigation -->
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="endpoints">📡 Endpoints &amp; Subscriptions</button>
+        <button class="tab-btn" data-tab="deliveries">📜 Live Delivery Logs <span class="tab-badge" id="badgeDeliveries">0</span></button>
+        <button class="tab-btn" data-tab="dlq">⚠️ Dead-Letter Queue <span class="tab-badge red" id="badgeDlq">0</span></button>
+        <button class="tab-btn" data-tab="simulator">🧪 Webhook Simulator</button>
+        <button class="tab-btn" data-tab="sandbox">🔐 HMAC-SHA256 Sandbox</button>
+        <button class="tab-btn" data-tab="extraction">📑 AI Data Extraction</button>
+      </div>
+
+      <!-- TAB 1: ENDPOINTS -->
+      <div class="tab-content active" id="tab-endpoints">
+        <div class="card">
+          <div class="card-h">
+            <h2>Configured Endpoints</h2>
+            <span class="meta" id="epMeta">Loading endpoints...</span>
           </div>
-
-          <!-- Deliveries -->
-          <div class="card">
-            <div class="card-h"><h2>Recent deliveries</h2><button class="btn btn-ghost btn-sm" id="dlRefresh" type="button">Refresh</button></div>
-            <div class="card-b" style="padding:0 6px 6px">
-              <table id="dlTable"><thead><tr><th>When</th><th>Event</th><th>Endpoint</th><th>Status</th><th></th></tr></thead><tbody></tbody></table>
-              <div class="empty" id="dlEmpty" hidden>No deliveries yet. Use "Test" on an endpoint or finish a call.</div>
-            </div>
+          <div class="card-b" style="padding:0">
+            <table id="epTable">
+              <thead>
+                <tr>
+                  <th>Endpoint / Target URL</th>
+                  <th>Subscribed Events</th>
+                  <th>Retry &amp; Timeout</th>
+                  <th>Health Status</th>
+                  <th>Signing Secret</th>
+                  <th style="text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <div class="empty" id="epEmpty" hidden>No webhook endpoints configured. Click "+ New Endpoint" to register one.</div>
           </div>
         </div>
+      </div>
 
-        <div class="stack">
-          <!-- Agent data fields -->
+      <!-- TAB 2: LIVE DELIVERY LOGS -->
+      <div class="tab-content" id="tab-deliveries">
+        <div class="card">
+          <div class="filter-bar">
+            <select id="filterEvent">
+              <option value="">All Events</option>
+              <option value="call.completed">call.completed</option>
+              <option value="call.extracted">call.extracted</option>
+              <option value="call.transcribed">call.transcribed</option>
+              <option value="call.analyzed">call.analyzed</option>
+              <option value="call.failed">call.failed</option>
+            </select>
+            <select id="filterStatus">
+              <option value="">All Statuses</option>
+              <option value="delivered">Delivered (2xx)</option>
+              <option value="retrying">Retrying</option>
+              <option value="dead_lettered">Dead-Lettered</option>
+              <option value="failed">Failed</option>
+            </select>
+            <input type="text" id="searchLog" placeholder="Search by Call ID, Delivery ID..." style="flex:1;min-width:200px">
+            <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="autoRefreshToggle" checked> Auto-refresh (5s)
+            </label>
+            <button class="btn btn-ghost btn-sm" id="btnRefreshDeliveries">Refresh</button>
+          </div>
+          <div class="card-b" style="padding:0">
+            <table id="dlTable">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Delivery ID</th>
+                  <th>Event</th>
+                  <th>Endpoint</th>
+                  <th>Status &amp; HTTP</th>
+                  <th>Attempts</th>
+                  <th style="text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <div class="empty" id="dlEmpty" hidden>No deliveries recorded yet. Complete a call or send a simulated event.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: DEAD-LETTER QUEUE (DLQ) -->
+      <div class="tab-content" id="tab-dlq">
+        <div class="card">
+          <div class="card-h">
+            <div>
+              <h2>Dead-Letter Queue (DLQ)</h2>
+              <div class="meta" style="margin-top:2px">Events that failed all retry attempts and require manual review.</div>
+            </div>
+            <div class="actions">
+              <button class="btn btn-primary btn-sm" id="btnBulkReplay">⚡ Replay All Dead Letters</button>
+            </div>
+          </div>
+          <div class="card-b" style="padding:0">
+            <table id="dlqTable">
+              <thead>
+                <tr>
+                  <th>Parked When</th>
+                  <th>Delivery ID</th>
+                  <th>Event</th>
+                  <th>Endpoint</th>
+                  <th>Total Attempts</th>
+                  <th>Root Cause Error</th>
+                  <th style="text-align:right">Action</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <div class="empty" id="dlqEmpty">Dead-letter queue is clear. No failed deliveries parked!</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: WEBHOOK SIMULATOR -->
+      <div class="tab-content" id="tab-simulator">
+        <div class="grid2">
           <div class="card">
             <div class="card-h">
-              <h2>Data fields per agent</h2>
-              <select id="agentSel" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13px;min-width:220px"></select>
+              <h2>Event Dispatch Simulator</h2>
+              <span class="meta">Test live receiver handling</span>
             </div>
-            <div class="card-b" style="padding:0 6px 6px">
-              <div class="actions" style="padding:10px 10px 4px">
-                <button class="btn btn-primary btn-sm" id="btnSuggest" type="button">Suggest from prompt (AI)</button>
-                <button class="btn btn-ghost btn-sm" id="btnAddField" type="button">Add field</button>
-                <button class="btn btn-ghost btn-sm" id="btnSaveFields" type="button">Save fields</button>
-                <button class="btn btn-ghost btn-sm" id="btnPreview" type="button">Preview on latest call</button>
-                <span class="msg" id="fieldsMsg"></span>
+            <div class="card-b">
+              <div class="field">
+                <label for="simEndpoint">Select Target Endpoint</label>
+                <select id="simEndpoint"></select>
               </div>
-              <table id="fieldsTable"><thead><tr><th style="width:26%">Field</th><th style="width:14%">Type</th><th>Description / question the agent asks</th><th style="width:8%">Req.</th><th></th></tr></thead><tbody></tbody></table>
-              <div class="empty" id="fieldsEmpty" hidden>No fields yet. Click "Suggest from prompt" and the AI will read this agent's instructions and propose them.</div>
+              <div class="row2">
+                <div class="field">
+                  <label for="simEvent">Event Type</label>
+                  <select id="simEvent">
+                    <option value="call.completed">call.completed</option>
+                    <option value="call.extracted">call.extracted</option>
+                    <option value="call.transcribed">call.transcribed</option>
+                    <option value="call.analyzed">call.analyzed</option>
+                    <option value="call.failed">call.failed</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="simCallId">Simulated Call ID</label>
+                  <input type="text" id="simCallId" value="sim-call-9921">
+                </div>
+              </div>
+              <div class="field">
+                <label for="simPayload">Custom JSON Payload</label>
+                <textarea id="simPayload" rows="10" class="mono" style="font-size:12px"></textarea>
+              </div>
+              <div class="actions">
+                <button class="btn btn-primary" id="btnDispatchSim">🚀 Dispatch Webhook</button>
+                <button class="btn btn-ghost btn-sm" id="btnResetSimPayload">Reset to Preset</button>
+              </div>
             </div>
           </div>
 
-          <!-- Preview -->
           <div class="card">
-            <div class="card-h"><h2>Extraction preview</h2><span class="meta" id="pvMeta"></span></div>
-            <div class="card-b">
-              <div id="pvBody"><div class="empty" style="padding:0">Run "Preview on latest call" to see what the AI pulls out of a real transcript.</div></div>
+            <div class="card-h">
+              <h2>Execution Result</h2>
+              <span class="meta" id="simResultMeta">Awaiting dispatch...</span>
             </div>
-          </div>
-
-          <!-- Payload example -->
-          <div class="card">
-            <div class="card-h"><h2>What your endpoint receives</h2><span class="meta">POST · JSON · HMAC-SHA256</span></div>
-            <div class="card-b">
-<pre>{
-  "event": "call.completed",
-  "call": { "call_id": "…", "agent_name": "Maya - Bottini &amp; Bottini",
-            "from_number": "+1951…", "duration_seconds": 184 },
-  "extracted": { "caller_name": "Guna Prakash", "callback_phone": "+91…",
-                 "email": "guna@gmail.com", "matter_type": "securities" },
-  "summary": { "executive_summary": "…", "key_intent": "…" },
-  "sentiment": { "overall_polarity": "neutral" },
-  "transcript": [ { "speaker": "Customer", "text": "…" }, … ]
-}</pre>
+            <div class="card-b" id="simResultBody">
+              <div class="empty" style="padding:40px 10px">Dispatch an event on the left to see live HTTP status, latency, and signature verification.</div>
             </div>
           </div>
         </div>
       </div>
+
+      <!-- TAB 5: HMAC SANDBOX -->
+      <div class="tab-content" id="tab-sandbox">
+        <div class="grid2">
+          <div class="card">
+            <div class="card-h">
+              <h2>Signature Verification Sandbox</h2>
+              <span class="meta">HMAC-SHA256 testbench</span>
+            </div>
+            <div class="card-b">
+              <div class="field">
+                <label for="sbSecret">Signing Secret (whsec_...)</label>
+                <input type="text" id="sbSecret" class="mono" placeholder="whsec_123456...">
+              </div>
+              <div class="row2">
+                <div class="field">
+                  <label for="sbTimestamp">Timestamp (X-Webhook-Timestamp)</label>
+                  <input type="number" id="sbTimestamp" class="mono">
+                </div>
+                <div class="field">
+                  <label for="sbSignature">Expected Signature (X-Signature-256)</label>
+                  <input type="text" id="sbSignature" class="mono" placeholder="sha256=...">
+                </div>
+              </div>
+              <div class="field">
+                <label for="sbBody">Raw Request Body (JSON)</label>
+                <textarea id="sbBody" rows="8" class="mono" style="font-size:12px"></textarea>
+              </div>
+              <div class="actions">
+                <button class="btn btn-primary" id="btnVerifySignature">Test Signature Match</button>
+                <span class="msg" id="sbMsg"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h2>Receiver Implementation Examples</h2>
+              <span class="meta">Node.js · Python · Go</span>
+            </div>
+            <div class="card-b">
+              <div class="field">
+                <label>Python (FastAPI / Flask)</label>
+                <pre>import hmac, hashlib, time
+
+def verify_webhook(secret: str, body: str, timestamp: str, signature: str) -> bool:
+    if abs(time.time() - int(timestamp)) > 300:
+        return False  # Replay prevention
+    signed = f"{timestamp}.{body}".encode("utf-8")
+    expected = "sha256=" + hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)</pre>
+              </div>
+              <div class="field">
+                <label>Node.js (Express)</label>
+                <pre>const crypto = require("crypto");
+
+function verifyWebhook(secret, bodyStr, timestamp, signature) {
+  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
+  const hmac = crypto.createHmac("sha256", secret).update(`${timestamp}.${bodyStr}`).digest("hex");
+  return crypto.timingSafeEqual(Buffer.from(`sha256=${hmac}`), Buffer.from(signature));
+}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 6: AGENT DATA EXTRACTION -->
+      <div class="tab-content" id="tab-extraction">
+        <div class="grid2">
+          <div class="card">
+            <div class="card-h">
+              <h2>Data Fields Per Agent</h2>
+              <select id="agentSel" style="padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13px;min-width:220px"></select>
+            </div>
+            <div class="card-b" style="padding:0 8px 8px">
+              <div class="actions" style="padding:10px 10px 6px">
+                <button class="btn btn-primary btn-sm" id="btnSuggest" type="button">✨ Suggest from Prompt (AI)</button>
+                <button class="btn btn-ghost btn-sm" id="btnAddField" type="button">+ Add Field</button>
+                <button class="btn btn-ghost btn-sm" id="btnSaveFields" type="button">Save Fields</button>
+                <button class="btn btn-ghost btn-sm" id="btnPreview" type="button">Preview on Latest Call</button>
+                <span class="msg" id="fieldsMsg"></span>
+              </div>
+              <table id="fieldsTable">
+                <thead>
+                  <tr>
+                    <th style="width:26%">Field Key</th>
+                    <th style="width:18%">Type</th>
+                    <th>Description &amp; Question</th>
+                    <th style="width:8%;text-align:center">Required</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <div class="empty" id="fieldsEmpty" hidden>No custom fields defined. Click "Suggest from Prompt" to let AI propose fields.</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h2>Extraction Preview</h2>
+              <span class="meta" id="pvMeta"></span>
+            </div>
+            <div class="card-b">
+              <div id="pvBody">
+                <div class="empty" style="padding:30px 10px">Run "Preview on Latest Call" to inspect what the AI extracts from actual transcripts.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 </div>
+
+<!-- Modal: New Endpoint Dialog -->
+<div class="modal-overlay" id="modalEndpoint">
+  <div class="modal-box">
+    <div class="modal-h">
+      <h3 style="margin:0;font-size:16px;font-weight:700">Register Webhook Endpoint</h3>
+      <button class="btn btn-ghost btn-sm" id="btnCloseModal">✕</button>
+    </div>
+    <form id="formNewEndpoint">
+      <div class="modal-b">
+        <div class="field">
+          <label for="modalUrl">Target URL (HTTPS / HTTP) *</label>
+          <input type="url" id="modalUrl" placeholder="https://api.yourdomain.com/webhooks/voice" required>
+        </div>
+        <div class="field">
+          <label for="modalName">Endpoint Description / Name</label>
+          <input type="text" id="modalName" placeholder="e.g. CRM Inbound Sync">
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="modalSecret">Signing Secret (Leave empty to auto-generate)</label>
+            <input type="text" id="modalSecret" placeholder="whsec_...">
+          </div>
+          <div class="field">
+            <label for="modalTimeout">Timeout (Seconds)</label>
+            <input type="number" id="modalTimeout" value="10" min="2" max="60">
+          </div>
+        </div>
+        <div class="field">
+          <label for="modalFormat">Payload Schema Format</label>
+          <select id="modalFormat">
+            <option value="retell" selected>Retell AI Standard (call_started, call_ended, call_analyzed) · Best for n8n / Make / Zapier</option>
+            <option value="standard">Platform Standard (call.completed, call.extracted, call.transcribed)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Subscribed Events (Retell AI &amp; Platform)</label>
+          <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:4px">
+            <label><input type="checkbox" class="ev" value="call_started" checked> <b>call_started</b> (Call connects)</label>
+            <label><input type="checkbox" class="ev" value="call_ended" checked> <b>call_ended</b> (Call disconnects)</label>
+            <label><input type="checkbox" class="ev" value="call_analyzed" checked> <b>call_analyzed</b> (Summary, sentiment &amp; CRM data)</label>
+            <label><input type="checkbox" class="ev" value="call.completed"> <b>call.completed</b></label>
+            <label><input type="checkbox" class="ev" value="call.extracted"> <b>call.extracted</b></label>
+            <label><input type="checkbox" class="ev" value="call.failed"> <b>call.failed</b></label>
+          </div>
+        </div>
+      </div>
+      <div style="padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px">
+        <button type="button" class="btn btn-ghost" id="btnCancelModal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmitEndpoint">Save Endpoint</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Delivery Inspector Drawer -->
+<div class="modal-overlay" id="modalInspector">
+  <div class="modal-box">
+    <div class="modal-h">
+      <h3 style="margin:0;font-size:16px;font-weight:700" id="inspTitle">Delivery Inspector</h3>
+      <button class="btn btn-ghost btn-sm" id="btnCloseInsp">✕</button>
+    </div>
+    <div class="modal-b" id="inspBody"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
+
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]; }); }
-  function ago(ts) { if (!ts) return "—"; var s = Math.max(0, Math.round(Date.now() / 1000 - ts)); return s < 60 ? s + "s ago" : s < 3600 ? Math.round(s / 60) + "m ago" : s < 86400 ? Math.round(s / 3600) + "h ago" : new Date(ts * 1000).toLocaleDateString(); }
-  var toastTimer; function toast(m) { var t = $("toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 3500); }
-  function setMsg(el, text, ok) { el.textContent = text || ""; el.className = "msg " + (ok ? "ok" : "err"); }
-  function api(url, body) { return fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined).then(function (r) { return r.json(); }); }
+  function ago(ts) {
+    if (!ts) return "—";
+    var s = Math.max(0, Math.round(Date.now() / 1000 - ts));
+    return s < 60 ? s + "s ago" : s < 3600 ? Math.round(s / 60) + "m ago" : s < 86400 ? Math.round(s / 3600) + "h ago" : new Date(ts * 1000).toLocaleString();
+  }
+  var toastTimer;
+  function toast(m) {
+    var t = $("toast"); t.textContent = m; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 3500);
+  }
+  function api(url, body) {
+    return fetch(url, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined)
+      .then(function (r) { return r.json(); });
+  }
 
-  // ── Endpoints ──
-  var lastByEndpoint = {};
-  function loadEndpoints() {
-    return api("/api/webhooks/endpoints").then(function (d) {
-      var eps = d.endpoints || [];
-      eps.forEach(function (e) { var l = lastByEndpoint[e.endpoint_id]; if (l) { e.last_status = l.status === "delivered" ? 200 : 500; } });
-      $("epMeta").textContent = eps.length + " endpoint" + (eps.length === 1 ? "" : "s");
-      $("epEmpty").hidden = eps.length > 0;
-      $("epTable").querySelector("tbody").innerHTML = eps.map(function (e) {
-        var h = e.health || e.stats || {}; var ok = e.last_status ? (e.last_status >= 200 && e.last_status < 300) : null;
-        return "<tr><td><b>" + esc(e.name || e.description || e.endpoint_id) + "</b><div class='mono' style='color:var(--ink-faint)'>" + esc(e.url) + "</div></td>" +
-               "<td class='mono' style='color:var(--ink-soft)'>" + esc((e.events || []).join(", ")) + "</td>" +
-               "<td>" + (e.enabled === false ? "<span class='pill neu'>disabled</span>" : "<span class='pill " + (ok === null ? "neu" : ok ? "pos" : "neg") + "'>" + (ok === null ? "untested" : ok ? "connected" : "failing") + "</span>") + "</td>" +
-               "<td style='white-space:nowrap'><button class='btn btn-primary btn-sm ep-test' data-id='" + esc(e.endpoint_id) + "'>Test</button> <button class='btn btn-ghost btn-sm ep-del' data-id='" + esc(e.endpoint_id) + "'>Delete</button></td></tr>";
-      }).join("");
-      Array.prototype.forEach.call(document.querySelectorAll(".ep-test"), function (b) { b.addEventListener("click", function () { testEndpoint(b.dataset.id, b); }); });
-      Array.prototype.forEach.call(document.querySelectorAll(".ep-del"), function (b) { b.addEventListener("click", function () {
-        api("/api/webhooks/delete", { endpoint_id: b.dataset.id }).then(function (d) { toast(d.status === "ok" ? "Endpoint deleted" : (d.error || "failed")); loadEndpoints(); });
-      }); });
+  // ── Tab Switching ──
+  document.querySelectorAll(".tab-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
+      document.querySelectorAll(".tab-content").forEach(function (c) { c.classList.remove("active"); });
+      btn.classList.add("active");
+      var target = $("tab-" + btn.dataset.tab);
+      if (target) target.classList.add("active");
     });
-  }
-  function testEndpoint(id, btn) {
-    btn.disabled = true; btn.textContent = "Testing…";
-    var box = $("testResult"); box.hidden = false; box.className = "test-result"; box.textContent = "Sending a signed test event…";
-    var t0 = Date.now();
-    api("/api/webhooks/test", { endpoint_id: id, event: "call.completed", payload: { test: true, extracted: { caller_name: "Test Caller", callback_phone: "+15550100000" }, sent_at: Date.now() / 1000 } })
-      .then(function (d) {
-        btn.disabled = false; btn.textContent = "Test";
-        var dl = d.delivery || {}; var status = dl.status || d.status; var last = (dl.attempts || []).slice(-1)[0] || {}; var code = last.status_code || dl.response_status;
-        var okay = status === "delivered" || (code >= 200 && code < 300);
-        box.className = "test-result " + (okay ? "ok" : "bad");
-        box.innerHTML = (okay ? " <b>Connected.</b> " : " <b>Not reachable.</b> ") +
-          "HTTP " + esc(code || "—") + " · " + (Date.now() - t0) + " ms round trip · attempts " + esc(dl.attempts ? dl.attempts.length : (dl.attempt_count || 1)) +
-          (dl.last_error || dl.error ? "<div class='mono' style='margin-top:4px'>" + esc(dl.last_error || dl.error) + "</div>" : "") +
-          (dl.delivery_id ? "<div class='mono' style='color:var(--ink-faint);margin-top:4px'>delivery " + esc(dl.delivery_id) + "</div>" : "");
-        loadEndpoints(); loadDeliveries();
-      }).catch(function () { btn.disabled = false; btn.textContent = "Test"; box.className = "test-result bad"; box.textContent = "Network error"; });
-  }
-  $("epForm").addEventListener("submit", function (e) {
-    e.preventDefault();
-    var events = Array.prototype.map.call(document.querySelectorAll(".ev:checked"), function (c) { return c.value; });
-    $("epAdd").disabled = true;
-    api("/api/webhooks/register", { url: $("epUrl").value.trim(), description: $("epName").value.trim(), events: events, secret: $("epSecret").value.trim() || null })
-      .then(function (d) {
-        $("epAdd").disabled = false;
-        if (d.status === "ok") { setMsg($("epMsg"), "Added" + (d.endpoint && d.endpoint.secret ? " — secret: " + d.endpoint.secret : ""), true); $("epForm").reset(); loadEndpoints(); }
-        else { setMsg($("epMsg"), d.error || "Could not add endpoint", false); }
-      }).catch(function () { $("epAdd").disabled = false; setMsg($("epMsg"), "Network error", false); });
   });
 
-  // ── Deliveries ──
-  function loadDeliveries() {
-    return api("/api/webhooks/deliveries?limit=15").then(function (d) {
-      var rows = d.deliveries || d.items || [];
-      lastByEndpoint = {}; rows.slice().reverse().forEach(function (r) { lastByEndpoint[r.endpoint_id] = r; });
-      $("dlEmpty").hidden = rows.length > 0;
-      $("dlTable").querySelector("tbody").innerHTML = rows.map(function (r) {
-        var st = r.status || ""; var cls = st === "delivered" ? "pos" : (st === "failed" || st === "dead_letter") ? "neg" : "neu";
-        var lastA = (r.attempts || []).slice(-1)[0] || {};
-        return "<tr><td>" + ago(r.created_at || r.queued_at) + "</td><td class='mono'>" + esc(r.event) + "</td><td class='mono' style='color:var(--ink-soft)'>" + esc(r.endpoint_id) + "</td>" +
-               "<td><span class='pill " + cls + "'>" + esc(st) + "</span>" + (lastA.status_code ? " <span class='mono'>HTTP " + esc(lastA.status_code) + "</span>" : "") + (lastA.error ? " <span class='mono' style='color:var(--neg)'>" + esc(String(lastA.error).slice(0, 60)) + "</span>" : "") + "</td>" +
-               "<td><button class='btn btn-ghost btn-sm dl-replay' data-id='" + esc(r.delivery_id) + "'>Replay</button></td></tr>";
-      }).join("");
-      Array.prototype.forEach.call(document.querySelectorAll(".dl-replay"), function (b) { b.addEventListener("click", function () {
-        api("/api/webhooks/replay", { delivery_id: b.dataset.id }).then(function (d) { toast(d.status === "ok" ? "Replayed" : (d.error || "failed")); loadDeliveries(); });
-      }); });
+  // ── KPI & Stats Loading ──
+  var currentStats = {};
+  function loadStats() {
+    return api("/api/webhooks/stats").then(function (d) {
+      if (d.status !== "ok") return;
+      currentStats = d.stats || {};
+      $("kpiTotal").textContent = currentStats.deliveries || 0;
+      $("kpiAttempts").textContent = (currentStats.total_attempts || 0) + " total attempts";
+      var rate = Math.round((currentStats.success_rate || 0) * 100);
+      $("kpiRate").textContent = rate + "%";
+      $("kpiDelivered").textContent = (currentStats.delivered || 0) + " acknowledged";
+      var dlq = currentStats.dead_letter_queue || 0;
+      $("kpiDlq").textContent = dlq;
+      $("badgeDlq").textContent = dlq;
+      if (dlq > 0) $("kpiDlqCard").classList.add("alert"); else $("kpiDlqCard").classList.remove("alert");
+      $("kpiLatency").textContent = (currentStats.avg_latency_ms || 0) + " ms";
+      $("kpiEndpoints").textContent = currentStats.active_endpoints || 0;
+      $("kpiEpSub").textContent = (currentStats.endpoints || 0) + " registered";
     });
   }
-  $("dlRefresh").addEventListener("click", loadDeliveries);
 
-  // ── Agent fields ──
+  // ── Endpoints ──
+  var endpointsList = [];
+  function loadEndpoints() {
+    return api("/api/webhooks/endpoints").then(function (d) {
+      endpointsList = d.endpoints || [];
+      $("epMeta").textContent = endpointsList.length + " endpoint" + (endpointsList.length === 1 ? "" : "s");
+      $("epEmpty").hidden = endpointsList.length > 0;
+      $("epTable").querySelector("tbody").innerHTML = endpointsList.map(function (e) {
+        return "<tr>" +
+          "<td><b>" + esc(e.description || e.endpoint_id) + "</b><div class='mono' style='color:var(--ink-faint)'>" + esc(e.url) + "</div></td>" +
+          "<td><span class='mono' style='font-size:11px'>" + esc((e.events || []).join(", ")) + "</span></td>" +
+          "<td class='mono' style='color:var(--ink-soft)'>max " + esc(e.max_attempts || 4) + " · " + esc(e.timeout_s || 10) + "s</td>" +
+          "<td>" + (e.active === false ? "<span class='pill neu'>disabled</span>" : "<span class='pill pos'>Active</span>") + "</td>" +
+          "<td><span class='mono' style='color:var(--ink-soft)'>" + esc(e.secret || "••••") + "</span> <button class='btn btn-ghost btn-sm ep-copy' data-secret='" + esc(e.secret) + "'>Copy</button></td>" +
+          "<td style='text-align:right;white-space:nowrap'>" +
+            "<button class='btn btn-primary btn-sm ep-test' data-id='" + esc(e.endpoint_id) + "'>Test</button> " +
+            "<button class='btn btn-ghost btn-sm ep-rot' data-id='" + esc(e.endpoint_id) + "'>Rotate</button> " +
+            "<button class='btn btn-danger btn-sm ep-del' data-id='" + esc(e.endpoint_id) + "'>Delete</button>" +
+          "</td></tr>";
+      }).join("");
+
+      // Populate Simulator select
+      $("simEndpoint").innerHTML = endpointsList.map(function (e) {
+        return "<option value='" + esc(e.endpoint_id) + "'>" + esc(e.description || e.endpoint_id) + " (" + esc(e.url) + ")</option>";
+      }).join("");
+
+      // Bind Endpoint Actions
+      document.querySelectorAll(".ep-test").forEach(function (b) {
+        b.addEventListener("click", function () {
+          b.disabled = true; b.textContent = "Testing...";
+          api("/api/webhooks/test", { endpoint_id: b.dataset.id, event: "call.completed", payload: { ping: true, time: Date.now() } })
+            .then(function (res) {
+              b.disabled = false; b.textContent = "Test";
+              if (res.status === "ok") {
+                toast("Test event delivered (HTTP " + ((res.delivery.attempts.slice(-1)[0] || {}).status_code || 200) + ")");
+              } else {
+                toast("Test failed: " + (res.error || "Unknown error"));
+              }
+              loadDeliveries(); loadStats();
+            }).catch(function () { b.disabled = false; b.textContent = "Test"; toast("Network error during test"); });
+        });
+      });
+
+      document.querySelectorAll(".ep-rot").forEach(function (b) {
+        b.addEventListener("click", function () {
+          if (!confirm("Rotate secret for this endpoint? Existing integrations must update their secret.")) return;
+          api("/api/webhooks/rotate", { endpoint_id: b.dataset.id }).then(function (res) {
+            if (res.status === "ok") {
+              toast("Secret rotated: " + res.endpoint.secret);
+              loadEndpoints();
+            } else { toast("Rotation failed: " + res.error); }
+          });
+        });
+      });
+
+      document.querySelectorAll(".ep-del").forEach(function (b) {
+        b.addEventListener("click", function () {
+          if (!confirm("Delete this webhook endpoint permanently?")) return;
+          api("/api/webhooks/delete", { endpoint_id: b.dataset.id }).then(function (res) {
+            if (res.status === "ok") { toast("Endpoint deleted"); loadEndpoints(); loadStats(); }
+            else { toast("Delete failed: " + res.error); }
+          });
+        });
+      });
+
+      document.querySelectorAll(".ep-copy").forEach(function (b) {
+        b.addEventListener("click", function () {
+          navigator.clipboard.writeText(b.dataset.secret || "");
+          toast("Secret copied to clipboard");
+        });
+      });
+    });
+  }
+
+  // ── Delivery Logs ──
+  var allDeliveries = [];
+  function loadDeliveries() {
+    var ev = $("filterEvent").value;
+    var st = $("filterStatus").value;
+    var url = "/api/webhooks/deliveries?limit=50" + (ev ? "&event=" + encodeURIComponent(ev) : "") + (st ? "&status=" + encodeURIComponent(st) : "");
+    return api(url).then(function (d) {
+      allDeliveries = d.deliveries || [];
+      $("badgeDeliveries").textContent = allDeliveries.length;
+      renderDeliveryTable();
+      renderDlqTable(d.dead_letters || []);
+    });
+  }
+
+  function renderDeliveryTable() {
+    var query = ($("searchLog").value || "").toLowerCase().trim();
+    var filtered = allDeliveries.filter(function (dl) {
+      if (!query) return true;
+      return (dl.delivery_id || "").toLowerCase().indexOf(query) !== -1 ||
+             (dl.call_id || "").toLowerCase().indexOf(query) !== -1 ||
+             (dl.url || "").toLowerCase().indexOf(query) !== -1;
+    });
+
+    $("dlEmpty").hidden = filtered.length > 0;
+    $("dlTable").querySelector("tbody").innerHTML = filtered.map(function (dl) {
+      var lastA = (dl.attempts || []).slice(-1)[0] || {};
+      var code = lastA.status_code || "—";
+      var stCls = dl.status === "delivered" ? "pos" : (dl.status === "dead_lettered" ? "neg" : "warn");
+      return "<tr>" +
+        "<td>" + ago(dl.created_at) + "</td>" +
+        "<td class='mono'><b>" + esc(dl.delivery_id) + "</b>" + (dl.call_id ? "<div style='color:var(--ink-faint)'>" + esc(dl.call_id) + "</div>" : "") + "</td>" +
+        "<td><span class='pill accent'>" + esc(dl.event) + "</span></td>" +
+        "<td class='mono' style='max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>" + esc(dl.url) + "</td>" +
+        "<td><span class='pill " + stCls + "'>" + esc(dl.status) + "</span> " + (code !== "—" ? "<span class='mono'>HTTP " + esc(code) + "</span>" : "") + "</td>" +
+        "<td class='mono'>" + esc(dl.attempt_count || (dl.attempts ? dl.attempts.length : 1)) + " attempt(s)</td>" +
+        "<td style='text-align:right;white-space:nowrap'>" +
+          "<button class='btn btn-ghost btn-sm dl-insp' data-id='" + esc(dl.delivery_id) + "'>Inspect</button> " +
+          "<button class='btn btn-ghost btn-sm dl-replay' data-id='" + esc(dl.delivery_id) + "'>Replay</button>" +
+        "</td></tr>";
+    }).join("");
+
+    document.querySelectorAll(".dl-insp").forEach(function (b) {
+      b.addEventListener("click", function () { openInspector(b.dataset.id); });
+    });
+    document.querySelectorAll(".dl-replay").forEach(function (b) {
+      b.addEventListener("click", function () {
+        b.disabled = true; b.textContent = "Replaying...";
+        api("/api/webhooks/replay", { delivery_id: b.dataset.id }).then(function (res) {
+          b.disabled = false; b.textContent = "Replay";
+          if (res.status === "ok") { toast("Replay dispatched (HTTP " + ((res.delivery.attempts.slice(-1)[0] || {}).status_code || 200) + ")"); loadDeliveries(); loadStats(); }
+          else { toast("Replay error: " + res.error); }
+        });
+      });
+    });
+  }
+
+  $("filterEvent").addEventListener("change", loadDeliveries);
+  $("filterStatus").addEventListener("change", loadDeliveries);
+  $("searchLog").addEventListener("input", renderDeliveryTable);
+  $("btnRefreshDeliveries").addEventListener("click", function () { loadDeliveries(); loadStats(); });
+
+  // ── Delivery Inspector Modal ──
+  function openInspector(deliveryId) {
+    var item = allDeliveries.find(function (d) { return d.delivery_id === deliveryId; });
+    if (!item) return;
+    $("inspTitle").textContent = "Delivery Inspector · " + item.delivery_id;
+    var attemptsHtml = (item.attempts || []).map(function (a, i) {
+      return "<div style='background:var(--sunk);border-radius:6px;padding:10px 14px;margin-bottom:8px'>" +
+        "<div style='display:flex;justify-content:space-between;font-weight:600'>" +
+          "<span>Attempt #" + (a.attempt || (i + 1)) + "</span>" +
+          "<span class='mono'>" + (a.status_code ? "HTTP " + a.status_code : "No response") + " · " + (a.duration_ms || 0) + "ms</span>" +
+        "</div>" +
+        (a.error ? "<div class='mono' style='color:var(--neg);font-size:11.5px;margin-top:4px'>" + esc(a.error) + "</div>" : "") +
+        (a.next_retry_in_s ? "<div class='mono' style='color:var(--ink-faint);font-size:11px;margin-top:2px'>Next backoff delay: " + a.next_retry_in_s + "s</div>" : "") +
+      "</div>";
+    }).join("");
+
+    $("inspBody").innerHTML =
+      "<div class='row2' style='margin-bottom:14px'>" +
+        "<div><b>Event:</b> <span class='pill accent'>" + esc(item.event) + "</span></div>" +
+        "<div><b>Status:</b> <span class='pill " + (item.status === "delivered" ? "pos" : "neg") + "'>" + esc(item.status) + "</span></div>" +
+      "</div>" +
+      "<div style='margin-bottom:14px'><b>Target URL:</b> <span class='mono'>" + esc(item.url) + "</span></div>" +
+      "<div style='margin-bottom:14px'><b>Signature:</b> <span class='mono' style='font-size:11px'>" + esc(item.signature || "—") + "</span></div>" +
+      "<div style='margin-bottom:14px'><b>Timestamp:</b> <span class='mono'>" + esc(item.timestamp || "—") + "</span></div>" +
+      "<div style='margin-bottom:14px'><b>Payload SHA-256 Digest:</b> <span class='mono' style='font-size:11px'>" + esc(item.payload_digest || "—") + "</span></div>" +
+      "<div style='margin-bottom:14px'><b>Attempt History:</b>" + (attemptsHtml || "<div class='empty'>No attempts logged.</div>") + "</div>";
+
+    $("modalInspector").classList.add("open");
+  }
+  $("btnCloseInsp").addEventListener("click", function () { $("modalInspector").classList.remove("open"); });
+
+  // ── Dead-Letter Queue (DLQ) ──
+  function renderDlqTable(deadLetters) {
+    $("badgeDlq").textContent = deadLetters.length;
+    $("dlqEmpty").hidden = deadLetters.length > 0;
+    $("dlqTable").querySelector("tbody").innerHTML = deadLetters.map(function (d) {
+      return "<tr>" +
+        "<td>" + ago(d.parked_at) + "</td>" +
+        "<td class='mono'><b>" + esc(d.delivery_id) + "</b></td>" +
+        "<td><span class='pill neg'>" + esc(d.event) + "</span></td>" +
+        "<td class='mono'>" + esc(d.endpoint_id) + "</td>" +
+        "<td class='mono'>" + esc(d.attempts || 4) + " attempts</td>" +
+        "<td class='mono' style='color:var(--neg);max-width:280px;overflow:hidden;text-overflow:ellipsis'>" + esc(d.last_error || "Max attempts exhausted") + "</td>" +
+        "<td style='text-align:right'><button class='btn btn-primary btn-sm dlq-single-replay' data-id='" + esc(d.delivery_id) + "'>⚡ Replay</button></td>" +
+      "</tr>";
+    }).join("");
+
+    document.querySelectorAll(".dlq-single-replay").forEach(function (b) {
+      b.addEventListener("click", function () {
+        b.disabled = true; b.textContent = "Retrying...";
+        api("/api/webhooks/replay", { delivery_id: b.dataset.id }).then(function (res) {
+          b.disabled = false; b.textContent = "⚡ Replay";
+          if (res.status === "ok") { toast("Replayed dead-letter delivery"); loadDeliveries(); loadStats(); }
+          else { toast("Replay failed: " + res.error); }
+        });
+      });
+    });
+  }
+
+  $("btnBulkReplay").addEventListener("click", function () {
+    $("btnBulkReplay").disabled = true; $("btnBulkReplay").textContent = "Replaying all...";
+    api("/api/webhooks/bulk-replay", {}).then(function (res) {
+      $("btnBulkReplay").disabled = false; $("btnBulkReplay").textContent = "⚡ Replay All Dead Letters";
+      if (res.status === "ok") { toast("Replayed " + (res.replayed_count || 0) + " dead letter(s)"); loadDeliveries(); loadStats(); }
+      else { toast("Bulk replay error: " + res.error); }
+    });
+  });
+
+  // ── Modal: New Endpoint ──
+  $("btnOpenNewEndpoint").addEventListener("click", function () { $("modalEndpoint").classList.add("open"); });
+  $("btnCloseModal").addEventListener("click", function () { $("modalEndpoint").classList.remove("open"); });
+  $("btnCancelModal").addEventListener("click", function () { $("modalEndpoint").classList.remove("open"); });
+  $("formNewEndpoint").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var events = Array.from(document.querySelectorAll("#modalEndpoint .ev:checked")).map(function (c) { return c.value; });
+    $("btnSubmitEndpoint").disabled = true;
+    api("/api/webhooks/register", {
+      url: $("modalUrl").value.trim(),
+      description: $("modalName").value.trim(),
+      secret: $("modalSecret").value.trim() || null,
+      timeout_s: parseFloat($("modalTimeout").value) || 10,
+      events: events
+    }).then(function (res) {
+      $("btnSubmitEndpoint").disabled = false;
+      if (res.status === "ok") {
+        toast("Endpoint registered! Secret: " + (res.endpoint ? res.endpoint.secret : ""));
+        $("modalEndpoint").classList.remove("open");
+        $("formNewEndpoint").reset();
+        loadEndpoints(); loadStats();
+      } else {
+        toast("Registration error: " + res.error);
+      }
+    }).catch(function () { $("btnSubmitEndpoint").disabled = false; toast("Network error"); });
+  });
+
+  // ── Simulator Tab ──
+  var DEFAULT_SIM_PAYLOAD = {
+    event: "call_analyzed",
+    call: {
+      call_id: "call_01j7abc9921",
+      call_type: "phone_call",
+      agent_id: "agent_maya_law",
+      call_status: "ended",
+      start_timestamp: 1726732800000,
+      end_timestamp: 1726732942000,
+      duration_ms: 142000,
+      transcript: "Agent: Hello, thank you for calling. How can I help you today?\nUser: Hi, I'm calling about a corporate partnership matter.",
+      transcript_object: [
+        { role: "agent", content: "Hello, thank you for calling. How can I help you today?", words: [] },
+        { role: "user", content: "Hi, I'm calling about a corporate partnership matter.", words: [] }
+      ],
+      recording_url: "https://api.yourdomain.com/recordings/call_01j7abc9921.mp3",
+      disconnection_reason: "user_hangup",
+      from_number: "+19515550192",
+      to_number: "+18005550199",
+      direction: "inbound",
+      metadata: { source: "google_ads_legal" },
+      call_analysis: {
+        call_summary: "Customer called inquiring regarding corporate partnership dispute and requested consultation.",
+        user_sentiment: "Positive",
+        call_successful: true,
+        in_voicemail: false,
+        custom_analysis_data: {
+          caller_name: "Alexander Wright",
+          callback_phone: "+19515550192",
+          matter_type: "Partnership Dispute",
+          urgency: "High"
+        }
+      }
+    }
+  };
+
+  $("simPayload").value = JSON.stringify(DEFAULT_SIM_PAYLOAD, null, 2);
+  $("btnResetSimPayload").addEventListener("click", function () {
+    $("simPayload").value = JSON.stringify(DEFAULT_SIM_PAYLOAD, null, 2);
+  });
+
+  $("btnDispatchSim").addEventListener("click", function () {
+    var epId = $("simEndpoint").value;
+    if (!epId) { toast("Select an endpoint first"); return; }
+    var payload;
+    try { payload = JSON.parse($("simPayload").value); } catch (err) { toast("Invalid JSON payload"); return; }
+    $("btnDispatchSim").disabled = true; $("simResultMeta").textContent = "Dispatching HTTP POST...";
+    var t0 = Date.now();
+    api("/api/webhooks/test", {
+      endpoint_id: epId,
+      event: $("simEvent").value,
+      call_id: $("simCallId").value,
+      payload: payload
+    }).then(function (res) {
+      $("btnDispatchSim").disabled = false;
+      var roundtrip = Date.now() - t0;
+      var dl = res.delivery || {};
+      var last = (dl.attempts || []).slice(-1)[0] || {};
+      var code = last.status_code || 200;
+      var ok = dl.status === "delivered" || (code >= 200 && code < 300);
+      $("simResultMeta").textContent = ok ? "Acknowledged in " + roundtrip + " ms" : "Failed with status " + code;
+      $("simResultBody").innerHTML =
+        "<div style='margin-bottom:12px;display:flex;align-items:center;gap:10px'>" +
+          "<span class='pill " + (ok ? "pos" : "neg") + "'>" + (ok ? "HTTP " + code + " SUCCESS" : "FAILED") + "</span>" +
+          "<span class='mono' style='font-size:12px'>" + roundtrip + " ms execution</span>" +
+        "</div>" +
+        "<div class='crumb'>GENERATED REQUEST HEADERS</div>" +
+        "<pre>X-Webhook-Delivery: " + esc(dl.delivery_id) + "\n" +
+"X-Webhook-Event: " + esc(dl.event) + "\n" +
+"X-Webhook-Timestamp: " + esc(dl.timestamp) + "\n" +
+"X-Signature-256: " + esc(dl.signature) + "\n" +
+"Content-Type: application/json</pre>" +
+        (last.error ? "<div style='margin-top:12px'><div class='crumb' style='color:var(--neg)'>ERROR MESSAGE</div><pre style='color:var(--neg)'>" + esc(last.error) + "</pre></div>" : "");
+      loadDeliveries(); loadStats();
+    }).catch(function () {
+      $("btnDispatchSim").disabled = false;
+      $("simResultMeta").textContent = "Network error";
+      $("simResultBody").innerHTML = "<div class='msg err'>Network connection failed during simulation.</div>";
+    });
+  });
+
+  // ── HMAC Sandbox Tab ──
+  $("sbTimestamp").value = Math.floor(Date.now() / 1000);
+  $("sbBody").value = JSON.stringify({ event: "call.completed", call_id: "test-call-123" }, null, 2);
+  $("btnVerifySignature").addEventListener("click", function () {
+    var secret = $("sbSecret").value.trim();
+    var body = $("sbBody").value.trim();
+    var ts = parseInt($("sbTimestamp").value, 10);
+    var sig = $("sbSignature").value.trim();
+    if (!secret) { toast("Please enter a signing secret"); return; }
+    api("/api/webhooks/verify-signature", { secret: secret, body: body, timestamp: ts, signature: sig })
+      .then(function (res) {
+        if (res.valid) {
+          $("sbMsg").textContent = "✔ Signature is VALID (Verified with constant-time HMAC-SHA256)";
+          $("sbMsg").className = "msg ok";
+        } else {
+          $("sbMsg").textContent = "✘ Signature INVALID: " + (res.reason || "mismatch");
+          $("sbMsg").className = "msg err";
+        }
+      });
+  });
+
+  // ── AI Extraction Fields Tab ──
   var agents = [], fields = [];
   function currentAgent() { return agents.find(function (a) { return a.agent_id === $("agentSel").value; }); }
   function renderFields() {
     $("fieldsEmpty").hidden = fields.length > 0;
     $("fieldsTable").querySelector("tbody").innerHTML = fields.map(function (f, i) {
       var types = ["string", "number", "boolean", "date", "phone", "email", "enum"];
-      return "<tr data-i='" + i + "'><td><input class='f-name mono' value='" + esc(f.name) + "' placeholder='field_name'>" +
-             (f.type === "enum" ? "<input class='f-options' style='margin-top:4px' value='" + esc((f.options || []).join(", ")) + "' placeholder='options, comma separated'>" : "") + "</td>" +
-             "<td><select class='f-type'>" + types.map(function (t) { return "<option" + (t === f.type ? " selected" : "") + ">" + t + "</option>"; }).join("") + "</select></td>" +
-             "<td><input class='f-desc' value='" + esc(f.description || "") + "' placeholder='what it is'>" +
-             "<input class='f-q' style='margin-top:4px' value='" + esc(f.question || "") + "' placeholder='how the agent asks for it (optional)'></td>" +
-             "<td style='text-align:center'><input type='checkbox' class='f-req'" + (f.required ? " checked" : "") + "></td>" +
-             "<td><button class='btn btn-ghost btn-sm f-del' type='button'></button></td></tr>";
+      return "<tr data-i='" + i + "'>" +
+        "<td><input class='f-name mono' value='" + esc(f.name) + "' placeholder='field_name'></td>" +
+        "<td><select class='f-type'>" + types.map(function (t) { return "<option" + (t === f.type ? " selected" : "") + ">" + t + "</option>"; }).join("") + "</select></td>" +
+        "<td><input class='f-desc' value='" + esc(f.description || "") + "' placeholder='Description / Prompt instruction'></td>" +
+        "<td style='text-align:center'><input type='checkbox' class='f-req'" + (f.required ? " checked" : "") + "></td>" +
+        "<td><button class='btn btn-ghost btn-sm f-del' type='button'>✕</button></td>" +
+      "</tr>";
     }).join("");
-    Array.prototype.forEach.call(document.querySelectorAll(".f-del"), function (b) { b.addEventListener("click", function () { readFields(); fields.splice(parseInt(b.closest("tr").dataset.i, 10), 1); renderFields(); }); });
-    Array.prototype.forEach.call(document.querySelectorAll(".f-type"), function (s) { s.addEventListener("change", function () { readFields(); renderFields(); }); });
+    document.querySelectorAll(".f-del").forEach(function (b) {
+      b.addEventListener("click", function () {
+        readFields(); fields.splice(parseInt(b.closest("tr").dataset.i, 10), 1); renderFields();
+      });
+    });
   }
   function readFields() {
-    fields = Array.prototype.map.call(document.querySelectorAll("#fieldsTable tbody tr"), function (tr) {
-      var opts = tr.querySelector(".f-options");
-      return { name: tr.querySelector(".f-name").value.trim(), type: tr.querySelector(".f-type").value, description: tr.querySelector(".f-desc").value.trim(),
-               question: tr.querySelector(".f-q").value.trim(), required: tr.querySelector(".f-req").checked,
-               options: opts ? opts.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean) : [] };
+    fields = Array.from(document.querySelectorAll("#fieldsTable tbody tr")).map(function (tr) {
+      return {
+        name: tr.querySelector(".f-name").value.trim(),
+        type: tr.querySelector(".f-type").value,
+        description: tr.querySelector(".f-desc").value.trim(),
+        required: tr.querySelector(".f-req").checked
+      };
     }).filter(function (f) { return f.name; });
   }
   function loadAgents() {
     return api("/api/agents").then(function (d) {
       agents = d.agents || [];
-      $("agentSel").innerHTML = agents.map(function (a) { return "<option value='" + esc(a.agent_id) + "'>" + esc(a.name) + (a.webhook_enabled ? " · webhook on" : " · webhook off") + "</option>"; }).join("");
-      var a = currentAgent(); fields = (a && a.extraction_fields) ? a.extraction_fields.slice() : []; renderFields();
+      $("agentSel").innerHTML = agents.map(function (a) {
+        return "<option value='" + esc(a.agent_id) + "'>" + esc(a.name) + (a.webhook_enabled ? " · Webhook Active" : " · Webhook Inactive") + "</option>";
+      }).join("");
+      var a = currentAgent();
+      fields = (a && a.extraction_fields) ? a.extraction_fields.slice() : [];
+      renderFields();
     });
   }
-  $("agentSel").addEventListener("change", function () { var a = currentAgent(); fields = (a && a.extraction_fields) ? a.extraction_fields.slice() : []; renderFields(); $("pvBody").innerHTML = "<div class='empty' style='padding:0'>Run \"Preview on latest call\" to see what the AI pulls out of a real transcript.</div>"; $("pvMeta").textContent = ""; });
-  $("btnAddField").addEventListener("click", function () { readFields(); fields.push({ name: "", type: "string", description: "", required: false }); renderFields(); });
+  $("agentSel").addEventListener("change", function () {
+    var a = currentAgent();
+    fields = (a && a.extraction_fields) ? a.extraction_fields.slice() : [];
+    renderFields();
+  });
+  $("btnAddField").addEventListener("click", function () {
+    readFields(); fields.push({ name: "", type: "string", description: "", required: false }); renderFields();
+  });
   $("btnSuggest").addEventListener("click", function () {
     var a = currentAgent(); if (!a) return;
-    $("btnSuggest").disabled = true; setMsg($("fieldsMsg"), "Asking the AI to read " + a.name + "'s prompt…", true);
+    $("btnSuggest").disabled = true; $("fieldsMsg").textContent = "Analyzing prompt...";
     api("/api/agents/suggest-fields", { agent_id: a.agent_id }).then(function (d) {
       $("btnSuggest").disabled = false;
-      if (d.status !== "ok") { setMsg($("fieldsMsg"), d.error || "Suggestion failed", false); return; }
+      if (d.status !== "ok") { $("fieldsMsg").textContent = d.error || "Suggestion failed"; return; }
       readFields();
       var have = {}; fields.forEach(function (f) { have[f.name] = true; });
-      var added = 0; (d.fields || []).forEach(function (f) { if (!have[f.name]) { fields.push(f); added++; } });
-      renderFields(); setMsg($("fieldsMsg"), added + " field(s) suggested — review, then Save fields", true);
-    }).catch(function () { $("btnSuggest").disabled = false; setMsg($("fieldsMsg"), "Network error", false); });
+      var added = 0;
+      (d.fields || []).forEach(function (f) { if (!have[f.name]) { fields.push(f); added++; } });
+      renderFields();
+      $("fieldsMsg").textContent = "Added " + added + " suggested field(s)";
+    }).catch(function () { $("btnSuggest").disabled = false; $("fieldsMsg").textContent = "Network error"; });
   });
   $("btnSaveFields").addEventListener("click", function () {
     var a = currentAgent(); if (!a) return; readFields();
-    api("/api/agents/update", { agent_id: a.agent_id, changes: { extraction_fields: fields }, note: "Data fields updated" }).then(function (d) {
-      if (d.status === "ok") { a.extraction_fields = fields.slice(); setMsg($("fieldsMsg"), "Saved " + fields.length + " field(s)", true); toast("Fields saved"); }
-      else { setMsg($("fieldsMsg"), d.error || "Save failed", false); }
+    api("/api/agents/update", { agent_id: a.agent_id, changes: { extraction_fields: fields }, note: "Extraction fields updated" }).then(function (d) {
+      if (d.status === "ok") { a.extraction_fields = fields.slice(); toast("Fields saved successfully"); }
+      else { toast("Save failed: " + d.error); }
     });
   });
   $("btnPreview").addEventListener("click", function () {
     var a = currentAgent(); if (!a) return; readFields();
-    $("btnPreview").disabled = true; $("pvMeta").textContent = "extracting…";
+    $("btnPreview").disabled = true; $("pvMeta").textContent = "Extracting...";
     api("/api/agents/extract-preview", { agent_id: a.agent_id, fields: fields }).then(function (d) {
       $("btnPreview").disabled = false;
       if (d.status !== "ok") { $("pvMeta").textContent = ""; $("pvBody").innerHTML = "<div class='msg err'>" + esc(d.error || "Preview failed") + "</div>"; return; }
-      $("pvMeta").textContent = "call " + d.call_id + " · " + d.engine + " · coverage " + Math.round((d.coverage || 0) * 100) + "%";
+      $("pvMeta").textContent = "Call " + d.call_id + " · Coverage " + Math.round((d.coverage || 0) * 100) + "%";
       var rows = (d.fields || []).map(function (f) {
-        return "<tr><td class='mono'>" + esc(f.field_name) + "</td><td>" + (f.value === null || f.value === undefined ? "<span class='pill neu'>not found</span>" : "<b>" + esc(String(f.value)) + "</b>") + "</td><td><span class='pill " + (f.source === "ai" ? "accent" : "neu") + "'>" + esc(f.source) + "</span> " + Math.round((f.confidence || 0) * 100) + "%</td></tr>";
+        return "<tr><td class='mono'>" + esc(f.field_name) + "</td><td><b>" + esc(String(f.value || "—")) + "</b></td><td>" + Math.round((f.confidence || 0) * 100) + "%</td></tr>";
       }).join("");
-      $("pvBody").innerHTML = "<table><thead><tr><th>Field</th><th>Value</th><th>Source</th></tr></thead><tbody>" + rows + "</tbody></table>" +
-        (d.missing_required && d.missing_required.length ? "<div class='msg err' style='margin-top:8px'>Missing required: " + esc(d.missing_required.join(", ")) + "</div>" : "") +
-        (d.note ? "<div class='msg err' style='margin-top:8px'>" + esc(d.note) + "</div>" : "") +
-        "<div style='margin-top:10px'><div class='crumb'>Webhook \"extracted\" payload</div><pre>" + esc(JSON.stringify(d.values || {}, null, 2)) + "</pre></div>";
+      $("pvBody").innerHTML = "<table><thead><tr><th>Field</th><th>Value</th><th>Confidence</th></tr></thead><tbody>" + rows + "</tbody></table>" +
+        "<div style='margin-top:10px'><div class='crumb'>EXTRACTED WEBHOOK DATA</div><pre>" + esc(JSON.stringify(d.values || {}, null, 2)) + "</pre></div>";
     }).catch(function () { $("btnPreview").disabled = false; $("pvMeta").textContent = ""; $("pvBody").innerHTML = "<div class='msg err'>Network error</div>"; });
   });
 
-  loadDeliveries().then(loadEndpoints); loadAgents();
+  // ── Auto Refresh ──
+  setInterval(function () {
+    if ($("autoRefreshToggle") && $("autoRefreshToggle").checked) {
+      loadStats();
+      if ($("tab-deliveries").classList.contains("active")) loadDeliveries();
+    }
+  }, 5000);
+
+  $("btnRefreshAll").addEventListener("click", function () {
+    loadStats(); loadEndpoints(); loadDeliveries(); toast("Dashboard data refreshed");
+  });
+
+  // Initial Boot
+  loadStats();
+  loadEndpoints();
+  loadDeliveries();
+  loadAgents();
 })();
 </script>
 <script src="/profile.js"></script>

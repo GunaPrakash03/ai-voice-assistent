@@ -15,3 +15,5 @@ config/auth_store.json
 config/agents.json
 config/phone_numbers.json
 config/sip_trunks.json
+*.db
+webhook_receiver/

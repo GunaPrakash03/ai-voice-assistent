@@ -52,6 +52,8 @@ from agent.dtmf_manager import dtmf_manager
 from agent.amd_manager import AMDManager, AMDState, AMDAction, VoicemailDropConfig
 from agent.recording_manager import recording_manager, RecordingConfig, ComplianceMode, RecordingStatus
 from agent.pipeline_worker import pipeline_worker
+from agent.webhook_dispatcher import webhook_dispatcher
+webhook_dispatcher.attach_to_pipeline(pipeline_worker)
 
 load_dotenv()
 log = logging.getLogger("dialogue-worker")
