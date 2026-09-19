@@ -41,17 +41,67 @@ JWT_SECRET = os.getenv("AUTH_JWT_SECRET", "voice-agent-jwt-secret-key-prod-2026"
 # ---------------------------------------------------------------------------
 
 class UserRole(str, Enum):
-    ADMIN = "admin"  # Everything: agents, calls, webhooks, provider keys, API keys, members
-    USER  = "user"   # Everything in the dashboard except provider keys, API keys and members
+    SUPER_ADMIN  = "super_admin"   # Overall Admin: manages all orgs and can create product/member admins
+    ADMIN        = "admin"         # Product Admin: manages single workspace; can create member admins & users
+    MEMBER_ADMIN = "member_admin"  # Member Admin: manages members within single workspace
+    USER         = "user"          # Standard User: overview, calls, softphone, personal profile
 
 
-# Roles from earlier builds; stored users and incoming payloads are folded into "user".
-LEGACY_ROLES = {"operator": UserRole.USER.value, "analyst": UserRole.USER.value, "member": UserRole.USER.value}
+# Aliases from earlier builds and system variations
+ROLE_ALIASES = {
+    "super_admin": UserRole.SUPER_ADMIN.value,
+    "superadmin": UserRole.SUPER_ADMIN.value,
+    "overall_admin": UserRole.SUPER_ADMIN.value,
+    "system_admin": UserRole.SUPER_ADMIN.value,
+    "root": UserRole.SUPER_ADMIN.value,
+    "admin": UserRole.ADMIN.value,
+    "product_admin": UserRole.ADMIN.value,
+    "member_admin": UserRole.MEMBER_ADMIN.value,
+    "team_admin": UserRole.MEMBER_ADMIN.value,
+    "operator": UserRole.USER.value,
+    "analyst": UserRole.USER.value,
+    "member": UserRole.USER.value,
+    "user": UserRole.USER.value,
+}
 
 
 def normalize_role(role: Optional[str]) -> str:
     r = (role or "").strip().lower()
-    return LEGACY_ROLES.get(r, r or UserRole.USER.value)
+    return ROLE_ALIASES.get(r, r or UserRole.USER.value)
+
+
+def can_create_role(creator_role: str, creator_ws_id: str, target_role: str, target_ws_id: str) -> Tuple[bool, str]:
+    """Validates if creator has permission to create target_role in target_ws_id.
+
+    Rules:
+    - Super Admin can create any role (super_admin, admin/product_admin, member_admin, user) in ANY organization.
+    - Product Admin (admin) can ONLY create member_admin and user in their OWN organization.
+    - Member Admin (member_admin) can ONLY create user in their OWN organization.
+    - Regular User cannot create any accounts.
+    """
+    c_role = normalize_role(creator_role)
+    t_role = normalize_role(target_role)
+
+    if c_role == UserRole.SUPER_ADMIN.value:
+        return True, "ok"
+
+    if c_role == UserRole.ADMIN.value:
+        if creator_ws_id != target_ws_id:
+            return False, "Product Admins can only create users in their own organization"
+        if t_role in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value):
+            return False, "Product Admins can only create Member Admins and Users"
+        if t_role in (UserRole.MEMBER_ADMIN.value, UserRole.USER.value):
+            return True, "ok"
+        return False, f"Invalid role '{target_role}'"
+
+    if c_role == UserRole.MEMBER_ADMIN.value:
+        if creator_ws_id != target_ws_id:
+            return False, "Member Admins can only create users in their own organization"
+        if t_role == UserRole.USER.value:
+            return True, "ok"
+        return False, "Member Admins can only invite standard Users"
+
+    return False, "Standard Users cannot create or invite members"
 
 
 class ApiScope(str, Enum):
@@ -69,7 +119,15 @@ class ApiScope(str, Enum):
 
 # Role-to-Scope Permissions Mapping
 ROLE_SCOPES: Dict[UserRole, Set[str]] = {
+    UserRole.SUPER_ADMIN: {s.value for s in ApiScope},
     UserRole.ADMIN: {s.value for s in ApiScope},
+    UserRole.MEMBER_ADMIN: {
+        ApiScope.CALLS_READ.value,
+        ApiScope.CALLS_WRITE.value,
+        ApiScope.AGENTS_READ.value,
+        ApiScope.ANALYTICS_READ.value,
+        ApiScope.TELEPHONY_DIAL.value,
+    },
     UserRole.USER: {
         ApiScope.CALLS_READ.value,
         ApiScope.CALLS_WRITE.value,
@@ -81,6 +139,7 @@ ROLE_SCOPES: Dict[UserRole, Set[str]] = {
         ApiScope.WEBHOOKS_ADMIN.value,
     },
 }
+
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +295,8 @@ class AuthManager:
             user_id="usr-admin-01",
             workspace_id="ws-default",
             email="admin@voiceagent.local",
-            role=UserRole.ADMIN.value,
+            role=UserRole.SUPER_ADMIN.value,
+            name="Super Administrator",
         )
         self._users[admin_user.user_id] = admin_user
 
@@ -649,9 +709,12 @@ class AuthManager:
 
     # ── Current profile (sidebar) ────────────────────────────────────────────
     def _current_user(self) -> Optional[AuthUser]:
-        """The dashboard has no login yet; it operates as the first active admin of the default workspace."""
+        """The dashboard operates as the super admin if present, or active admin of the default workspace."""
+        super_admins = [u for u in self._users.values() if u.active and u.role == UserRole.SUPER_ADMIN.value]
+        if super_admins:
+            return sorted(super_admins, key=lambda u: u.created_at)[0]
         ws_id = "ws-default" if "ws-default" in self._workspaces else (next(iter(self._workspaces), None))
-        admins = [u for u in self._users.values() if u.active and u.workspace_id == ws_id and u.role == UserRole.ADMIN.value]
+        admins = [u for u in self._users.values() if u.active and u.workspace_id == ws_id and u.role in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value)]
         if admins:
             return sorted(admins, key=lambda u: u.created_at)[0]
         users = [u for u in self._users.values() if u.active and u.workspace_id == ws_id]
@@ -661,13 +724,16 @@ class AuthManager:
         user = self._users.get(user_id) if user_id else None
         user = user or self._current_user()
         ws = self._workspaces.get(user.workspace_id) if user else None
+        user_role = normalize_role(user.role) if user else ""
         return {
             "user_id": user.user_id if user else None,
             "name": (user.name if user else "") or "",
             "email": user.email if user else "",
             "title": (user.title if user else "") or "",
             "phone": (user.phone if user else "") or "",
-            "role": user.role if user else "",
+            "role": user_role,
+            "is_super_admin": user_role == UserRole.SUPER_ADMIN.value,
+            "is_admin": user_role in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value),
             "workspace_id": ws.workspace_id if ws else "",
             "workspace": ws.name if ws else "",
             "workspace_slug": ws.slug if ws else "",
@@ -721,6 +787,192 @@ class AuthManager:
         if workspace_id:
             users = [u for u in users if u.workspace_id == workspace_id]
         return [u.to_dict() for u in users if u.active]
+
+    # ── Super Admin System Operations ────────────────────────────────────────
+
+    def is_super_admin(self, user_or_role: Any) -> bool:
+        """Returns True if the user or role string is Super Admin."""
+        if not user_or_role:
+            return False
+        role = getattr(user_or_role, "role", None) or str(user_or_role)
+        return normalize_role(role) == UserRole.SUPER_ADMIN.value
+
+    def list_all_organizations(self) -> List[Dict[str, Any]]:
+        """Returns all workspaces enriched with multi-tenant metrics."""
+        result = []
+        for ws in sorted(self._workspaces.values(), key=lambda w: w.created_at):
+            ws_users = [u for u in self._users.values() if u.workspace_id == ws.workspace_id and u.active]
+            super_admins = sum(1 for u in ws_users if normalize_role(u.role) == UserRole.SUPER_ADMIN.value)
+            admins = sum(1 for u in ws_users if normalize_role(u.role) == UserRole.ADMIN.value)
+            member_admins = sum(1 for u in ws_users if normalize_role(u.role) == UserRole.MEMBER_ADMIN.value)
+            users = sum(1 for u in ws_users if normalize_role(u.role) == UserRole.USER.value)
+            active_keys = sum(1 for k in self._api_keys.values() if k.workspace_id == ws.workspace_id and not k.revoked)
+
+            result.append({
+                "workspace_id": ws.workspace_id,
+                "name": ws.name,
+                "slug": ws.slug,
+                "created_at": ws.created_at,
+                "rate_limit_rpm": ws.rate_limit_rpm,
+                "active": ws.active,
+                "member_count": len(ws_users),
+                "super_admin_count": super_admins,
+                "admin_count": admins,
+                "member_admin_count": member_admins,
+                "user_count": users,
+                "active_api_keys": active_keys,
+            })
+        return result
+
+    def create_organization(
+        self,
+        name: str,
+        slug: Optional[str] = None,
+        rate_limit_rpm: int = 120,
+        admin_email: Optional[str] = None,
+        admin_password: Optional[str] = None,
+        admin_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Creates a new workspace/organization, optionally seeding an initial Product Admin."""
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("Organization name is required")
+
+        if not slug:
+            slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+            if not slug:
+                slug = f"org-{secrets.token_hex(3)}"
+
+        # Check slug uniqueness
+        for w in self._workspaces.values():
+            if w.slug.lower() == slug.lower():
+                slug = f"{slug}-{secrets.token_hex(2)}"
+                break
+
+        ws_id = f"ws-{secrets.token_hex(4)}"
+        ws = Workspace(
+            workspace_id=ws_id,
+            name=name,
+            slug=slug,
+            rate_limit_rpm=max(10, int(rate_limit_rpm or 120)),
+            created_at=time.time(),
+            active=True,
+        )
+        self._workspaces[ws_id] = ws
+
+        created_admin = None
+        if admin_email and admin_password:
+            created_admin = self.add_member(
+                workspace_id=ws_id,
+                email=admin_email,
+                password=admin_password,
+                role=UserRole.ADMIN.value,
+                name=admin_name or f"{name} Admin",
+            )
+
+        self._save_store()
+        res = ws.to_dict()
+        res["admin"] = created_admin.to_dict() if created_admin else None
+        return res
+
+    def update_organization(self, workspace_id: str, changes: Dict[str, Any]) -> Dict[str, Any]:
+        """Updates organization settings (name, rate_limit_rpm, active toggle)."""
+        ws = self._workspaces.get(workspace_id)
+        if not ws:
+            raise KeyError(f"Organization '{workspace_id}' not found")
+
+        if "name" in changes and changes["name"] is not None:
+            name = str(changes["name"]).strip()
+            if name:
+                ws.name = name[:100]
+
+        if "slug" in changes and changes["slug"] is not None:
+            slug = re.sub(r"[^a-z0-9-]+", "", str(changes["slug"]).lower().strip())
+            if slug:
+                ws.slug = slug[:50]
+
+        if "rate_limit_rpm" in changes and changes["rate_limit_rpm"] is not None:
+            ws.rate_limit_rpm = max(10, int(changes["rate_limit_rpm"]))
+
+        if "active" in changes and changes["active"] is not None:
+            ws.active = bool(changes["active"])
+
+        self._save_store()
+        return ws.to_dict()
+
+    def list_all_users_global(self, role_filter: Optional[str] = None, workspace_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Returns multi-tenant users across all workspaces with enriched organization info."""
+        result = []
+        for u in sorted(self._users.values(), key=lambda x: x.created_at, reverse=True):
+            ws = self._workspaces.get(u.workspace_id)
+            user_role = normalize_role(u.role)
+            if role_filter and user_role != normalize_role(role_filter):
+                continue
+            if workspace_filter and u.workspace_id != workspace_filter:
+                continue
+
+            result.append({
+                "user_id": u.user_id,
+                "name": u.name or (u.email.split("@")[0] if "@" in u.email else "User"),
+                "email": u.email,
+                "role": user_role,
+                "workspace_id": u.workspace_id,
+                "workspace_name": ws.name if ws else "Unknown Workspace",
+                "workspace_slug": ws.slug if ws else "",
+                "created_at": u.created_at,
+                "active": u.active,
+                "phone": u.phone or "",
+                "title": u.title or "",
+                "last_login_at": u.last_login_at,
+                "has_password": bool(u.password_hash),
+            })
+        return result
+
+    def update_user_global(self, user_id: str, changes: Dict[str, Any]) -> Dict[str, Any]:
+        """Allows Super Admin to update user role, reassign workspace, toggle active, or edit fields."""
+        user = self._users.get(user_id)
+        if not user:
+            raise KeyError(f"User '{user_id}' not found")
+
+        if "role" in changes and changes["role"] is not None:
+            new_role = normalize_role(str(changes["role"]))
+            user.role = new_role
+
+        if "workspace_id" in changes and changes["workspace_id"] is not None:
+            new_ws_id = str(changes["workspace_id"]).strip()
+            if new_ws_id not in self._workspaces:
+                raise KeyError(f"Workspace '{new_ws_id}' not found")
+            user.workspace_id = new_ws_id
+
+        if "active" in changes and changes["active"] is not None:
+            user.active = bool(changes["active"])
+
+        for key in ("name", "email", "phone", "title"):
+            if key in changes and changes[key] is not None:
+                val = str(changes[key]).strip()
+                if key == "email":
+                    if val and ("@" not in val or " " in val):
+                        raise ValueError("Enter a valid email address")
+                    if val:
+                        user.email = val
+                else:
+                    setattr(user, key, val[:120])
+
+        if changes.get("password"):
+            self.set_password(user.user_id, str(changes["password"]))
+
+        self._save_store()
+        ws = self._workspaces.get(user.workspace_id)
+        return {
+            "user_id": user.user_id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+            "workspace_id": user.workspace_id,
+            "workspace_name": ws.name if ws else "",
+            "active": user.active,
+        }
+
 
     # ── Permission & Scope Checks ────────────────────────────────────────────
 

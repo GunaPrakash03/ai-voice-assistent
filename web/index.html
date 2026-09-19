@@ -247,6 +247,15 @@
       <a role="tab" href="/agents" aria-selected="false" data-v="agents" data-admin-only>Agents<span class="ct" id="ctAgents">…</span></a>
       <a href="/api-keys" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers</a>
       <a href="/webhooks" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Webhooks &amp; Data</a>
+      <div id="railSuperAdminSection" class="sa-nav-section" data-super-admin-only style="display:flex;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);flex-direction:column;gap:1px">
+        <div style="font-family:var(--f-mono,monospace);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#c084fc;padding:4px 12px 6px;font-weight:700">👑 Overall System</div>
+        <a href="/organizations" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
+          <span>🏢 Organizations</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">ALL</span>
+        </a>
+        <a href="/users" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
+          <span>👥 Users Registry</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">ALL</span>
+        </a>
+      </div>
     </div>
     <div class="rail-foot">
       <!-- profile card is injected here by /profile.js -->
@@ -2198,6 +2207,6 @@
 })();
 </script>
 
-<script src="/profile.js"></script>
+<script src="/profile.js?v=2.1"></script>
 </body>
 </html>

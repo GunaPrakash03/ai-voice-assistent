@@ -102,7 +102,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ── Browser sessions (login page) ───────────────────────────────────────
     SESSION_COOKIE = "va_session"
-    PUBLIC_PATHS = ("/login", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/session",
+    PUBLIC_PATHS = ("/login", "/switch-role", "/api/v1/auth/switch-role", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/session",
                     "/api/v1/auth/setup", "/api/v1/auth/otp/resend", "/api/v1/auth/otp/verify", "/api/v1/auth/dev-session",
                     "/api/v1/health", "/favicon.ico")
     STATIC_SUFFIXES = (".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".mp3", ".wav", ".map", ".d.ts")
@@ -130,6 +130,8 @@ class Handler(SimpleHTTPRequestHandler):
         desk = self._desk_view_file(path)
         if desk:
             return desk
+        if path == "/overview":
+            return os.path.join(WEB, "index.html")
         if not self.PAGE_RE.match(path):
             return None
         f = os.path.join(WEB, path[1:] + ".html")
@@ -179,6 +181,11 @@ class Handler(SimpleHTTPRequestHandler):
     # pages themselves depend on at boot (e.g. Overview's live-call banner, the nav's agent/DID
     # counts) stay unrestricted on GET; only mutating calls and full-page navigation are gated,
     # so a hidden sidebar link can't be worked around with a direct API call or typed URL.
+    # Super Admin (Overall Admin) pages and system APIs: strictly restricted to super_admin.
+    # Product Admins (admin), Member Admins (member_admin), and regular Users (user) receive 403 / redirect.
+    SUPER_ADMIN_PAGES = ("/organizations", "/users")
+    SUPER_ADMIN_PREFIXES = ("/api/v1/system/",)
+
     ADMIN_GET_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces")
     ADMIN_POST_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces",
                            "/api/v1/auth/users", "/api/agents", "/api/telephony", "/api/webhooks")
@@ -187,28 +194,51 @@ class Handler(SimpleHTTPRequestHandler):
                    "/call-desk/agents", "/call-desk/sip-trunks", "/call-desk/phone-numbers")
 
     def _viewer(self) -> Dict[str, Any]:
-        """Who is looking. Agents and calls are shared workspace-wide, so owner is always None
-        (unrestricted); is_admin only gates the admin-only routes and pages above."""
+        """Who is looking. Returns user identity, role, and permission flags."""
         u = self._session_user()
         if u is None:
-            return {"user": None, "is_admin": True, "owner": None, "agents": None}
-        return {"user": u, "is_admin": u.role == "admin", "owner": None, "agents": None}
+            # When loopback test mode is active without a session, assume super_admin
+            return {"user": None, "is_super_admin": True, "is_admin": True, "role": "super_admin", "owner": None, "agents": None}
+        from agent.auth_manager import normalize_role, UserRole
+        role = normalize_role(u.role)
+        is_super = role == UserRole.SUPER_ADMIN.value
+        is_admin = is_super or role == UserRole.ADMIN.value
+        return {"user": u, "is_super_admin": is_super, "is_admin": is_admin, "role": role, "owner": None, "agents": None}
 
     def _enforce_role(self, parsed, method: str) -> bool:
-        """Admin-only routes/pages. Returns False after sending a response when access is denied."""
+        """Role-based route & page access control."""
         v = self._viewer()
+        path = parsed.path
+
+        # 1. Super Admin Only Pages & APIs
+        is_super_page = path in self.SUPER_ADMIN_PAGES or any(path == p or path.startswith(p + "/") for p in self.SUPER_ADMIN_PAGES)
+        is_super_api = path.startswith(self.SUPER_ADMIN_PREFIXES)
+        if is_super_page or is_super_api:
+            if not v["is_super_admin"]:
+                if is_super_page:
+                    self.send_response(302)
+                    self.send_header("Location", "/?denied=super_admin")
+                    self.end_headers()
+                else:
+                    self._send_json({"status": "error", "error": "Super Admin access required"}, 403)
+                return False
+            return True
+
+        # 2. Product Admin Only Pages & APIs
         if v["is_admin"]:
             return True
-        path = parsed.path
+
         if path.startswith(self.ADMIN_PAGES):
             self.send_response(302)
             self.send_header("Location", "/?denied=admin")
             self.end_headers()
             return False
+
         prefixes = self.ADMIN_POST_PREFIXES if method == "POST" else self.ADMIN_GET_PREFIXES
         if path.startswith(prefixes):
             self._send_json({"status": "error", "error": "Admin access required"}, 403)
             return False
+
         return True
 
     def _agent_allowed(self, agent_id: str) -> bool:
@@ -363,6 +393,41 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/v1/auth/session":
             self._send_json({"status": "ok", **auth_manager.session_info(self._session_token())})
             return
+
+        # ── Super Admin System APIs (GET) ────────────────────────────────────
+        if parsed.path == "/api/v1/system/organizations":
+            orgs = auth_manager.list_all_organizations()
+            self._send_json({"status": "ok", "organizations": orgs, "count": len(orgs)})
+            return
+
+        if parsed.path == "/api/v1/system/users":
+            q = parse_qs(parsed.query)
+            role_filter = (q.get("role") or [None])[0]
+            ws_filter = (q.get("workspace_id") or [None])[0]
+            users = auth_manager.list_all_users_global(role_filter=role_filter, workspace_filter=ws_filter)
+            self._send_json({"status": "ok", "users": users, "count": len(users)})
+            return
+
+        if parsed.path == "/api/v1/system/stats":
+            orgs = auth_manager.list_all_organizations()
+            users = auth_manager.list_all_users_global()
+            super_count = sum(1 for u in users if u["role"] == "super_admin")
+            admin_count = sum(1 for u in users if u["role"] == "admin")
+            member_admin_count = sum(1 for u in users if u["role"] == "member_admin")
+            user_count = sum(1 for u in users if u["role"] == "user")
+            active_orgs = sum(1 for o in orgs if o.get("active"))
+            self._send_json({
+                "status": "ok",
+                "total_organizations": len(orgs),
+                "active_organizations": active_orgs,
+                "total_users": len(users),
+                "super_admins": super_count,
+                "product_admins": admin_count,
+                "member_admins": member_admin_count,
+                "standard_users": user_count,
+            })
+            return
+
         if parsed.path == "/token":
             q = parse_qs(parsed.query)
             room = (q.get("room") or ["test-room"])[0]
@@ -672,6 +737,27 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(audio_bytes)
             return
+        elif parsed.path in ("/switch-role", "/api/v1/auth/switch-role"):
+            q = parse_qs(parsed.query)
+            target_role = (q.get("role") or ["super_admin"])[0].lower()
+            from agent.auth_manager import UserRole, normalize_role
+            target_role = normalize_role(target_role)
+            # Find an active user with this role
+            user = None
+            for u in auth_manager._users.values():
+                if u.active and normalize_role(u.role) == target_role:
+                    user = u
+                    break
+            if user is None:
+                user = auth_manager.get_user("usr-admin-01")
+            token, doc = auth_manager.create_session(user, remember=True, user_agent="role-switcher", method="dev")
+            nxt = (q.get("next") or ["/"])[0]
+            self.send_response(302)
+            self.send_header("Location", nxt)
+            self.send_header("Set-Cookie", f"{self.SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
         elif parsed.path == "/api/v1/auth/profile":
             su = self._session_user()
             self._send_json({"status": "ok", "profile": auth_manager.get_profile(su.user_id if su else None)})
@@ -840,8 +926,31 @@ class Handler(SimpleHTTPRequestHandler):
             return
         page = self._page_file(parsed.path)
         if page:
-            self.path = "/" + os.path.basename(page) + (("?" + parsed.query) if parsed.query else "")
+            if not os.path.isfile(page):
+                self._send_json({"error": "Page not found"}, 404)
+                return
+            with open(page, "rb") as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            try:
+                self.wfile.write(content)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
         return super().do_GET()
+
+    def do_HEAD(self):
+        return self.do_GET()
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
 
 
     def do_POST(self):
@@ -900,9 +1009,21 @@ class Handler(SimpleHTTPRequestHandler):
             if not (self._is_loopback() and os.getenv("AUTH_TRUST_LOOPBACK", "1") != "0"):
                 self._send_json({"status": "error", "error": "Only available from localhost"}, 403)
                 return
-            user = auth_manager._current_user()
+            target_user = None
+            if payload.get("email"):
+                target_user = auth_manager._find_user_by_email(str(payload["email"]))
+            elif payload.get("user_id"):
+                target_user = auth_manager.get_user(str(payload["user_id"]))
+            elif payload.get("role"):
+                from agent.auth_manager import normalize_role
+                target_role = normalize_role(str(payload["role"]))
+                for u in auth_manager._users.values():
+                    if u.active and normalize_role(u.role) == target_role:
+                        target_user = u
+                        break
+            user = target_user or auth_manager._current_user()
             if not user:
-                self._send_json({"status": "error", "error": "No admin user"}, 400)
+                self._send_json({"status": "error", "error": "No user found"}, 400)
                 return
             token, doc = auth_manager.create_session(user, remember=False, user_agent="dev-session", method="dev")
             self._send_json({"status": "ok", "token": token, "cookie": self.SESSION_COOKIE, **auth_manager.session_info(token)},
@@ -942,6 +1063,85 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             self._send_json({"status": "ok", "step": "done", **auth_manager.session_info(token)}, 200, self._set_session_cookie(token, doc["expires_at"] - time.time()))
             return
+        # ── Super Admin System APIs (POST) ───────────────────────────────────
+        if parsed.path == "/api/v1/system/organizations":
+            action = str(payload.get("action") or "create")
+            try:
+                if action == "create":
+                    org = auth_manager.create_organization(
+                        name=str(payload.get("name") or ""),
+                        slug=payload.get("slug"),
+                        rate_limit_rpm=int(payload.get("rate_limit_rpm") or 120),
+                        admin_email=payload.get("admin_email"),
+                        admin_password=payload.get("admin_password"),
+                        admin_name=payload.get("admin_name"),
+                    )
+                    self._send_json({"status": "ok", "organization": org}, 201)
+                    return
+                elif action in ("update", "edit"):
+                    ws_id = str(payload.get("workspace_id") or "")
+                    org = auth_manager.update_organization(ws_id, payload)
+                    self._send_json({"status": "ok", "organization": org})
+                    return
+                elif action == "toggle_active":
+                    ws_id = str(payload.get("workspace_id") or "")
+                    active = bool(payload.get("active"))
+                    org = auth_manager.update_organization(ws_id, {"active": active})
+                    self._send_json({"status": "ok", "organization": org})
+                    return
+                else:
+                    self._send_json({"status": "error", "error": f"Unknown action '{action}'"}, 400)
+                    return
+            except (ValueError, KeyError) as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+
+        if parsed.path == "/api/v1/system/users":
+            action = str(payload.get("action") or "create")
+            try:
+                if action == "create":
+                    target_ws = str(payload.get("workspace_id") or "ws-default")
+                    target_role = str(payload.get("role") or "user")
+                    user = auth_manager.add_member(
+                        workspace_id=target_ws,
+                        email=str(payload.get("email") or ""),
+                        password=str(payload.get("password") or ""),
+                        role=target_role,
+                        name=str(payload.get("name") or ""),
+                        phone=str(payload.get("phone") or ""),
+                    )
+                    self._send_json({"status": "ok", "user": user.to_dict()}, 201)
+                    return
+                elif action in ("update", "edit"):
+                    user_id = str(payload.get("user_id") or "")
+                    user = auth_manager.update_user_global(user_id, payload)
+                    self._send_json({"status": "ok", "user": user})
+                    return
+                elif action == "toggle_active":
+                    user_id = str(payload.get("user_id") or "")
+                    active = bool(payload.get("active"))
+                    user = auth_manager.update_user_global(user_id, {"active": active})
+                    self._send_json({"status": "ok", "user": user})
+                    return
+                elif action == "role":
+                    user_id = str(payload.get("user_id") or "")
+                    new_role = str(payload.get("role") or "user")
+                    user = auth_manager.update_user_global(user_id, {"role": new_role})
+                    self._send_json({"status": "ok", "user": user})
+                    return
+                elif action == "reassign":
+                    user_id = str(payload.get("user_id") or "")
+                    target_ws = str(payload.get("workspace_id") or "")
+                    user = auth_manager.update_user_global(user_id, {"workspace_id": target_ws})
+                    self._send_json({"status": "ok", "user": user})
+                    return
+                else:
+                    self._send_json({"status": "error", "error": f"Unknown action '{action}'"}, 400)
+                    return
+            except (ValueError, KeyError) as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+
         if parsed.path == "/api/v1/auth/users":
             v = self._viewer()
             action = str(payload.get("action") or "create")
@@ -950,9 +1150,20 @@ class Handler(SimpleHTTPRequestHandler):
                     ok = auth_manager.deactivate_user(str(payload.get("user_id") or ""), v["user"].user_id if v["user"] else None)
                     self._send_json({"status": "ok" if ok else "error", "removed": ok}, 200 if ok else 404)
                     return
-                ws_id = v["user"].workspace_id if v["user"] else (auth_manager.get_profile().get("workspace_id") or "ws-default")
-                user = auth_manager.add_member(ws_id, str(payload.get("email") or ""), str(payload.get("password") or ""),
-                                               role=str(payload.get("role") or "user"), name=str(payload.get("name") or ""),
+
+                target_role = str(payload.get("role") or "user")
+                target_ws = str(payload.get("workspace_id") or (v["user"].workspace_id if v["user"] else (auth_manager.get_profile().get("workspace_id") or "ws-default")))
+                creator_role = v["role"]
+                creator_ws = v["user"].workspace_id if v["user"] else target_ws
+
+                from agent.auth_manager import can_create_role
+                allowed, reason = can_create_role(creator_role, creator_ws, target_role, target_ws)
+                if not allowed:
+                    self._send_json({"status": "error", "error": reason}, 403)
+                    return
+
+                user = auth_manager.add_member(target_ws, str(payload.get("email") or ""), str(payload.get("password") or ""),
+                                               role=target_role, name=str(payload.get("name") or ""),
                                                phone=str(payload.get("phone") or ""))
             except (ValueError, KeyError) as e:
                 self._send_json({"status": "error", "error": str(e)}, 400)

@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Overall Organizations — Super Admin Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
+    --rail-ink:#A8AEC4; --rail-on:#FFFFFF;
+    --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
+    --line:#DDE0E9; --line-soft:#EBEDF3;
+    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
+    --pos:#2F7A4F; --pos-soft:#E6F2EA;
+    --neu:#5A6480; --neu-soft:#EDEFF4;
+    --neg:#A32F26; --neg-soft:#FAEAE8;
+    --live:#C2560F;
+    --f-ui:"Archivo",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    --f-mono:"DM Mono","SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
+      --rail-ink:#767D96; --rail-on:#FFFFFF;
+      --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
+      --line:#262B3A; --line-soft:#1C2130;
+      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
+      --pos:#5FBF88; --pos-soft:#12251A;
+      --neu:#8891AB; --neu-soft:#1A1F2C;
+      --neg:#E0776C; --neg-soft:#2A1513;
+      --live:#F0803C;
+    }
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
+
+  /* Rail Navigation */
+  .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
+  .brand{padding:0 18px 18px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
+  .brand b{color:var(--rail-on);font-size:15px;font-weight:700;letter-spacing:-.01em;display:block}
+  .brand span{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+  .nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
+  .nav button,.nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);
+    font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s}
+  .nav button:hover,.nav a:hover{background:rgba(255,255,255,.06);color:var(--rail-on)}
+  .nav [aria-selected="true"], .nav a.active{background:var(--accent);color:#fff;font-weight:600}
+  .nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .nav .ct{font-family:var(--f-mono);font-size:11px;opacity:.85}
+  .rail-foot{margin-top:auto;padding:14px 18px 0;border-top:1px solid rgba(255,255,255,.07)}
+
+  /* Top Bar */
+  .top{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 28px;
+    display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  h1{font-size:20px;font-weight:700;margin:0;letter-spacing:-.01em}
+  .crumb{font-family:var(--f-mono);font-size:11px;color:var(--accent);
+    letter-spacing:.07em;text-transform:uppercase;margin-bottom:3px;font-weight:600}
+
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:8px 15px;border-radius:6px;font-size:13px;font-weight:600;
+    cursor:pointer;border:1px solid transparent;background:var(--accent);color:#fff;
+    transition:all .15s ease;text-decoration:none;font-family:var(--f-ui)}
+  .btn:hover{opacity:.92}
+  .btn:active{transform:scale(.98)}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-soft)}
+  .btn.ghost:hover{background:var(--sunk);color:var(--ink);border-color:var(--ink-faint)}
+  .btn.sm{padding:5px 10px;font-size:12px;border-radius:5px}
+  .btn.pos{background:var(--pos);color:#fff}
+  .btn.neg{background:var(--neg);color:#fff}
+
+  main{padding:24px 28px 60px}
+
+  /* KPI Grid */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-bottom:24px}
+  .kpi-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px 20px;box-shadow:0 1px 3px rgba(0,0,0,.02)}
+  .kpi-label{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint)}
+  .kpi-val{font-size:26px;font-weight:700;color:var(--ink);margin:6px 0 2px;font-family:var(--f-mono);letter-spacing:-.02em}
+  .kpi-sub{font-size:11.5px;color:var(--ink-soft)}
+
+  /* Filter & Controls Bar */
+  .filter-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+  .search-box{flex:1;min-width:260px;position:relative}
+  .search-box input{width:100%;padding:8px 12px 8px 34px;background:var(--panel);border:1px solid var(--line);border-radius:6px;font-size:13.5px;color:var(--ink);font-family:var(--f-ui)}
+  .search-box input:focus{outline:none;border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft)}
+  .search-box svg{position:absolute;left:10px;top:9px;width:15px;height:15px;fill:var(--ink-faint)}
+  .filter-select{padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:6px;font-size:13px;color:var(--ink)}
+
+  /* Table Card */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.02)}
+  table{width:100%;border-collapse:collapse;text-align:left}
+  th{background:var(--sunk);color:var(--ink-soft);font-family:var(--f-mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:11px 16px;border-bottom:1px solid var(--line)}
+  td{padding:13px 16px;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:rgba(0,0,0,.015)}
+
+  .org-title b{font-size:14px;font-weight:600;display:block;color:var(--ink)}
+  .org-title span{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-faint)}
+
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+  .pill.pos{background:var(--pos-soft);color:var(--pos);border:1px solid rgba(47,122,79,.2)}
+  .pill.neg{background:var(--neg-soft);color:var(--neg);border:1px solid rgba(163,47,38,.2)}
+  .pill.accent{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-border)}
+  .pill.neu{background:var(--sunk);color:var(--ink-soft)}
+
+  .members-count{display:inline-flex;gap:6px;font-size:12.5px;font-weight:500;align-items:center}
+  .members-chip{background:var(--sunk);padding:2px 7px;border-radius:4px;font-family:var(--f-mono);font-size:11px;color:var(--ink-soft)}
+
+  /* Modals */
+  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(19,23,37,.55);backdrop-filter:blur(2px);align-items:center;justify-content:center;z-index:9999}
+  .modal-backdrop.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:100%;max-width:460px;box-shadow:0 16px 40px rgba(0,0,0,.2);overflow:hidden}
+  .modal-h{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .modal-h h3{margin:0;font-size:16px;font-weight:700}
+  .modal-b{padding:20px;display:flex;flex-direction:column;gap:13px}
+  .modal-f{padding:12px 20px;background:var(--sunk);border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+  .form-group label{display:block;font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:5px}
+  .form-group input, .form-group select{width:100%;padding:8px 11px;border-radius:6px;border:1px solid var(--line);background:var(--ground);color:var(--ink);font-size:13px}
+  .form-group input:focus, .form-group select:focus{outline:none;border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft)}
+  .form-group .hint{font-size:11px;color:var(--ink-faint);margin-top:4px}
+
+  /* Toast Notification */
+  #toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:var(--ground);
+    padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);
+    display:none;z-index:10000;align-items:center;gap:10px}
+  #toast.show{display:flex}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Navigation Rail (Matches Call Desk) -->
+  <nav class="rail">
+    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div class="nav" role="tablist">
+      <a href="/">Overview</a>
+      <a href="/calls">Calls</a>
+      <a href="/call-detail">Call detail</a>
+      <a href="/sip-trunks">SIP Trunks &amp; DIDs</a>
+      <a href="/phone-numbers" style="color:var(--accent);font-weight:600">Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></a>
+      <a href="/agents">Agents</a>
+      <a href="/api-keys">API Keys &amp; Providers</a>
+      <a href="/webhooks">Webhooks &amp; Data</a>
+      <div id="railSuperAdminSection" class="sa-nav-section" data-super-admin-only style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;gap:1px">
+        <div style="font-family:var(--f-mono,monospace);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#c084fc;padding:4px 12px 6px;font-weight:700">👑 Overall System</div>
+        <a href="/organizations" class="active" aria-selected="true" style="background:var(--accent);color:#fff;font-weight:600">
+          <span>🏢 Organizations</span><span class="ct" id="navOrgCount" style="background:rgba(255,255,255,.2);color:#fff;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">0</span>
+        </a>
+        <a href="/users">
+          <span>👥 Users Registry</span><span class="ct" id="navUserCount" style="font-family:var(--f-mono,monospace);opacity:.85">0</span>
+        </a>
+      </div>
+    </div>
+    <div class="rail-foot">
+      <!-- profile card is injected here by /profile.js -->
+    </div>
+  </nav>
+
+  <div>
+    <!-- Top Bar -->
+    <header class="top">
+      <div>
+        <div class="crumb">OVERALL SYSTEM · SUPER ADMIN PORTAL</div>
+        <h1 id="title">Organizations Directory</h1>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="btnOpenCreate">
+          + Create Organization
+        </button>
+        <button class="btn ghost" id="btnRefresh" onclick="loadData()">
+          ↻ Refresh
+        </button>
+        <a href="/" class="btn ghost">← Back to Workspace</a>
+      </div>
+    </header>
+
+    <main>
+      <!-- KPI Metric Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Total Organizations</div>
+          <div class="kpi-val" id="kpiTotalOrgs">--</div>
+          <div class="kpi-sub">Across system</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Active Workspaces</div>
+          <div class="kpi-val" id="kpiActiveOrgs">--</div>
+          <div class="kpi-sub">Operational status</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Total System Users</div>
+          <div class="kpi-val" id="kpiTotalUsers">--</div>
+          <div class="kpi-sub">Multi-tenant accounts</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Product Admins</div>
+          <div class="kpi-val" id="kpiProductAdmins">--</div>
+          <div class="kpi-sub">Workspace managers</div>
+        </div>
+      </div>
+
+      <!-- Filter Controls -->
+      <div class="filter-bar">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <input type="text" id="searchInput" placeholder="Search organization by name, slug, or ID...">
+        </div>
+        <select class="filter-select" id="statusFilter">
+          <option value="all">All Statuses</option>
+          <option value="active">Active Only</option>
+          <option value="suspended">Suspended Only</option>
+        </select>
+      </div>
+
+      <!-- Data Table Card -->
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Organization</th>
+              <th>Tenant Slug</th>
+              <th>Members Breakdown</th>
+              <th>Rate Limit</th>
+              <th>Status</th>
+              <th>Created Date</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="orgsTbody">
+            <tr><td colspan="7" style="text-align:center;padding:36px;color:var(--ink-faint)">Loading organizations...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Create Organization Modal -->
+<div class="modal-backdrop" id="modalCreate">
+  <div class="modal">
+    <div class="modal-h">
+      <h3>Create New Organization</h3>
+      <button style="all:unset;cursor:pointer;font-size:18px;color:var(--ink-faint)" onclick="closeModals()">✕</button>
+    </div>
+    <form id="formCreateOrg">
+      <div class="modal-b">
+        <div class="form-group">
+          <label for="createName">Organization Name *</label>
+          <input type="text" id="createName" placeholder="e.g. Acme Health Network" required>
+        </div>
+        <div class="form-group">
+          <label for="createSlug">Slug Identifier (optional)</label>
+          <input type="text" id="createSlug" placeholder="acme-health">
+          <div class="hint">Auto-generated from name if left empty.</div>
+        </div>
+        <div class="form-group">
+          <label for="createRpm">Rate Limit (RPM)</label>
+          <input type="number" id="createRpm" value="120" min="10" max="2000">
+        </div>
+        <hr style="border:none;border-top:1px solid var(--line);margin:4px 0">
+        <div style="font-weight:600;font-size:12px;color:var(--accent);text-transform:uppercase;letter-spacing:.05em">Optional: Initial Product Admin</div>
+        <div class="form-group">
+          <label for="adminEmail">Admin Email</label>
+          <input type="email" id="adminEmail" placeholder="admin@acmehealth.com">
+        </div>
+        <div class="form-group">
+          <label for="adminPassword">Admin Password</label>
+          <input type="password" id="adminPassword" placeholder="Minimum 8 characters">
+        </div>
+      </div>
+      <div class="modal-f">
+        <button type="button" class="btn ghost" onclick="closeModals()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmitCreate">Create Organization</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Organization Modal -->
+<div class="modal-backdrop" id="modalEdit">
+  <div class="modal">
+    <div class="modal-h">
+      <h3>Edit Organization</h3>
+      <button style="all:unset;cursor:pointer;font-size:18px;color:var(--ink-faint)" onclick="closeModals()">✕</button>
+    </div>
+    <form id="formEditOrg">
+      <input type="hidden" id="editOrgId">
+      <div class="modal-b">
+        <div class="form-group">
+          <label for="editName">Organization Name</label>
+          <input type="text" id="editName" required>
+        </div>
+        <div class="form-group">
+          <label for="editSlug">Slug</label>
+          <input type="text" id="editSlug" required>
+        </div>
+        <div class="form-group">
+          <label for="editRpm">Rate Limit (RPM)</label>
+          <input type="number" id="editRpm" required min="10" max="2000">
+        </div>
+        <div class="form-group">
+          <label for="editActive">Status</label>
+          <select id="editActive">
+            <option value="true">Active</option>
+            <option value="false">Suspended</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-f">
+        <button type="button" class="btn ghost" onclick="closeModals()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let allOrgs = [];
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function closeModals() {
+  document.getElementById('modalCreate').classList.remove('show');
+  document.getElementById('modalEdit').classList.remove('show');
+}
+
+document.getElementById('btnOpenCreate').addEventListener('click', () => {
+  document.getElementById('formCreateOrg').reset();
+  document.getElementById('modalCreate').classList.add('show');
+});
+
+async function loadData() {
+  try {
+    const [statsRes, orgsRes] = await Promise.all([
+      fetch('/api/v1/system/stats'),
+      fetch('/api/v1/system/organizations')
+    ]);
+
+    if (!statsRes.ok || !orgsRes.ok) {
+      if (statsRes.status === 403 || orgsRes.status === 403) {
+        alert('Access Denied: Super Admin privilege required.');
+        location.href = '/?denied=super_admin';
+        return;
+      }
+    }
+
+    const stats = await statsRes.json();
+    const orgsData = await orgsRes.json();
+
+    document.getElementById('kpiTotalOrgs').textContent = stats.total_organizations || 0;
+    document.getElementById('kpiActiveOrgs').textContent = stats.active_organizations || 0;
+    document.getElementById('kpiTotalUsers').textContent = stats.total_users || 0;
+    document.getElementById('kpiProductAdmins').textContent = stats.product_admins || 0;
+
+    document.getElementById('navOrgCount').textContent = stats.total_organizations || 0;
+    document.getElementById('navUserCount').textContent = stats.total_users || 0;
+
+    allOrgs = orgsData.organizations || [];
+    renderOrgs();
+  } catch (err) {
+    console.error('Failed to load system data', err);
+    document.getElementById('orgsTbody').innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--neg)">Failed to load organizations. Please ensure you are logged in as Super Admin.</td></tr>`;
+  }
+}
+
+function renderOrgs() {
+  const search = document.getElementById('searchInput').value.toLowerCase().trim();
+  const status = document.getElementById('statusFilter').value;
+
+  const filtered = allOrgs.filter(o => {
+    const matchSearch = o.name.toLowerCase().includes(search) || o.slug.toLowerCase().includes(search) || o.workspace_id.toLowerCase().includes(search);
+    const matchStatus = status === 'all' || (status === 'active' && o.active) || (status === 'suspended' && !o.active);
+    return matchSearch && matchStatus;
+  });
+
+  const tbody = document.getElementById('orgsTbody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:36px;color:var(--ink-faint)">No organizations match your search or filter.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(o => {
+    const createdStr = o.created_at ? new Date(o.created_at * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+    const statusPill = o.active 
+      ? `<span class="pill pos">● Active</span>` 
+      : `<span class="pill neg">● Suspended</span>`;
+
+    return `
+      <tr>
+        <td class="org-title">
+          <b>${escapeHtml(o.name)}</b>
+          <span>${escapeHtml(o.workspace_id)}</span>
+        </td>
+        <td><code style="font-family:var(--f-mono);font-size:12px;color:var(--accent);font-weight:600">${escapeHtml(o.slug)}</code></td>
+        <td>
+          <div class="members-count">
+            <span class="members-chip" title="Total active members">${o.member_count} members</span>
+            ${o.admin_count > 0 ? `<span class="pill accent" style="font-size:10.5px">${o.admin_count} Prod Admin${o.admin_count > 1 ? 's' : ''}</span>` : ''}
+          </div>
+        </td>
+        <td><span style="font-family:var(--f-mono);font-size:12.5px">${o.rate_limit_rpm} RPM</span></td>
+        <td>${statusPill}</td>
+        <td style="color:var(--ink-soft);font-size:12.5px">${createdStr}</td>
+        <td style="text-align:right">
+          <div style="display:inline-flex;gap:6px;justify-content:flex-end">
+            <a href="/users?workspace_id=${encodeURIComponent(o.workspace_id)}" class="btn ghost sm" title="View Users in this Org">View Users</a>
+            <button class="btn ghost sm" onclick="openEditModal('${o.workspace_id}')">Edit</button>
+            <button class="btn ghost sm" style="${o.active ? 'color:var(--neg)' : 'color:var(--pos)'}" onclick="toggleActive('${o.workspace_id}', ${!o.active})">
+              ${o.active ? 'Suspend' : 'Activate'}
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+document.getElementById('searchInput').addEventListener('input', renderOrgs);
+document.getElementById('statusFilter').addEventListener('change', renderOrgs);
+
+function openEditModal(wsId) {
+  const o = allOrgs.find(x => x.workspace_id === wsId);
+  if (!o) return;
+  document.getElementById('editOrgId').value = o.workspace_id;
+  document.getElementById('editName').value = o.name;
+  document.getElementById('editSlug').value = o.slug;
+  document.getElementById('editRpm').value = o.rate_limit_rpm;
+  document.getElementById('editActive').value = String(o.active);
+  document.getElementById('modalEdit').classList.add('show');
+}
+
+async function toggleActive(wsId, nextActive) {
+  const actionName = nextActive ? 'Activate' : 'Suspend';
+  if (!confirm(`Are you sure you want to ${actionName} this organization?`)) return;
+  try {
+    const res = await fetch('/api/v1/system/organizations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'toggle_active', workspace_id: wsId, active: nextActive })
+    });
+    const d = await res.json();
+    if (d.status === 'ok') {
+      showToast(`Organization ${actionName}d successfully.`);
+      loadData();
+    } else {
+      alert(d.error || 'Failed to update organization status');
+    }
+  } catch (err) {
+    alert('Network error while updating status');
+  }
+}
+
+document.getElementById('formCreateOrg').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('btnSubmitCreate');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+
+  const payload = {
+    action: 'create',
+    name: document.getElementById('createName').value.trim(),
+    slug: document.getElementById('createSlug').value.trim() || undefined,
+    rate_limit_rpm: parseInt(document.getElementById('createRpm').value, 10),
+    admin_email: document.getElementById('adminEmail').value.trim() || undefined,
+    admin_password: document.getElementById('adminPassword').value || undefined,
+  };
+
+  try {
+    const res = await fetch('/api/v1/system/organizations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await res.json();
+    if (d.status === 'ok') {
+      closeModals();
+      showToast('Organization created successfully.');
+      loadData();
+    } else {
+      alert(d.error || 'Failed to create organization');
+    }
+  } catch (err) {
+    alert('Network error while creating organization');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Organization';
+  }
+});
+
+document.getElementById('formEditOrg').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const wsId = document.getElementById('editOrgId').value;
+  const payload = {
+    action: 'update',
+    workspace_id: wsId,
+    name: document.getElementById('editName').value.trim(),
+    slug: document.getElementById('editSlug').value.trim(),
+    rate_limit_rpm: parseInt(document.getElementById('editRpm').value, 10),
+    active: document.getElementById('editActive').value === 'true',
+  };
+
+  try {
+    const res = await fetch('/api/v1/system/organizations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await res.json();
+    if (d.status === 'ok') {
+      closeModals();
+      showToast('Organization updated successfully.');
+      loadData();
+    } else {
+      alert(d.error || 'Failed to update organization');
+    }
+  } catch (err) {
+    alert('Network error while updating organization');
+  }
+});
+
+// Auto-generate slug as user types in name field
+document.getElementById('createName').addEventListener('input', (e) => {
+  const slugInput = document.getElementById('createSlug');
+  if (!slugInput.dataset.manual) {
+    slugInput.value = e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
+});
+document.getElementById('createSlug').addEventListener('input', () => {
+  document.getElementById('createSlug').dataset.manual = 'true';
+});
+
+loadData();
+</script>
+
+<script src="/profile.js?v=2.1"></script>
+</body>
+</html>

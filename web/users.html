@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Global System Users — Super Admin Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
+    --rail-ink:#A8AEC4; --rail-on:#FFFFFF;
+    --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
+    --line:#DDE0E9; --line-soft:#EBEDF3;
+    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
+    --pos:#2F7A4F; --pos-soft:#E6F2EA;
+    --neu:#5A6480; --neu-soft:#EDEFF4;
+    --neg:#A32F26; --neg-soft:#FAEAE8;
+    --live:#C2560F;
+    --f-ui:"Archivo",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    --f-mono:"DM Mono","SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
+      --rail-ink:#767D96; --rail-on:#FFFFFF;
+      --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
+      --line:#262B3A; --line-soft:#1C2130;
+      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
+      --pos:#5FBF88; --pos-soft:#12251A;
+      --neu:#8891AB; --neu-soft:#1A1F2C;
+      --neg:#E0776C; --neg-soft:#2A1513;
+      --live:#F0803C;
+    }
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
+
+  /* Rail Navigation */
+  .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
+  .brand{padding:0 18px 18px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
+  .brand b{color:var(--rail-on);font-size:15px;font-weight:700;letter-spacing:-.01em;display:block}
+  .brand span{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+  .nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
+  .nav button,.nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);
+    font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s}
+  .nav button:hover,.nav a:hover{background:rgba(255,255,255,.06);color:var(--rail-on)}
+  .nav [aria-selected="true"], .nav a.active{background:var(--accent);color:#fff;font-weight:600}
+  .nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .nav .ct{font-family:var(--f-mono);font-size:11px;opacity:.85}
+  .rail-foot{margin-top:auto;padding:14px 18px 0;border-top:1px solid rgba(255,255,255,.07)}
+
+  /* Top Bar */
+  .top{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 28px;
+    display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  h1{font-size:20px;font-weight:700;margin:0;letter-spacing:-.01em}
+  .crumb{font-family:var(--f-mono);font-size:11px;color:var(--accent);
+    letter-spacing:.07em;text-transform:uppercase;margin-bottom:3px;font-weight:600}
+
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:8px 15px;border-radius:6px;font-size:13px;font-weight:600;
+    cursor:pointer;border:1px solid transparent;background:var(--accent);color:#fff;
+    transition:all .15s ease;text-decoration:none;font-family:var(--f-ui)}
+  .btn:hover{opacity:.92}
+  .btn:active{transform:scale(.98)}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-soft)}
+  .btn.ghost:hover{background:var(--sunk);color:var(--ink);border-color:var(--ink-faint)}
+  .btn.sm{padding:4px 9px;font-size:12px;border-radius:5px}
+  .btn.pos{background:var(--pos);color:#fff}
+  .btn.neg{background:var(--neg);color:#fff}
+
+  main{padding:24px 28px 60px}
+
+  /* KPI Grid */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:24px}
+  .kpi-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.02)}
+  .kpi-label{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint)}
+  .kpi-val{font-size:26px;font-weight:700;color:var(--ink);margin:6px 0 2px;font-family:var(--f-mono);letter-spacing:-.02em}
+  .kpi-sub{font-size:11.5px;color:var(--ink-soft)}
+
+  /* Filter & Controls Bar */
+  .filter-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+  .search-box{flex:1;min-width:240px;position:relative}
+  .search-box input{width:100%;padding:8px 12px 8px 34px;background:var(--panel);border:1px solid var(--line);border-radius:6px;font-size:13.5px;color:var(--ink);font-family:var(--f-ui)}
+  .search-box input:focus{outline:none;border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft)}
+  .search-box svg{position:absolute;left:10px;top:9px;width:15px;height:15px;fill:var(--ink-faint)}
+  .filter-select{padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:6px;font-size:13px;color:var(--ink)}
+
+  /* Table Card */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.02)}
+  table{width:100%;border-collapse:collapse;text-align:left}
+  th{background:var(--sunk);color:var(--ink-soft);font-family:var(--f-mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:11px 16px;border-bottom:1px solid var(--line)}
+  td{padding:12px 16px;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:rgba(0,0,0,.015)}
+
+  /* User Info Item */
+  .user-info{display:flex;align-items:center;gap:10px}
+  .user-avatar{width:32px;height:32px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:var(--f-mono);border:1px solid var(--accent-border)}
+  .user-details b{display:block;font-size:13.5px;font-weight:600;color:var(--ink)}
+  .user-details span{font-family:var(--f-mono);font-size:11px;color:var(--ink-faint)}
+
+  /* Badges & Pills */
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+  .badge-super{background:#F3E8FF;color:#7C3AED;border:1px solid #D8B4FE}
+  .badge-prod{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-border)}
+  .badge-member{background:#EFF6FF;color:#2563EB;border:1px solid #BFDBFE}
+  .badge-user{background:var(--sunk);color:var(--ink-soft);border:1px solid var(--line)}
+  .badge-active{background:var(--pos-soft);color:var(--pos);border:1px solid rgba(47,122,79,.2)}
+  .badge-suspended{background:var(--neg-soft);color:var(--neg);border:1px solid rgba(163,47,38,.2)}
+
+  /* Modals */
+  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(19,23,37,.55);backdrop-filter:blur(2px);align-items:center;justify-content:center;z-index:9999}
+  .modal-backdrop.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:100%;max-width:460px;box-shadow:0 16px 40px rgba(0,0,0,.2);overflow:hidden}
+  .modal-h{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .modal-h h3{margin:0;font-size:16px;font-weight:700}
+  .modal-b{padding:20px;display:flex;flex-direction:column;gap:13px}
+  .modal-f{padding:12px 20px;background:var(--sunk);border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+  .form-group label{display:block;font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:5px}
+  .form-group input, .form-group select{width:100%;padding:8px 11px;border-radius:6px;border:1px solid var(--line);background:var(--ground);color:var(--ink);font-size:13px;font-family:var(--f-ui)}
+  .form-group input:focus, .form-group select:focus{outline:none;border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft)}
+  .form-group .hint{font-size:11px;color:var(--ink-faint);margin-top:4px}
+
+  /* Toast Notification */
+  #toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:var(--ground);
+    padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);
+    display:none;z-index:10000;align-items:center;gap:10px}
+  #toast.show{display:flex}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Navigation Rail (Matches Call Desk) -->
+  <nav class="rail">
+    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div class="nav" role="tablist">
+      <a href="/">Overview</a>
+      <a href="/calls">Calls</a>
+      <a href="/call-detail">Call detail</a>
+      <a href="/sip-trunks">SIP Trunks &amp; DIDs</a>
+      <a href="/phone-numbers" style="color:var(--accent);font-weight:600">Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></a>
+      <a href="/agents">Agents</a>
+      <a href="/api-keys">API Keys &amp; Providers</a>
+      <a href="/webhooks">Webhooks &amp; Data</a>
+      <div id="railSuperAdminSection" class="sa-nav-section" data-super-admin-only style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;gap:1px">
+        <div style="font-family:var(--f-mono,monospace);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#c084fc;padding:4px 12px 6px;font-weight:700">👑 Overall System</div>
+        <a href="/organizations">
+          <span>🏢 Organizations</span><span class="ct" id="navOrgCount" style="font-family:var(--f-mono,monospace);opacity:.85">0</span>
+        </a>
+        <a href="/users" class="active" aria-selected="true" style="background:var(--accent);color:#fff;font-weight:600">
+          <span>👥 Users Registry</span><span class="ct" id="navUserCount" style="background:rgba(255,255,255,.2);color:#fff;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">0</span>
+        </a>
+      </div>
+    </div>
+    <div class="rail-foot">
+      <!-- profile card is injected here by /profile.js -->
+    </div>
+  </nav>
+
+  <div>
+    <!-- Top Bar -->
+    <header class="top">
+      <div>
+        <div class="crumb">OVERALL SYSTEM · SUPER ADMIN PORTAL</div>
+        <h1 id="title">Users Registry</h1>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button class="btn" id="btnOpenAddUser">
+          + Add User / Admin
+        </button>
+        <button class="btn ghost" id="btnRefresh" onclick="loadData()">
+          ↻ Refresh
+        </button>
+        <a href="/" class="btn ghost">← Back to Workspace</a>
+      </div>
+    </header>
+
+    <main>
+      <!-- KPI Metric Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Total Users</div>
+          <div class="kpi-val" id="kpiTotalUsers">--</div>
+          <div class="kpi-sub">Across all workspaces</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Super Admins</div>
+          <div class="kpi-val" id="kpiSuperAdmins" style="color:#7C3AED">--</div>
+          <div class="kpi-sub">Platform authority</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Product Admins</div>
+          <div class="kpi-val" id="kpiProductAdmins" style="color:var(--accent)">--</div>
+          <div class="kpi-sub">Workspace managers</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Member Admins</div>
+          <div class="kpi-val" id="kpiMemberAdmins" style="color:#2563EB">--</div>
+          <div class="kpi-sub">Team coordinators</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Standard Users</div>
+          <div class="kpi-val" id="kpiStandardUsers">--</div>
+          <div class="kpi-sub">Staff &amp; operators</div>
+        </div>
+      </div>
+
+      <!-- Filter Controls Bar -->
+      <div class="filter-bar">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <input type="text" id="searchInput" placeholder="Search users by name, email, or user ID...">
+        </div>
+        <select class="filter-select" id="roleFilter">
+          <option value="all">All Roles</option>
+          <option value="super_admin">Super Admin</option>
+          <option value="admin">Product Admin</option>
+          <option value="member_admin">Member Admin</option>
+          <option value="user">Standard User</option>
+        </select>
+        <select class="filter-select" id="orgFilter">
+          <option value="all">All Organizations</option>
+        </select>
+      </div>
+
+      <!-- Data Table Card -->
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Email</th>
+              <th>Organization</th>
+              <th>Role</th>
+              <th>Security / Auth</th>
+              <th>Status</th>
+              <th>Created Date</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="usersTbody">
+            <tr><td colspan="8" style="text-align:center;padding:36px;color:var(--ink-faint)">Loading user registry...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal: Add User / Admin -->
+<div class="modal-backdrop" id="modalAddUser">
+  <div class="modal">
+    <div class="modal-h">
+      <h3>Add User or Admin</h3>
+      <button style="all:unset;cursor:pointer;font-size:18px;color:var(--ink-faint)" onclick="closeModals()">✕</button>
+    </div>
+    <form id="formAddUser">
+      <div class="modal-b">
+        <div class="form-group">
+          <label for="userName">Full Name *</label>
+          <input type="text" id="userName" placeholder="e.g. Alex Morgan" required>
+        </div>
+        <div class="form-group">
+          <label for="userEmail">Email Address *</label>
+          <input type="email" id="userEmail" placeholder="alex@company.com" required>
+        </div>
+        <div class="form-group">
+          <label for="userPassword">Initial Password *</label>
+          <input type="password" id="userPassword" placeholder="Minimum 8 characters" required minlength="8">
+        </div>
+        <div class="form-group">
+          <label for="userOrg">Target Organization *</label>
+          <select id="userOrg" required></select>
+        </div>
+        <div class="form-group">
+          <label for="userRoleSelect">Assigned Role *</label>
+          <select id="userRoleSelect" required>
+            <option value="user">Standard User (Operator)</option>
+            <option value="member_admin">Member Admin (Team Coordinator)</option>
+            <option value="admin">Product Admin (Workspace Manager)</option>
+            <option value="super_admin">Super Admin (Overall Platform Admin)</option>
+          </select>
+          <div class="hint">Super Admins can grant any administrative tier across the platform.</div>
+        </div>
+        <div class="form-group">
+          <label for="userPhone">Mobile Phone (Optional, for SMS OTP)</label>
+          <input type="tel" id="userPhone" placeholder="+1234567890">
+        </div>
+      </div>
+      <div class="modal-f">
+        <button type="button" class="btn ghost" onclick="closeModals()">Cancel</button>
+        <button type="submit" class="btn" id="btnAddSubmit">Create Account</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Change Role -->
+<div class="modal-backdrop" id="modalChangeRole">
+  <div class="modal">
+    <div class="modal-h">
+      <h3>Change User Role</h3>
+      <button style="all:unset;cursor:pointer;font-size:18px;color:var(--ink-faint)" onclick="closeModals()">✕</button>
+    </div>
+    <form id="formChangeRole">
+      <input type="hidden" id="crUserId">
+      <div class="modal-b">
+        <p id="crUserInfo" style="margin:0;font-weight:600;font-size:13.5px"></p>
+        <div class="form-group">
+          <label for="crTargetRole">Select New Role</label>
+          <select id="crTargetRole" required>
+            <option value="user">Standard User</option>
+            <option value="member_admin">Member Admin</option>
+            <option value="admin">Product Admin</option>
+            <option value="super_admin">Super Admin</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-f">
+        <button type="button" class="btn ghost" onclick="closeModals()">Cancel</button>
+        <button type="submit" class="btn">Apply Role Change</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Reassign Organization -->
+<div class="modal-backdrop" id="modalReassign">
+  <div class="modal">
+    <div class="modal-h">
+      <h3>Reassign Organization</h3>
+      <button style="all:unset;cursor:pointer;font-size:18px;color:var(--ink-faint)" onclick="closeModals()">✕</button>
+    </div>
+    <form id="formReassign">
+      <input type="hidden" id="reUserId">
+      <div class="modal-b">
+        <p id="reUserInfo" style="margin:0;font-weight:600;font-size:13.5px"></p>
+        <div class="form-group">
+          <label for="reTargetOrg">New Organization</label>
+          <select id="reTargetOrg" required></select>
+        </div>
+      </div>
+      <div class="modal-f">
+        <button type="button" class="btn ghost" onclick="closeModals()">Cancel</button>
+        <button type="submit" class="btn">Reassign User</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let allUsers = [];
+let allOrgs = [];
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function closeModals() {
+  document.getElementById('modalAddUser').classList.remove('show');
+  document.getElementById('modalChangeRole').classList.remove('show');
+  document.getElementById('modalReassign').classList.remove('show');
+}
+
+document.getElementById('btnOpenAddUser').addEventListener('click', () => {
+  document.getElementById('formAddUser').reset();
+  document.getElementById('modalAddUser').classList.add('show');
+});
+
+async function loadData() {
+  try {
+    const [statsRes, usersRes, orgsRes] = await Promise.all([
+      fetch('/api/v1/system/stats'),
+      fetch('/api/v1/system/users'),
+      fetch('/api/v1/system/organizations')
+    ]);
+
+    if (!statsRes.ok || !usersRes.ok) {
+      if (statsRes.status === 403 || usersRes.status === 403) {
+        alert('Access Denied: Super Admin privilege required.');
+        location.href = '/?denied=super_admin';
+        return;
+      }
+    }
+
+    const stats = await statsRes.json();
+    const usersData = await usersRes.json();
+    const orgsData = await orgsRes.json();
+
+    document.getElementById('kpiTotalUsers').textContent = stats.total_users || 0;
+    document.getElementById('kpiSuperAdmins').textContent = stats.super_admins || 0;
+    document.getElementById('kpiProductAdmins').textContent = stats.product_admins || 0;
+    document.getElementById('kpiMemberAdmins').textContent = stats.member_admins || 0;
+    document.getElementById('kpiStandardUsers').textContent = stats.standard_users || 0;
+
+    document.getElementById('navOrgCount').textContent = stats.total_organizations || 0;
+    document.getElementById('navUserCount').textContent = stats.total_users || 0;
+
+    allUsers = usersData.users || [];
+    allOrgs = orgsData.organizations || [];
+
+    populateOrgDropdowns();
+
+    // Check if workspace_id was passed in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const preOrg = urlParams.get('workspace_id');
+    if (preOrg) {
+      document.getElementById('orgFilter').value = preOrg;
+    }
+
+    renderUsers();
+  } catch (err) {
+    console.error('Failed to load users data', err);
+    document.getElementById('usersTbody').innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--neg)">Failed to load users. Super Admin access required.</td></tr>`;
+  }
+}
+
+function populateOrgDropdowns() {
+  const filterSelect = document.getElementById('orgFilter');
+  const addSelect = document.getElementById('userOrg');
+  const reSelect = document.getElementById('reTargetOrg');
+
+  const filterOpts = ['<option value="all">All Organizations</option>'];
+  const modalOpts = [];
+
+  allOrgs.forEach(o => {
+    filterOpts.push(`<option value="${escapeHtml(o.workspace_id)}">${escapeHtml(o.name)}</option>`);
+    modalOpts.push(`<option value="${escapeHtml(o.workspace_id)}">${escapeHtml(o.name)} (${escapeHtml(o.slug)})</option>`);
+  });
+
+  filterSelect.innerHTML = filterOpts.join('');
+  addSelect.innerHTML = modalOpts.join('');
+  reSelect.innerHTML = modalOpts.join('');
+}
+
+function getRoleBadge(role) {
+  const r = (role || 'user').toLowerCase();
+  if (r === 'super_admin') return `<span class="badge badge-super">👑 Super Admin</span>`;
+  if (r === 'admin' || r === 'product_admin') return `<span class="badge badge-prod">🛡️ Product Admin</span>`;
+  if (r === 'member_admin') return `<span class="badge badge-member">👥 Member Admin</span>`;
+  return `<span class="badge badge-user">👤 User</span>`;
+}
+
+function renderUsers() {
+  const search = document.getElementById('searchInput').value.toLowerCase().trim();
+  const role = document.getElementById('roleFilter').value;
+  const org = document.getElementById('orgFilter').value;
+
+  const filtered = allUsers.filter(u => {
+    const matchSearch = (u.name || '').toLowerCase().includes(search) || u.email.toLowerCase().includes(search) || u.user_id.toLowerCase().includes(search);
+    const matchRole = role === 'all' || u.role === role;
+    const matchOrg = org === 'all' || u.workspace_id === org;
+    return matchSearch && matchRole && matchOrg;
+  });
+
+  const tbody = document.getElementById('usersTbody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:36px;color:var(--ink-faint)">No users match your criteria.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(u => {
+    const initials = (u.name || u.email || 'U').substring(0, 2).toUpperCase();
+    const createdStr = u.created_at ? new Date(u.created_at * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+    const statusBadge = u.active !== false
+      ? `<span class="badge badge-active">● Active</span>` 
+      : `<span class="badge badge-suspended">● Inactive</span>`;
+
+    const authInfo = [
+      u.has_password ? `<span title="Password Protected">🔑 Pass</span>` : `<span style="color:var(--ink-faint)">No pass</span>`,
+      u.phone ? `<span style="font-family:var(--f-mono);font-size:11px" title="${escapeHtml(u.phone)}">📱 OTP</span>` : ''
+    ].filter(Boolean).join(' · ');
+
+    return `
+      <tr>
+        <td>
+          <div class="user-info">
+            <div class="user-avatar">${escapeHtml(initials)}</div>
+            <div class="user-details">
+              <b>${escapeHtml(u.name || 'User')}</b>
+              <span>${escapeHtml(u.user_id)}</span>
+            </div>
+          </div>
+        </td>
+        <td><a href="mailto:${escapeHtml(u.email)}" style="color:var(--accent);text-decoration:none;font-weight:500">${escapeHtml(u.email)}</a></td>
+        <td>
+          <div style="font-weight:600;font-size:13px">${escapeHtml(u.workspace_name)}</div>
+          <code style="font-family:var(--f-mono);font-size:11px;color:var(--ink-soft)">${escapeHtml(u.workspace_slug || u.workspace_id)}</code>
+        </td>
+        <td>${getRoleBadge(u.role)}</td>
+        <td><div style="font-size:12px;color:var(--ink-soft)">${authInfo}</div></td>
+        <td>${statusBadge}</td>
+        <td style="color:var(--ink-soft);font-size:12.5px">${createdStr}</td>
+        <td style="text-align:right">
+          <div style="display:inline-flex;gap:5px;justify-content:flex-end">
+            <button class="btn ghost sm" onclick="openRoleModal('${u.user_id}')">Role</button>
+            <button class="btn ghost sm" onclick="openReassignModal('${u.user_id}')">Reassign</button>
+            <button class="btn ghost sm" style="${u.active !== false ? 'color:var(--neg)' : 'color:var(--pos)'}" onclick="toggleUserActive('${u.user_id}', ${u.active === false})">
+              ${u.active !== false ? 'Disable' : 'Enable'}
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+document.getElementById('searchInput').addEventListener('input', renderUsers);
+document.getElementById('roleFilter').addEventListener('change', renderUsers);
+document.getElementById('orgFilter').addEventListener('change', renderUsers);
+
+function openRoleModal(userId) {
+  const u = allUsers.find(x => x.user_id === userId);
+  if (!u) return;
+  document.getElementById('crUserId').value = u.user_id;
+  document.getElementById('crUserInfo').textContent = `${u.name} (${u.email})`;
+  document.getElementById('crTargetRole').value = u.role;
+  document.getElementById('modalChangeRole').classList.add('show');
+}
+
+function openReassignModal(userId) {
+  const u = allUsers.find(x => x.user_id === userId);
+  if (!u) return;
+  document.getElementById('reUserId').value = u.user_id;
+  document.getElementById('reUserInfo').textContent = `${u.name} (${u.email})`;
+  document.getElementById('reTargetOrg').value = u.workspace_id;
+  document.getElementById('modalReassign').classList.add('show');
+}
+
+async function toggleUserActive(userId, nextActive) {
+  const act = nextActive ? 'Enable' : 'Disable';
+  if (!confirm(`Are you sure you want to ${act} this user account?`)) return;
+  try {
+    const res = await fetch('/api/v1/system/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'toggle_active', user_id: userId, active: nextActive })
+    });
+    const d = await res.json();
+    if (d.status === 'ok') {
+      showToast(`User account ${act}d successfully.`);
+      loadData();
+    } else {
+      alert(d.error || 'Failed to update user status');
+    }
+  } catch (e) {
+    alert('Network error while updating user');
+  }
+}
+
+document.getElementById('formAddUser').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('btnAddSubmit');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+
+  const payload = {
+    action: 'create',
+    name: document.getElementById('userName').value.trim(),
+    email: document.getElementById('userEmail').value.trim(),
+    password: document.getElementById('userPassword').value,
+    workspace_id: document.getElementById('userOrg').value,
+    role: document.getElementById('userRoleSelect').value,
+    phone: document.getElementById('userPhone').value.trim() || undefined
+  };
+
+  try {
+    const res = await fetch('/api/v1/system/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await res.json();
+    if (d.status === 'ok') {
+      closeModals();
+      showToast('User account created successfully.');
+      loadData();
+    } else {
+      alert(d.error || 'Failed to create user');
+    }
+  } catch (err) {
+    alert('Network error while creating user');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Account';
+  }
+});
+
+document.getElementById('formChangeRole').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const userId = document.getElementById('crUserId').value;
+  const newRole = document.getElementById('crTargetRole').value;
+
+  try {
+    const res = await fetch('/api/v1/system/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'role', user_id: userId, role: newRole })
+    });
+    const d = await res.json();
+    if (d.status === 'ok') {
+      closeModals();
+      showToast('User role updated successfully.');
+      loadData();
+    } else {
+      alert(d.error || 'Failed to update role');
+    }
+  } catch (e) {
+    alert('Network error while changing role');
+  }
+});
+
+document.getElementById('formReassign').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const userId = document.getElementById('reUserId').value;
+  const newWsId = document.getElementById('reTargetOrg').value;
+
+  try {
+    const res = await fetch('/api/v1/system/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reassign', user_id: userId, workspace_id: newWsId })
+    });
+    const d = await res.json();
+    if (d.status === 'ok') {
+      closeModals();
+      showToast('User reassigned successfully.');
+      loadData();
+    } else {
+      alert(d.error || 'Failed to reassign user');
+    }
+  } catch (e) {
+    alert('Network error while reassigning user');
+  }
+});
+
+loadData();
+</script>
+
+<script src="/profile.js?v=2.1"></script>
+</body>
+</html>

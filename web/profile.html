@@ -225,8 +225,9 @@
                   <div class="field"><label for="mPhone">Phone (SMS code)</label><input id="mPhone" type="tel" placeholder="+1 555 010 0000"></div>
                   <div class="field"><label for="mRole">Role</label>
                     <select id="mRole" style="width:100%;padding:9px 11px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13.5px">
-                      <option value="user">User — Overview, Calls, Call detail &amp; their own profile only</option>
-                      <option value="admin">Product Admin — everything: agents, telephony, webhooks, API keys, members</option>
+                      <option value="user">User — Standard workspace access</option>
+                      <option value="member_admin">Member Admin — Manage workspace members and users</option>
+                      <option value="admin" id="mRoleAdminOpt">Product Admin — Workspace configuration, agents, webhooks</option>
                     </select></div>
                 </div>
                 <div class="field"><label for="mPass">Temporary password</label><input id="mPass" type="password" minlength="8" required placeholder="At least 8 characters"><div class="hint">Share it with the member; they can change it on their profile.</div></div>
@@ -286,8 +287,15 @@
     $("avatar").textContent = initials(profile.name, profile.email);
     $("heroName").textContent = name;
     $("heroSub").textContent = [profile.title, profile.email].filter(Boolean).join(" · ");
-    var ROLE_LABEL = { admin: "Product Admin", user: "User" };
+    var ROLE_LABEL = { super_admin: "Super Admin", admin: "Product Admin", member_admin: "Member Admin", user: "User" };
     $("heroRole").textContent = ROLE_LABEL[profile.role] || profile.role || ""; $("heroRole").hidden = !profile.role;
+    if ($("mRoleAdminOpt")) {
+      var canCreateAdmin = profile.role === "super_admin" || profile.is_super_admin;
+      $("mRoleAdminOpt").hidden = !canCreateAdmin;
+      if (!canCreateAdmin && $("mRole").value === "admin") {
+        $("mRole").value = "member_admin";
+      }
+    }
     $("heroWs").textContent = profile.workspace || ""; $("heroWs").hidden = !profile.workspace;
     $("fName").value = profile.name || ""; $("fTitle").value = profile.title || "";
     $("fEmail").value = profile.email || ""; $("fPhone").value = profile.phone || "";
