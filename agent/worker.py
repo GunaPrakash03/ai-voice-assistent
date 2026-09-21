@@ -257,6 +257,26 @@ def resolve_agent_for_call(ctx: agents.JobContext):
     return agent_builder.get_active_agent(), dialled
 
 
+def sip_caller_number(ctx: agents.JobContext) -> str:
+    """The caller's number on an inbound SIP call (LiveKit sets sip.phoneNumber), else ''."""
+    for p in list(ctx.room.remote_participants.values()):
+        attrs = getattr(p, "attributes", {}) or {}
+        num = attrs.get("sip.phoneNumber") or attrs.get("sip.callerNumber") or attrs.get("sip.fromNumber")
+        if num:
+            return num
+    return ""
+
+
+def call_direction(room_name: str) -> str:
+    """How the call was placed, from the room naming the Call Desk uses."""
+    name = room_name or ""
+    if name.startswith("test-"):
+        return "sandbox"
+    if name.startswith(("outbound-", "softphone-", "dial-")):
+        return "outbound"
+    return "inbound"
+
+
 def build_stt(hand_off_audio: bool):
     """The caller's ears: Deepgram Nova streaming unless STT_PROVIDER=gemini.
 
@@ -297,7 +317,19 @@ async def entrypoint(ctx: agents.JobContext):
     # The Agent Builder's active persona decides the prompt *and* the voice for real calls.
     # Without this the picker's choice never left the browser: every call spoke Deepgram's default.
     from agent.agent_builder import agent_builder
+    # An inbound SIP caller may still be joining when the job starts; resolving the agent before
+    # they arrive reads no sip.* attributes and the wrong persona answers. Bounded so test/verify
+    # rooms without a participant yet do not hang.
+    if not ctx.room.remote_participants:
+        try:
+            await asyncio.wait_for(ctx.wait_for_participant(), timeout=float(os.getenv("PARTICIPANT_WAIT_S", "10")))
+        except asyncio.TimeoutError:
+            log.warning("No participant joined %s within the wait window; resolving agent without SIP attributes", ctx.room.name)
+        except Exception as e:
+            log.debug("wait_for_participant: %s", e)
     active_cfg, dialled_number = resolve_agent_for_call(ctx)
+    caller_number = sip_caller_number(ctx)
+    direction = call_direction(ctx.room.name)
     if active_cfg:
         voice_opt = agent_builder.get_voice(active_cfg.voice_id)
         tts_manager.apply_voice(
@@ -1539,9 +1571,12 @@ async def entrypoint(ctx: agents.JobContext):
                     "source": "livekit-test-call" if is_test_room else "livekit",
                     "agent_name": active_cfg.name if active_cfg else "AI Agent",
                     "agent_id": active_cfg.agent_id if active_cfg else "",
-                    "direction": "sandbox" if is_test_room else "inbound",
-                    "from_number": "Agent Builder test call" if is_test_room else (dialled_number or ""),
-                    "to_number": active_cfg.name if active_cfg else "",
+                    "direction": direction,
+                    # Inbound: caller -> our DID. Outbound: our DID -> the number dialled from the desk.
+                    "from_number": "Agent Builder test call" if is_test_room else (
+                        caller_number if direction == "inbound" else dialled_number or ""),
+                    "to_number": (dialled_number or (active_cfg.name if active_cfg else "")) if direction == "inbound"
+                                 else (caller_number or dialled_number or ""),
                     "voice_id": active_cfg.voice_id if active_cfg else "",
                     "llm_backend": f"{llm_manager.backend}:{llm_manager.model}",
                     "stt": getattr(stt_engine, "label", STT_PROVIDER),

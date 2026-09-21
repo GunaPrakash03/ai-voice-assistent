@@ -19,11 +19,23 @@ Caller ──PSTN──▶ Twilio number ──webhook──▶ Dashboard (/api/
 ```
 
 ### Quick Setup:
-1. **Buy number in Twilio** (Voice capability enabled).
-2. **Point Voice Webhook** to:
-   `https://<your-dashboard-domain>/api/telephony/voice/inbound` (HTTP POST).
+1. Set `PUBLIC_BASE_URL=https://<your-dashboard-domain>` (plus `TWILIO_ACCOUNT_SID` /
+   `TWILIO_AUTH_TOKEN`) in the dashboard's environment. On Railway this is optional:
+   `RAILWAY_PUBLIC_DOMAIN` is picked up automatically.
+2. **Buy the number on the Call Desk** (or import an existing Twilio number). The platform sets the
+   number's Twilio Voice webhook to `<PUBLIC_BASE_URL>/api/telephony/voice/inbound` for you — the
+   same thing Retell does behind its "Buy number" button. No Twilio console visit needed.
 3. **Assign Agent** in Dashboard -> **Active Phone Numbers**.
-4. **Done!**
+4. **Done!** `GET /api/telephony/inbound/config` shows the webhook URL and, per number, whether
+   Twilio accepted it (`configured`, `trunk_routed`, `error`, `skipped`).
+   `POST /api/telephony/numbers/sync-webhooks` re-points every Twilio number after the domain changes.
+
+If you bought the number in the Twilio console instead, either import it (it gets the webhook), or
+paste the URL above under Voice Configuration → *A call comes in* → Webhook, POST.
+
+Security: the webhook rejects requests whose `X-Twilio-Signature` does not verify against
+`TWILIO_AUTH_TOKEN`, and the media-stream WebSocket requires the per-deployment token the TwiML puts in
+its URL. `TWILIO_VALIDATE_SIGNATURE=0` disables the former if a proxy rewrites the signed URL.
 
 ---
 

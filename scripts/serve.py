@@ -307,6 +307,44 @@ class Handler(SimpleHTTPRequestHandler):
     LIVEKIT_SIP_USERNAME = os.getenv("LIVEKIT_SIP_USERNAME", "")
     LIVEKIT_SIP_PASSWORD = os.getenv("LIVEKIT_SIP_PASSWORD", "")
 
+    def _public_base_url(self) -> str:
+        """Where Twilio reaches this server: PUBLIC_BASE_URL if set, else what the proxy tells us."""
+        from agent.telephony_manager import public_base_url
+        configured = public_base_url()
+        if configured:
+            return configured
+        host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "localhost:8091"
+        proto = (self.headers.get("X-Forwarded-Proto") or "http").lower()
+        if proto != "https" and ("railway.app" in host or "ngrok" in host):
+            proto = "https"
+        return f"{proto}://{host}"
+
+    def _twilio_signature_ok(self, parsed, params: dict) -> bool:
+        """Verify X-Twilio-Signature (HMAC-SHA1 of the URL + sorted POST params, keyed by the auth
+        token) so nobody can inject fake calls. Skipped when TWILIO_AUTH_TOKEN is unset (local dev)
+        or TWILIO_VALIDATE_SIGNATURE=0."""
+        import base64, hashlib, hmac
+        token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+        if not token or os.getenv("TWILIO_VALIDATE_SIGNATURE", "1").strip().lower() in ("0", "false", "no"):
+            return True
+        sig = self.headers.get("X-Twilio-Signature", "")
+        if not sig:
+            return False
+        query = f"?{parsed.query}" if parsed.query else ""
+        post_params = params if self.command == "POST" else {}
+        base_urls = {self._public_base_url()}
+        host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or ""
+        if host:
+            base_urls.add(f"https://{host}")
+            base_urls.add(f"http://{host}")
+        for base in base_urls:
+            url = f"{base}{parsed.path}{query}"
+            data = url + "".join(f"{k}{post_params[k]}" for k in sorted(post_params))
+            digest = base64.b64encode(hmac.new(token.encode("utf-8"), data.encode("utf-8"), hashlib.sha1).digest()).decode()
+            if hmac.compare_digest(digest, sig):
+                return True
+        return False
+
     def _maybe_twiml_webhook(self, parsed) -> bool:
         """Twilio Programmable Voice webhook for inbound PSTN calls. Twilio POSTs here (no session).
         In media_stream mode (default), returns TwiML <Connect><Stream> so Twilio streams audio directly
@@ -314,25 +352,42 @@ class Handler(SimpleHTTPRequestHandler):
         In sip mode, falls back to dialing LiveKit Cloud SIP URI."""
         if parsed.path != "/api/telephony/voice/inbound":
             return False
-        # Which DID was dialled — Twilio sends "To"/"Called"; default to our number.
+        # Which DID was dialled — Twilio sends "To"/"Called".
         params = {}
         try:
             if self.command == "POST":
                 length = int(self.headers.get("Content-Length", 0) or 0)
                 body = self.rfile.read(length).decode("utf-8", "replace") if length else ""
-                params = {k: v[0] for k, v in urllib.parse.parse_qs(body).items()}
-            params.update({k: v[0] for k, v in parse_qs(parsed.query).items()})
+                params = {k: v[0] for k, v in urllib.parse.parse_qs(body, keep_blank_values=True).items()}
+            params.update({k: v[0] for k, v in parse_qs(parsed.query, keep_blank_values=True).items()})
         except Exception:
             params = {}
-        dialed = (params.get("To") or params.get("Called") or "+19517177889").strip()
-        dialed = re.sub(r"[^\d+]", "", dialed) or "+19517177889"
+        if not self._twilio_signature_ok(parsed, params):
+            log.warning("Rejected inbound voice webhook with bad/missing X-Twilio-Signature from %s", self.client_address)
+            self.send_response(403)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", "9")
+            self.end_headers()
+            try:
+                self.wfile.write(b"Forbidden")
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return True
+        dialed = re.sub(r"[^\d+]", "", (params.get("To") or params.get("Called") or "").strip())
+        if not dialed:
+            # No DID in the request: fall back to the first active owned number rather than a
+            # number baked into the source.
+            active = [n for n in telephony_manager.list_owned_numbers() if n.get("status") == "active"]
+            dialed = active[0]["phone_number"] if active else ""
         caller = (params.get("From") or params.get("Caller") or "").strip()
 
         if self.TWILIO_CONNECTION_MODE == "media_stream":
-            host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "localhost:8091"
-            proto = self.headers.get("X-Forwarded-Proto", "http").lower()
-            ws_scheme = "wss" if proto == "https" or "railway.app" in host or "ngrok" in host else "ws"
-            ws_url = f"{ws_scheme}://{host}/api/telephony/media-stream"
+            from agent.twilio_stream import media_stream_token
+            base = self._public_base_url()
+            ws_url = "ws" + base[len("http"):] + "/api/telephony/media-stream"
+            token = media_stream_token()
+            if token:
+                ws_url += f"?token={token}"
 
             twiml = (
                 '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -454,6 +509,28 @@ class Handler(SimpleHTTPRequestHandler):
                 "inbound": telephony_manager.list_inbound_trunks(),
                 "outbound": telephony_manager.list_outbound_trunks(),
                 "rules": telephony_manager.list_dispatch_rules(),
+            })
+            return
+        elif parsed.path == "/api/telephony/inbound/config":
+            # What the dashboard shows under "Inbound routing": where Twilio is told to send calls,
+            # and whether each owned number is actually pointed there.
+            from agent.telephony_manager import inbound_voice_url, public_base_url
+            numbers = telephony_manager.list_owned_numbers()
+            self._send_json({
+                "status": "ok",
+                "public_base_url": public_base_url(),
+                "voice_webhook_url": inbound_voice_url(),
+                "connection_mode": self.TWILIO_CONNECTION_MODE,
+                "twilio_credentials": bool(os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN")),
+                "signature_validation": bool(os.getenv("TWILIO_AUTH_TOKEN"))
+                    and os.getenv("TWILIO_VALIDATE_SIGNATURE", "1").lower() not in ("0", "false", "no"),
+                "numbers": [
+                    {"phone_number": n["phone_number"], "carrier": n.get("carrier"),
+                     "assigned_agent": n.get("assigned_agent"),
+                     "voice_webhook": (n.get("metadata") or {}).get("voice_webhook")
+                        or {"status": "unknown", "reason": "never configured; run sync-webhooks"}}
+                    for n in numbers
+                ],
             })
             return
         elif parsed.path == "/api/telephony/numbers":
@@ -1212,6 +1289,16 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": "No matching route found"}, 404)
             else:
                 self._send_json({"status": "ok", "routed": routed})
+            return
+
+        elif parsed.path == "/api/telephony/numbers/sync-webhooks":
+            # Re-point every Twilio number at this server (after deploy / PUBLIC_BASE_URL change).
+            try:
+                results = telephony_manager.sync_twilio_voice_webhooks()
+                ok = sum(1 for r in results if r.get("status") in ("configured", "trunk_routed"))
+                self._send_json({"status": "ok", "configured": ok, "total": len(results), "results": results})
+            except Exception as e:
+                self._send_json({"status": "error", "error": str(e)}, 500)
             return
 
         elif parsed.path == "/api/telephony/numbers/purchase":

@@ -306,6 +306,25 @@ AVAILABLE_NUMBERS_CATALOG = [
 ]
 
 
+INBOUND_VOICE_PATH = "/api/telephony/voice/inbound"
+
+
+def public_base_url() -> str:
+    """The URL Twilio can reach this server on. PUBLIC_BASE_URL wins; on Railway the platform's
+    RAILWAY_PUBLIC_DOMAIN is used; otherwise unknown ("") and carrier webhooks cannot be set."""
+    configured = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if configured:
+        return configured if "://" in configured else f"https://{configured}"
+    railway = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip().rstrip("/")
+    return f"https://{railway}" if railway else ""
+
+
+def inbound_voice_url() -> str:
+    """Twilio Voice webhook for every number the platform owns ("" when the public URL is unknown)."""
+    base = public_base_url()
+    return f"{base}{INBOUND_VOICE_PATH}" if base else ""
+
+
 class TelephonyManager:
     """
     Coordinates inbound & outbound SIP trunks, phone number purchasing, routing rules, and calls.
@@ -685,6 +704,97 @@ class TelephonyManager:
         key = os.getenv("TELNYX_API_KEY", "").strip()
         return key if key else None
 
+    def _twilio_number_sid(self, rec: PhoneNumberRecord, sid: str, token: str) -> Optional[str]:
+        twilio_sid = rec.metadata.get("twilio_sid")
+        if twilio_sid:
+            return twilio_sid
+        try:
+            r = requests.get(
+                f"https://api.twilio.com/2010-04-01/Accounts/{sid}/IncomingPhoneNumbers.json?PhoneNumber={requests.utils.quote(rec.phone_number)}",
+                auth=(sid, token), timeout=5,
+            )
+            if r.status_code == 200:
+                data = r.json().get("incoming_phone_numbers", [])
+                if data:
+                    rec.metadata["twilio_sid"] = data[0].get("sid")
+                    return rec.metadata["twilio_sid"]
+        except Exception as e:
+            log.warning("Failed to lookup Twilio SID for %s: %s", rec.phone_number, e)
+        return None
+
+    def configure_twilio_voice_webhook(self, rec: PhoneNumberRecord) -> dict:
+        """Point a Twilio number's Voice URL at this platform, the way Retell does when a number is
+        bought or imported there, so nobody has to paste a webhook into the Twilio console.
+
+        Records the outcome in rec.metadata["voice_webhook"] for the dashboard. Numbers attached
+        to a Twilio Elastic SIP trunk are routed by the trunk, so the URL is set but Twilio ignores
+        it until the number is detached from the trunk.
+        """
+        outcome = {"url": inbound_voice_url(), "status": "skipped", "checked_at": time.time()}
+        rec.metadata["voice_webhook"] = outcome
+        if rec.carrier != "twilio":
+            outcome["reason"] = "not a Twilio number"
+            return outcome
+        creds = self._get_twilio_creds()
+        if not creds:
+            outcome["reason"] = "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not set"
+            return outcome
+        if not outcome["url"]:
+            outcome["status"] = "error"
+            outcome["reason"] = "PUBLIC_BASE_URL is not set, so the webhook URL is unknown"
+            log.warning("Cannot set Twilio voice webhook for %s: PUBLIC_BASE_URL is not set", rec.phone_number)
+            return outcome
+        sid, token = creds
+        twilio_sid = self._twilio_number_sid(rec, sid, token)
+        if not twilio_sid:
+            outcome["status"] = "error"
+            outcome["reason"] = "number not found in this Twilio account"
+            return outcome
+        try:
+            r = requests.post(
+                f"https://api.twilio.com/2010-04-01/Accounts/{sid}/IncomingPhoneNumbers/{twilio_sid}.json",
+                data={
+                    "VoiceUrl": outcome["url"],
+                    "VoiceMethod": "POST",
+                    "VoiceFallbackUrl": outcome["url"],
+                    "VoiceFallbackMethod": "POST",
+                },
+                auth=(sid, token), timeout=10,
+            )
+            if r.status_code in (200, 201):
+                body = r.json()
+                outcome["status"] = "configured"
+                outcome["twilio_voice_url"] = body.get("voice_url")
+                if body.get("trunk_sid"):
+                    outcome["status"] = "trunk_routed"
+                    outcome["reason"] = f"number is on Twilio trunk {body['trunk_sid']}; the trunk routes calls, not the Voice URL"
+                log.info("Twilio voice webhook for %s -> %s (%s)", rec.phone_number, outcome["url"], outcome["status"])
+            else:
+                msg = ""
+                try:
+                    msg = r.json().get("message", "")
+                except Exception:
+                    pass
+                outcome["status"] = "error"
+                outcome["reason"] = msg or f"HTTP {r.status_code}"
+                log.warning("Twilio rejected voice webhook update for %s: %s", rec.phone_number, outcome["reason"])
+        except requests.RequestException as e:
+            outcome["status"] = "error"
+            outcome["reason"] = str(e)
+            log.warning("Twilio voice webhook update failed for %s: %s", rec.phone_number, e)
+        return outcome
+
+    def sync_twilio_voice_webhooks(self) -> List[dict]:
+        """Re-point every active Twilio number at this platform (e.g. after PUBLIC_BASE_URL changes)."""
+        results = []
+        for rec in self._owned_numbers.values():
+            if rec.status == "active" and rec.carrier == "twilio":
+                out = self.configure_twilio_voice_webhook(rec)
+                results.append({"phone_number": rec.phone_number, **out})
+        if results:
+            self._save_phone_numbers()
+        return results
+
     def _release_twilio_number(self, rec: PhoneNumberRecord) -> None:
         if rec.carrier == "twilio" or "twilio_sid" in rec.metadata:
             creds = self._get_twilio_creds()
@@ -934,6 +1044,7 @@ class TelephonyManager:
                             )
                             self._owned_numbers[p_num] = rec
                             self._ensure_number_rule(rec)
+                            self.configure_twilio_voice_webhook(rec)
                             changed = True
             except Exception as e:
                 log.warning("Twilio carrier sync failed: %s", e)
@@ -1019,6 +1130,11 @@ class TelephonyManager:
                     "PhoneNumber": norm,
                     "FriendlyName": fname,
                 }
+                # Wire inbound calls to us at purchase time (Retell-style); confirmed again below.
+                voice_url = inbound_voice_url()
+                if voice_url:
+                    buy_data["VoiceUrl"] = voice_url
+                    buy_data["VoiceMethod"] = "POST"
                 if assigned_trunk_id.startswith("TK"):
                     buy_data["TrunkSid"] = assigned_trunk_id
 
@@ -1102,6 +1218,8 @@ class TelephonyManager:
 
         # One dispatch rule per DID
         self._ensure_number_rule(record)
+        if carrier_id == "twilio" and metadata.get("twilio_sid"):
+            self.configure_twilio_voice_webhook(record)
         self._save_trunks()
         self._save_phone_numbers()
 
@@ -1158,6 +1276,8 @@ class TelephonyManager:
             )
             self._owned_numbers[norm] = rec
         self._ensure_number_rule(rec)
+        if rec.carrier == "twilio" and not rec.metadata.get("voice_webhook", {}).get("status") == "configured":
+            self.configure_twilio_voice_webhook(rec)
         self._save_trunks()
         self._save_phone_numbers()
         log.info("Owned-number record ensured for %s (trunk=%s, agent=%s)", norm, trunk_id, rec.assigned_agent)

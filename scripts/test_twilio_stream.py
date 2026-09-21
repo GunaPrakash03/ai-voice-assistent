@@ -13,8 +13,10 @@ import base64
 import json
 import socket
 import os
+import re
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -23,12 +25,28 @@ sys.path.insert(0, ROOT)
 from agent.twilio_stream import compute_ws_accept, build_ws_frame, read_ws_frame
 
 
+def twilio_signature(url: str, params: dict) -> str:
+    """What Twilio puts in X-Twilio-Signature: HMAC-SHA1(auth token, url + sorted params)."""
+    import hashlib, hmac
+    token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+    if not token:
+        for line in open(os.path.join(os.path.dirname(__file__), "..", ".env")):
+            if line.startswith("TWILIO_AUTH_TOKEN="):
+                token = line.split("=", 1)[1].strip()
+    data = url + "".join(f"{k}{params[k]}" for k in sorted(params))
+    return base64.b64encode(hmac.new(token.encode(), data.encode(), hashlib.sha1).digest()).decode()
+
+
 def test_inbound_twiml(base_url: str) -> str:
-    print(f"--> 1. Testing Inbound Voice Webhook POST on {base_url}/api/telephony/voice/inbound")
+    url = f"{base_url}/api/telephony/voice/inbound"
+    print(f"--> 1. Testing Inbound Voice Webhook POST on {url}")
+    params = {"Called": "+19517177889", "Caller": "+15551234567", "CallSid": "CA_test_001"}
+    # The server verifies X-Twilio-Signature (unless TWILIO_VALIDATE_SIGNATURE=0); sign like Twilio does.
     req = urllib.request.Request(
-        f"{base_url}/api/telephony/voice/inbound",
-        data=b"Called=%2B19517177889&Caller=%2B15551234567&CallSid=CA_test_001",
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        url,
+        data=urllib.parse.urlencode(params).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded",
+                 "X-Twilio-Signature": twilio_signature(url, params)},
     )
     with urllib.request.urlopen(req, timeout=5.0) as resp:
         body = resp.read().decode("utf-8")
@@ -39,15 +57,15 @@ def test_inbound_twiml(base_url: str) -> str:
         return body
 
 
-def test_websocket_stream(host: str, port: int) -> None:
-    print(f"--> 2. Testing WebSocket Handshake to ws://{host}:{port}/api/telephony/media-stream")
+def test_websocket_stream(host: str, port: int, ws_path: str = "/api/telephony/media-stream") -> None:
+    print(f"--> 2. Testing WebSocket Handshake to ws://{host}:{port}{ws_path}")
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(10)
     s.connect((host, port))
 
     sec_key = base64.b64encode(b"0123456789abcdef").decode()
     upgrade_req = (
-        f"GET /api/telephony/media-stream HTTP/1.1\r\n"
+        f"GET {ws_path} HTTP/1.1\r\n"
         f"Host: {host}:{port}\r\n"
         f"Upgrade: websocket\r\n"
         f"Connection: Upgrade\r\n"
@@ -136,5 +154,7 @@ def test_websocket_stream(host: str, port: int) -> None:
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8091
     host = "127.0.0.1"
-    test_inbound_twiml(f"http://{host}:{port}")
-    test_websocket_stream(host, port)
+    twiml = test_inbound_twiml(f"http://{host}:{port}")
+    # The stream URL carries the per-deployment token the WebSocket handler requires.
+    m = re.search(r'<Stream url="[^"]*?(/api/telephony/media-stream[^"]*)"', twiml)
+    test_websocket_stream(host, port, m.group(1) if m else "/api/telephony/media-stream")

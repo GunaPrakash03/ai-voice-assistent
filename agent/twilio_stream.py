@@ -13,12 +13,15 @@ import asyncio
 import audioop
 import base64
 import hashlib
+import hmac
+import io
 import json
 import logging
 import os
 import re
 import struct
 import time
+import wave
 from typing import Any, Dict, List, Optional, Tuple
 
 import urllib.request
@@ -28,6 +31,24 @@ log = logging.getLogger("twilio-stream")
 # Twilio sends 8000Hz, 1 channel, mu-law audio in 20ms chunks (160 bytes per chunk).
 TWILIO_SAMPLE_RATE = 8000
 TWILIO_CHUNK_SIZE = 160  # 20ms @ 8kHz mu-law
+TWILIO_CHUNK_SECS = 0.020
+# How far ahead of real time we let outbound audio run. Twilio buffers on its side, so sending a
+# little early avoids under-runs from sleep jitter, while keeping "clear" (barge-in) snappy.
+PLAYBACK_LEAD_SECS = float(os.getenv("TWILIO_PLAYBACK_LEAD", "0.6"))
+# A caller "okay" / "mm-hmm" while the agent talks is a backchannel, not an interruption.
+INTERRUPT_MIN_WORDS = int(os.getenv("INTERRUPT_MIN_WORDS", "2"))
+DEEPGRAM_RECONNECT_ATTEMPTS = 2
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
+
+
+def media_stream_token() -> str:
+    """Shared secret Twilio must present (as ?token=) when it opens the media-stream WebSocket.
+    Derived from the Twilio auth token so nothing extra needs configuring; empty when no token is set,
+    which disables the check (local/dev)."""
+    auth = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+    if not auth:
+        return ""
+    return hmac.new(auth.encode("utf-8"), b"voice-agent-media-stream", hashlib.sha256).hexdigest()[:32]
 
 
 class TwilioMediaStreamSession:
@@ -49,6 +70,13 @@ class TwilioMediaStreamSession:
         self._deepgram_task: Optional[asyncio.Task] = None
         self._speech_accumulator: List[str] = []
         self._silence_counter: int = 0
+        self._stopped: bool = False
+        self._greeting_task: Optional[asyncio.Task] = None
+        self._deepgram_reconnects: int = 0
+        # Playback progress of the utterance currently being streamed, so an interruption can trim
+        # the history to what the caller actually heard.
+        self._playing_text: str = ""
+        self._playing_progress: float = 0.0
 
     async def on_start(self, start_data: dict) -> None:
         """Called when Twilio emits the 'start' event with call metadata."""
@@ -87,10 +115,14 @@ class TwilioMediaStreamSession:
         # Connect to Deepgram streaming STT over WebSocket
         await self._start_deepgram_stt()
 
-        # Send initial greeting
-        greeting = getattr(self.agent_cfg, "first_message", None) or f"Hello, thank you for calling. How can I help you today?"
-        self.history.append({"speaker": "agent", "text": greeting})
-        await self._speak_agent_text(greeting)
+        # Send initial greeting. Runs as a task: awaiting it here would stall the WebSocket read loop
+        # for the whole greeting, so no caller audio reached Deepgram and barge-in was impossible.
+        greeting = getattr(self.agent_cfg, "first_message", None) or "Hello, thank you for calling. How can I help you today?"
+        self._add_history("agent", greeting)
+        self._current_speech_task = asyncio.create_task(self._speak_agent_text(greeting))
+
+    def _add_history(self, speaker: str, text: str) -> None:
+        self.history.append({"speaker": speaker, "text": text, "timestamp": time.time()})
 
     def _resolve_agent(self, called_number: str) -> Any:
         """Looks up the assigned agent in the database/config."""
@@ -111,18 +143,23 @@ class TwilioMediaStreamSession:
                         return agent
 
             # Fallback to active agent or default
-            return agent_builder.get_active_agent() or list(agent_builder._agents.values())[0]
+            agents = list(agent_builder._agents.values())
+            return agent_builder.get_active_agent() or (agents[0] if agents else None)
         except Exception as ex:
             log.warning("Could not resolve specific agent for %s: %s", called_number, ex)
-            from agent.agent_builder import agent_builder
-            return list(agent_builder._agents.values())[0]
+            try:
+                from agent.agent_builder import agent_builder
+                agents = list(agent_builder._agents.values())
+                return agents[0] if agents else None
+            except Exception:
+                return None
 
-    async def _start_deepgram_stt(self) -> None:
+    async def _start_deepgram_stt(self) -> bool:
         """Connects to Deepgram streaming STT WebSocket using native 8kHz mu-law."""
         dg_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
         if not dg_key:
             log.warning("DEEPGRAM_API_KEY not set; voice recognition will be offline")
-            return
+            return False
 
         try:
             import websockets
@@ -135,8 +172,11 @@ class TwilioMediaStreamSession:
             self._deepgram_ws = await websockets.connect(url, additional_headers=headers)
             self._deepgram_task = asyncio.create_task(self._listen_deepgram_events())
             log.info("Deepgram Nova-3 STT connected for call %s", self.call_sid)
+            return True
         except Exception as ex:
             log.error("Failed to connect to Deepgram STT: %s", ex)
+            self._deepgram_ws = None
+            return False
 
     async def _listen_deepgram_events(self) -> None:
         """Receives transcripts from Deepgram and handles turn completion."""
@@ -154,8 +194,9 @@ class TwilioMediaStreamSession:
                     if not transcript:
                         continue
 
-                    # If caller starts speaking while agent is speaking, trigger barge-in!
-                    if self.is_agent_speaking and len(transcript) > 2:
+                    # Caller talking over the agent is a barge-in only once there are real words in
+                    # it; a single "yeah" or a burst of line echo must not cut her off.
+                    if self.is_agent_speaking and len(transcript.split()) >= INTERRUPT_MIN_WORDS:
                         log.info("Caller barge-in detected during playback! Interrupting agent.")
                         await self.interrupt_agent()
 
@@ -173,10 +214,29 @@ class TwilioMediaStreamSession:
                             await self.on_caller_turn(full_turn)
 
         except asyncio.CancelledError:
-            pass
+            return
         except Exception as ex:
-            if self.is_active:
-                log.warning("Deepgram listener closed: %s", ex)
+            if not self.is_active:
+                return
+            log.warning("Deepgram listener closed mid-call: %s", ex)
+        # The socket died while the call is still up. Without this the caller went deaf silently.
+        if self.is_active:
+            asyncio.create_task(self._recover_deepgram())
+
+    async def _recover_deepgram(self) -> None:
+        """Reconnect the recogniser after a dropped Deepgram socket; tell the caller if that fails."""
+        self._deepgram_ws = None
+        while self.is_active and self._deepgram_reconnects < DEEPGRAM_RECONNECT_ATTEMPTS:
+            self._deepgram_reconnects += 1
+            log.info("Reconnecting Deepgram STT (attempt %d/%d)", self._deepgram_reconnects, DEEPGRAM_RECONNECT_ATTEMPTS)
+            if await self._start_deepgram_stt():
+                return
+            await asyncio.sleep(0.5)
+        if self.is_active:
+            log.error("Deepgram STT could not be re-established for call %s", self.call_sid)
+            apology = "I'm sorry, I'm having trouble hearing you right now. Please call back in a moment."
+            self._add_history("agent", apology)
+            await self._speak_agent_text(apology)
 
     async def on_media(self, payload_b64: str) -> None:
         """Incoming audio packet from Twilio (8kHz mu-law)."""
@@ -196,6 +256,7 @@ class TwilioMediaStreamSession:
         if self._current_speech_task and not self._current_speech_task.done():
             self._current_speech_task.cancel()
             self._current_speech_task = None
+        self._truncate_unheard_reply()
 
         # Send Twilio clear command to instantly purge audio buffer
         self.send_ws_json({
@@ -204,9 +265,24 @@ class TwilioMediaStreamSession:
         })
         log.info("Sent Twilio 'clear' event to drop buffered speech")
 
+    def _truncate_unheard_reply(self) -> None:
+        """The reply text went into history before it finished playing; after a barge-in keep only
+        the part the caller heard so the model does not assume they heard all of it."""
+        if not self._playing_text or not self.history:
+            return
+        last = self.history[-1]
+        if last.get("speaker") != "agent" or last.get("text") != self._playing_text:
+            return
+        words = self._playing_text.split()
+        heard = words[: max(1, int(len(words) * min(1.0, self._playing_progress)))]
+        if len(heard) < len(words):
+            last["text"] = " ".join(heard) + "…"
+            last["interrupted"] = True
+        self._playing_text = ""
+
     async def on_caller_turn(self, user_text: str) -> None:
         """Called when the caller finishes speaking a sentence/turn."""
-        self.history.append({"speaker": "caller", "text": user_text})
+        self._add_history("caller", user_text)
 
         # Cancel any previous speaking task
         if self._current_speech_task and not self._current_speech_task.done():
@@ -236,7 +312,7 @@ class TwilioMediaStreamSession:
                 return
 
             log.info("Agent replying: '%s'", reply_text)
-            self.history.append({"speaker": "agent", "text": reply_text})
+            self._add_history("agent", reply_text)
             await self._speak_agent_text(reply_text)
 
         except asyncio.CancelledError:
@@ -245,39 +321,62 @@ class TwilioMediaStreamSession:
             log.error("Failed to generate agent reply: %s", ex)
 
     async def _speak_agent_text(self, text: str) -> None:
-        """Synthesizes text into 8kHz mu-law audio and streams to Twilio."""
+        """Synthesizes text into 8kHz mu-law audio and streams it to Twilio.
+
+        Sentences are synthesized one ahead of playback so the first sentence starts playing while
+        the rest is still rendering (instead of waiting for the whole reply). Chunks are paced against
+        the wall clock rather than a chain of 20 ms sleeps, which drifted and under-ran on long replies.
+        """
         self.is_agent_speaking = True
+        self._playing_text = text
+        self._playing_progress = 0.0
+        sentences = [p for p in _SENTENCE_SPLIT.split(text.strip()) if p.strip()] or [text]
+        total_len = sum(len(p) for p in sentences) or 1
+        done_len = 0
+        next_synth: Optional[asyncio.Future] = None
         try:
-            # 1. Synthesize audio
-            mulaw_bytes = await self._synthesize_to_mulaw(text)
-            if not mulaw_bytes:
-                log.warning("No audio synthesized for text: '%s'", text)
-                self.is_agent_speaking = False
-                return
+            next_synth = asyncio.ensure_future(self._synthesize_to_mulaw(sentences[0]))
+            clock = None      # (wall time, audio seconds sent) reference for pacing
+            for idx, sentence in enumerate(sentences):
+                mulaw_bytes = await next_synth
+                if idx + 1 < len(sentences):
+                    next_synth = asyncio.ensure_future(self._synthesize_to_mulaw(sentences[idx + 1]))
+                if not mulaw_bytes:
+                    log.warning("No audio synthesized for text: '%s'", sentence)
+                    done_len += len(sentence)
+                    continue
 
-            # 2. Stream audio to Twilio in 20ms chunks (160 bytes of 8kHz mu-law)
-            chunk_size = TWILIO_CHUNK_SIZE
-            total_chunks = (len(mulaw_bytes) + chunk_size - 1) // chunk_size
-
-            for i in range(total_chunks):
-                if not self.is_active or not self.is_agent_speaking:
-                    log.info("Speech playback stopped mid-stream.")
-                    break
-
-                chunk = mulaw_bytes[i * chunk_size : (i + 1) * chunk_size]
-                if len(chunk) < chunk_size:
-                    # Pad with silence (0xFF in mu-law is quiet)
-                    chunk += b"\xff" * (chunk_size - len(chunk))
-
-                b64_payload = base64.b64encode(chunk).decode("utf-8")
-                self.send_ws_json({
-                    "event": "media",
-                    "streamSid": self.stream_sid,
-                    "media": {"payload": b64_payload},
-                })
-                # 20ms pacing per chunk
-                await asyncio.sleep(0.020)
-
+                chunk_size = TWILIO_CHUNK_SIZE
+                total_chunks = (len(mulaw_bytes) + chunk_size - 1) // chunk_size
+                if clock is None:
+                    clock = (time.monotonic(), 0.0)
+                for i in range(total_chunks):
+                    if not self.is_active or not self.is_agent_speaking:
+                        log.info("Speech playback stopped mid-stream.")
+                        return
+                    chunk = mulaw_bytes[i * chunk_size : (i + 1) * chunk_size]
+                    if len(chunk) < chunk_size:
+                        chunk += b"\xff" * (chunk_size - len(chunk))   # 0xFF is mu-law silence
+                    self.send_ws_json({
+                        "event": "media",
+                        "streamSid": self.stream_sid,
+                        "media": {"payload": base64.b64encode(chunk).decode("utf-8")},
+                    })
+                    start_wall, sent_secs = clock
+                    sent_secs += TWILIO_CHUNK_SECS
+                    clock = (start_wall, sent_secs)
+                    self._playing_progress = (done_len + len(sentence) * (i + 1) / total_chunks) / total_len
+                    # Stay at most PLAYBACK_LEAD_SECS ahead of real time.
+                    ahead = (start_wall + sent_secs) - time.monotonic() - PLAYBACK_LEAD_SECS
+                    if ahead > 0:
+                        await asyncio.sleep(ahead)
+                done_len += len(sentence)
+            self._playing_progress = 1.0
+            self._playing_text = ""
+        except asyncio.CancelledError:
+            if next_synth is not None and not next_synth.done():
+                next_synth.cancel()
+            raise
         finally:
             self.is_agent_speaking = False
 
@@ -349,20 +448,54 @@ class TwilioMediaStreamSession:
 
         return b""
 
-    def _convert_pcm_to_mulaw(self, pcm_bytes: bytes) -> bytes:
-        """Converts arbitrary audio bytes to 8000Hz 1-channel mu-law."""
+    def _convert_pcm_to_mulaw(self, audio_bytes: bytes) -> bytes:
+        """Converts WAV (any rate/channels) or other container audio to 8000Hz mono mu-law.
+
+        The fallback synthesizer returns 24 kHz WAV; feeding that straight to lin2ulaw played it at
+        a third of the speed, so we resample and down-mix first. Non-WAV containers (mp3) go through
+        PyAV when it is installed.
+        """
         try:
-            # Strip standard 44-byte WAV header if present
-            if pcm_bytes.startswith(b"RIFF") and len(pcm_bytes) > 44:
-                pcm_bytes = pcm_bytes[44:]
-            mulaw = audioop.lin2ulaw(pcm_bytes, 2)
-            return mulaw
-        except Exception:
+            if audio_bytes.startswith(b"RIFF"):
+                with wave.open(io.BytesIO(audio_bytes), "rb") as w:
+                    rate, channels, width = w.getframerate(), w.getnchannels(), w.getsampwidth()
+                    pcm = w.readframes(w.getnframes())
+                if width != 2:
+                    pcm = audioop.lin2lin(pcm, width, 2)
+                if channels == 2:
+                    pcm = audioop.tomono(pcm, 2, 0.5, 0.5)
+                if rate != TWILIO_SAMPLE_RATE:
+                    pcm, _ = audioop.ratecv(pcm, 2, 1, rate, TWILIO_SAMPLE_RATE, None)
+                return audioop.lin2ulaw(pcm, 2)
+            try:
+                import av  # PyAV ships with livekit-agents in the worker image
+            except ImportError:
+                log.warning("Fallback TTS returned non-WAV audio and PyAV is not installed; dropping it")
+                return b""
+            container = av.open(io.BytesIO(audio_bytes))
+            stream = next(st for st in container.streams if st.type == "audio")
+            resampler = av.AudioResampler(format="s16", layout="mono", rate=TWILIO_SAMPLE_RATE)
+            pcm = bytearray()
+            for frame in container.decode(stream):
+                for out in resampler.resample(frame):
+                    pcm.extend(out.to_ndarray().tobytes())
+            for out in resampler.resample(None):
+                pcm.extend(out.to_ndarray().tobytes())
+            container.close()
+            return audioop.lin2ulaw(bytes(pcm), 2)
+        except Exception as ex:
+            log.warning("Could not convert fallback TTS audio to mu-law: %s", ex)
             return b""
 
     async def on_stop(self) -> None:
-        """Called when Twilio emits the 'stop' event (call ended)."""
+        """Called when Twilio emits the 'stop' event (call ended). Runs once: the stream loop reaches
+        here both on the 'stop' event and on socket close, and a second run filed the call twice."""
+        if self._stopped:
+            return
+        self._stopped = True
         self.is_active = False
+        if self._current_speech_task and not self._current_speech_task.done():
+            self._current_speech_task.cancel()
         duration = time.time() - self.started_at
         log.info("Twilio Stream call completed: %s (duration: %.1fs)", self.call_sid, duration)
 
@@ -435,7 +568,7 @@ class TwilioMediaStreamSession:
                     "role": role,
                     "speaker": "Customer" if role == "user" else getattr(self.agent_cfg, "name", "AI Agent"),
                     "text": h.get("text", ""),
-                    "timestamp": self.started_at,
+                    "timestamp": h.get("timestamp", self.started_at),
                     "word_count": len(h.get("text", "").split()),
                 })
             if turns:
@@ -535,6 +668,16 @@ def handle_twilio_media_stream(handler, request_path: str) -> None:
     if not sec_key:
         handler.send_error(400, "Missing Sec-WebSocket-Key")
         return
+    # Only Twilio, carrying the token we put in the <Stream> URL, may open a media stream; anyone
+    # else could otherwise stream audio into our STT/LLM budget.
+    expected = media_stream_token()
+    if expected:
+        from urllib.parse import parse_qs, urlparse
+        presented = (parse_qs(urlparse(handler.path).query).get("token") or [""])[0]
+        if not hmac.compare_digest(presented, expected):
+            log.warning("Rejected media-stream WebSocket with bad/missing token from %s", handler.client_address)
+            handler.send_error(403, "Forbidden")
+            return
 
     # 1. Complete RFC 6455 Handshake
     accept_val = compute_ws_accept(sec_key)
