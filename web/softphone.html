@@ -457,10 +457,13 @@
   var callTimerInterval = null;
   var callStartTime = null;
   var isCallActive = false;
+  var isDialing = false;
   var isMuted = false;
   var isHeld = false;
   var isRecording = false;
   var dialedDigits = "";
+  var currentCallId = null;
+  var lastInboundRoute = null;
 
   function $(id) { return document.getElementById(id); }
 
@@ -574,6 +577,7 @@
     } else {
       // In-call DTMF transmission
       log("In-call DTMF touch-tone sent: '" + digit + "'");
+      var dtmfCallId = currentCallId || "softphone-call";
       if (room && room.state === "connected") {
         try {
           var payload = new TextEncoder().encode(JSON.stringify({
@@ -581,13 +585,21 @@
             digit: digit
           }));
           room.localParticipant.publishData(payload, { reliable: true, topic: "agent_control" });
-        } catch (e) {}
+        } catch (e) {
+          // Fallback to REST only if data channel failed
+          fetch("/api/telephony/dtmf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ call_id: dtmfCallId, digit: digit })
+          }).catch(function () {});
+        }
+      } else {
+        fetch("/api/telephony/dtmf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ call_id: dtmfCallId, digit: digit })
+        }).catch(function () {});
       }
-      fetch("/api/telephony/dtmf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ call_id: "softphone-call", digit: digit })
-      }).catch(function () {});
     }
   }
 
@@ -671,30 +683,36 @@
   });
 
   // Dial Outbound Call
-  async function dial() {
+  async function dial(customRoomName, isAnswerInbound) {
+    if (isCallActive || isDialing) {
+      log("Cannot dial: A call is already active or connecting.");
+      return;
+    }
+    isDialing = true;
+
     var numberToCall = dialedDigits || "+18005550199";
     var selectedAgentId = $("agent-select") ? $("agent-select").value.trim() : "";
     var selectedAgentObj = availableAgents.find(function (a) { return a.agent_id === selectedAgentId; });
     var agentDisplayName = selectedAgentObj ? selectedAgentObj.name : (selectedAgentId || "Auto (Default)");
 
-    log("Dialing destination: " + numberToCall + " via LiveKit SIP Gateway [Agent: " + agentDisplayName + "]...");
+    log((isAnswerInbound ? "Answering inbound call" : "Dialing destination: " + numberToCall) + " via LiveKit SIP Gateway [Agent: " + agentDisplayName + "]...");
 
-    $("lcd-state").textContent = "DIALING...";
+    $("lcd-state").textContent = isAnswerInbound ? "CONNECTING..." : "DIALING...";
     $("btn-dial").disabled = true;
     $("btn-hangup").disabled = false;
-    startRingbackTone();
+    if (!isAnswerInbound) startRingbackTone();
 
-    // Embed chosen agent in room name for instant worker dispatch
-    var roomName = selectedAgentId
+    // Embed chosen agent in room name for instant worker dispatch (unless customRoomName provided)
+    var roomName = customRoomName || (selectedAgentId
       ? ("softphone-" + selectedAgentId + "-" + Date.now().toString(36))
-      : ("softphone-" + Date.now().toString(36));
+      : ("softphone-" + Date.now().toString(36)));
 
     try {
       // Fetch token from serve.py
       var tokenUrl = "/token?room=" + encodeURIComponent(roomName) + "&identity=softphone-user" +
         (selectedAgentId ? "&agent=" + encodeURIComponent(selectedAgentId) : "");
       var res = await fetch(tokenUrl);
-      if (!res.ok) throw new Error("Failed to get join token");
+      if (!res.ok) throw new Error("Failed to get join token HTTP " + res.status);
       var tokenData = await res.json();
 
       stopRingbackTone();
@@ -750,6 +768,29 @@
         log("Microphone permission failed: " + micErr.message + ". Connected in listen-only mode.");
       }
 
+      // If outbound call, trigger and AWAIT outbound dialer API before showing CONNECTED
+      if (!isAnswerInbound) {
+        log("Triggering outbound SIP dial to destination " + numberToCall + "...");
+        var dialResp = await fetch("/api/telephony/dial", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            destination: numberToCall,
+            room: roomName,
+            caller_id: "+18005550199",
+            agent: selectedAgentId || undefined
+          })
+        });
+        var dialData = await dialResp.json();
+        if (!dialResp.ok || dialData.status === "error") {
+          throw new Error(dialData.error || ("Dial request failed HTTP " + dialResp.status));
+        }
+        currentCallId = (dialData.call && dialData.call.call_id) || roomName;
+      } else {
+        currentCallId = (lastInboundRoute && (lastInboundRoute.call_id || lastInboundRoute.room || lastInboundRoute.room_name)) || roomName;
+      }
+
+      isDialing = false;
       isCallActive = true;
       $("lcd-state").textContent = "CONNECTED (TALKING)";
       $("lcd-hold-status").textContent = "ACTIVE";
@@ -759,25 +800,12 @@
       $("btn-rec").disabled = false;
       $("btn-xfer").disabled = false;
       startTimer();
-
-      // Trigger outbound dialer API with chosen agent
-      fetch("/api/telephony/dial", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          destination: numberToCall,
-          room: roomName,
-          caller_id: "+18005550199",
-          agent: selectedAgentId || undefined
-        })
-      }).catch(function () {});
-
-      // Simulate VU meter activity
       simulateVUMeter();
 
-      log("Call connected successfully to " + numberToCall + " [Agent: " + agentDisplayName + "]");
+      log("Call connected successfully" + (isAnswerInbound ? " [Inbound]" : " to " + numberToCall) + " [Agent: " + agentDisplayName + ", Call ID: " + currentCallId + "]");
 
     } catch (err) {
+      isDialing = false;
       stopRingbackTone();
       log("Dialing failed: " + err.message);
       hangup();
@@ -788,9 +816,18 @@
   function hangup() {
     stopRingbackTone();
     stopTimer();
+    isDialing = false;
     if (room) {
       try { room.disconnect(); } catch (e) {}
       room = null;
+    }
+    if (currentCallId) {
+      fetch("/api/telephony/calls/hangup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: currentCallId })
+      }).catch(function () {});
+      currentCallId = null;
     }
     isCallActive = false;
     isMuted = false;
@@ -819,9 +856,10 @@
   // Toggle Mute
   async function toggleMute() {
     if (!room || !isCallActive) return;
-    isMuted = !isMuted;
+    var targetMute = !isMuted;
     try {
-      await room.localParticipant.setMicrophoneEnabled(!isMuted);
+      await room.localParticipant.setMicrophoneEnabled(!targetMute);
+      isMuted = targetMute;
       if (isMuted) {
         $("btn-mute").classList.add("active");
         $("btn-mute-text").textContent = "Unmute";
@@ -830,36 +868,67 @@
       } else {
         $("btn-mute").classList.remove("active");
         $("btn-mute-text").textContent = "Mute";
-        $("lcd-state").textContent = "CONNECTED (TALKING)";
+        $("lcd-state").textContent = isHeld ? "ON HOLD" : "CONNECTED (TALKING)";
         log("Microphone unmuted");
       }
-    } catch (e) {}
+    } catch (e) {
+      log("Failed to toggle microphone mute: " + e.message);
+    }
   }
 
   // Toggle Hold
   async function toggleHold() {
     if (!room || !isCallActive) return;
-    isHeld = !isHeld;
-    if (isHeld) {
-      $("btn-hold").classList.add("active");
-      $("btn-hold-text").textContent = "Unhold";
-      $("lcd-state").textContent = "ON HOLD";
-      $("lcd-hold-status").textContent = "HELD";
-      $("lcd-hold-status").style.color = "var(--warn)";
-      log("Call placed on hold (Hold Music playing)");
-    } else {
-      $("btn-hold").classList.remove("active");
-      $("btn-hold-text").textContent = "Hold";
-      $("lcd-state").textContent = "CONNECTED (TALKING)";
-      $("lcd-hold-status").textContent = "ACTIVE";
-      $("lcd-hold-status").style.color = "var(--ok)";
-      log("Call resumed from hold");
+    var targetHeld = !isHeld;
+    try {
+      if (targetHeld) {
+        // Mute mic so audio is not broadcast while on hold
+        await room.localParticipant.setMicrophoneEnabled(false);
+      } else {
+        // Restore mic state unless user explicitly muted
+        if (!isMuted) {
+          await room.localParticipant.setMicrophoneEnabled(true);
+        }
+      }
+
+      if (room.localParticipant) {
+        room.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({ action: "hold_call", hold: targetHeld })),
+          { reliable: true, topic: "agent_control" }
+        ).catch(function () {});
+      }
+
+      var resp = await fetch("/api/telephony/hold", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: currentCallId || "softphone-call", hold: targetHeld })
+      });
+      if (!resp.ok) {
+        throw new Error("HTTP " + resp.status);
+      }
+
+      isHeld = targetHeld;
+      if (isHeld) {
+        $("btn-hold").classList.add("active");
+        $("btn-hold-text").textContent = "Unhold";
+        $("lcd-state").textContent = "ON HOLD";
+        $("lcd-hold-status").textContent = "HELD";
+        $("lcd-hold-status").style.color = "var(--warn)";
+        log("Call placed on hold (Mic muted & Hold Music playing)");
+      } else {
+        $("btn-hold").classList.remove("active");
+        $("btn-hold-text").textContent = "Hold";
+        $("lcd-state").textContent = isMuted ? "MUTED" : "CONNECTED (TALKING)";
+        $("lcd-hold-status").textContent = "ACTIVE";
+        $("lcd-hold-status").style.color = "var(--ok)";
+        log("Call resumed from hold");
+      }
+    } catch (e) {
+      log("Hold toggle failed: " + e.message);
+      try {
+        if (!isMuted && !isHeld) await room.localParticipant.setMicrophoneEnabled(true);
+      } catch (err) {}
     }
-    fetch("/api/telephony/hold", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ call_id: "softphone-call", hold: isHeld })
-    }).catch(function () {});
   }
 
   // Toggle Recording
@@ -873,7 +942,7 @@
       fetch("/api/telephony/recording/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ call_id: "softphone-call", compliance_mode: "two_party" })
+        body: JSON.stringify({ call_id: currentCallId || "softphone-call", compliance_mode: "two_party" })
       }).catch(function () {});
     } else {
       $("btn-rec").classList.remove("active");
@@ -882,7 +951,7 @@
       fetch("/api/telephony/recording/stop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ call_id: "softphone-call" })
+        body: JSON.stringify({ call_id: currentCallId || "softphone-call" })
       }).catch(function () {});
     }
   }
@@ -896,7 +965,7 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        call_id: "softphone-call",
+        call_id: currentCallId || "softphone-call",
         target_number: target,
         mode: "warm",
         department: "support",
@@ -940,11 +1009,16 @@
   $("btn-accept-call").addEventListener("click", function () {
     if (inboundInterval) clearInterval(inboundInterval);
     $("incoming-banner").style.display = "none";
+    var inboundRoom = (lastInboundRoute && (lastInboundRoute.room || lastInboundRoute.room_name)) || null;
     var dialedDID = $("sim-to-number").value.trim() || "+18005550199";
-    log("Inbound call answered for DID " + dialedDID);
+    log("Inbound call answered for DID " + dialedDID + (inboundRoom ? " [Joining room: " + inboundRoom + "]" : ""));
     dialedDigits = dialedDID;
     updateLCD();
-    dial();
+    if (inboundRoom) {
+      dial(inboundRoom, true);
+    } else {
+      dial();
+    }
   });
 
   $("btn-decline-call").addEventListener("click", function () {
