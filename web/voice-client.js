@@ -182,29 +182,31 @@
   function VoiceAgentClient(config) {
     EventEmitter.call(this);
 
-    this.config = Object.assign(
-      {
-        url: null,
-        token: null,
-        tokenEndpoint: "/token",
-        room: "test-room",
-        identity: "caller-" + Math.random().toString(36).substring(2, 7),
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        reconnect: {
-          enabled: true,
-          maxRetries: 5,
-          initialDelayMs: 1000,
-          maxDelayMs: 10000,
-          backoffMultiplier: 1.5,
-        },
-        autoSubscribeAudio: true,
+    var defaults = {
+      url: null,
+      token: null,
+      tokenEndpoint: "/token",
+      room: "test-room",
+      identity: "caller-" + Math.random().toString(36).substring(2, 7),
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
       },
-      config || {}
-    );
+      reconnect: {
+        enabled: true,
+        maxRetries: 5,
+        initialDelayMs: 1000,
+        maxDelayMs: 10000,
+        backoffMultiplier: 1.5,
+      },
+      autoSubscribeAudio: true,
+    };
+    var cfg = config || {};
+    this.config = Object.assign({}, defaults, cfg, {
+      audio: Object.assign({}, defaults.audio, cfg.audio || {}),
+      reconnect: Object.assign({}, defaults.reconnect, cfg.reconnect || {}),
+    });
 
     this.state = ConnectionState.DISCONNECTED;
     this.room = null;
@@ -218,6 +220,8 @@
     this._meterRafId = null;
     this._remoteAudioElement = null;
     this._explicitDisconnect = false;
+    this._connecting = false;
+    this._aborted = false;
   }
 
   // Inherit EventEmitter
@@ -271,7 +275,7 @@
    * Connect to Voice Agent room
    */
   VoiceAgentClient.prototype.connect = async function (options) {
-    if (this.state === ConnectionState.CONNECTED || this.state === ConnectionState.CONNECTING) {
+    if (this._connecting || this.state === ConnectionState.CONNECTED || this.state === ConnectionState.CONNECTING) {
       return this;
     }
 
@@ -283,6 +287,8 @@
     }
 
     this._explicitDisconnect = false;
+    this._aborted = false;
+    this._connecting = true;
     this._setState(ConnectionState.CONNECTING);
 
     var LK = LiveKitClient || (typeof window !== "undefined" ? (window.LivekitClient || window.LiveKitClient || window.livekit) : null);
@@ -313,9 +319,22 @@
         self.emit("roomConnected", { roomName: room.name, localParticipant: room.localParticipant });
       });
 
-      room.on(LK.RoomEvent.Disconnected, function () {
+      room.on(LK.RoomEvent.Disconnected, function (reason) {
         self._cleanupAudio();
-        if (!self._explicitDisconnect && self.config.reconnect.enabled) {
+        var isServerCloseOrIntentional = (
+          self._explicitDisconnect ||
+          reason === 1 /* CLIENT_INITIATED */ ||
+          reason === 2 /* DUPLICATE_IDENTITY */ ||
+          reason === 4 /* PARTICIPANT_REMOVED */ ||
+          reason === 5 /* ROOM_DELETED */ ||
+          (typeof reason === "string" && (
+            reason.toLowerCase().indexOf("client") !== -1 ||
+            reason.toLowerCase().indexOf("deleted") !== -1 ||
+            reason.toLowerCase().indexOf("removed") !== -1 ||
+            reason.toLowerCase().indexOf("duplicate") !== -1
+          ))
+        );
+        if (!isServerCloseOrIntentional && self.config.reconnect.enabled) {
           self._handleReconnect();
         } else {
           self._setState(ConnectionState.DISCONNECTED);
@@ -328,6 +347,7 @@
 
       room.on(LK.RoomEvent.Reconnected, function () {
         self._setState(ConnectionState.CONNECTED);
+        self._startAudioLevelMeter();
         self.emit("reconnected");
       });
 
@@ -444,6 +464,14 @@
       // Connect WebRTC room
       await room.connect(wsUrl, jwt);
 
+      if (this._aborted || this._explicitDisconnect) {
+        this._cleanupAudio();
+        try { await room.disconnect(); } catch (ignore) {}
+        this.room = null;
+        this._setState(ConnectionState.DISCONNECTED);
+        return this;
+      }
+
       // Publish local microphone
       try {
         await room.localParticipant.setMicrophoneEnabled(true);
@@ -457,14 +485,28 @@
         console.warn("Microphone not available or permission denied:", micErr);
       }
 
+      if (this._aborted || this._explicitDisconnect) {
+        this._cleanupAudio();
+        try { await room.disconnect(); } catch (ignore) {}
+        this.room = null;
+        this._setState(ConnectionState.DISCONNECTED);
+        return this;
+      }
+
       this._startAudioLevelMeter();
 
       return this;
     } catch (e) {
       this._cleanupAudio();
+      if (this._aborted || this._explicitDisconnect) {
+        this._setState(ConnectionState.DISCONNECTED);
+        return this;
+      }
       this._setState(ConnectionState.FAILED, e);
       this.emit("error", e);
       throw e;
+    } finally {
+      this._connecting = false;
     }
   };
 
@@ -473,13 +515,16 @@
    */
   VoiceAgentClient.prototype.disconnect = async function () {
     this._explicitDisconnect = true;
+    this._aborted = true;
     if (this._reconnectTimer) {
       clearTimeout(this._reconnectTimer);
       this._reconnectTimer = null;
     }
     this._cleanupAudio();
     if (this.room) {
-      await this.room.disconnect();
+      try {
+        await this.room.disconnect();
+      } catch (e) {}
       this.room = null;
     }
     this._setState(ConnectionState.DISCONNECTED);
@@ -511,6 +556,9 @@
     this._reconnectTimer = setTimeout(function () {
       self.connect().catch(function (err) {
         console.warn("Reconnection attempt " + self._retryCount + " failed:", err);
+        if (!self._explicitDisconnect && self.config.reconnect.enabled) {
+          self._handleReconnect();
+        }
       });
     }, delay);
   };
@@ -612,12 +660,19 @@
   VoiceAgentClient.prototype._startAudioLevelMeter = function () {
     var self = this;
     if (typeof window === "undefined") return;
+    if (this._meterRafId && typeof cancelAnimationFrame !== "undefined") {
+      cancelAnimationFrame(this._meterRafId);
+      this._meterRafId = null;
+    }
 
     var localBuf = new Uint8Array(128);
     var remoteBuf = new Uint8Array(128);
 
     function tick() {
-      if (self.state !== ConnectionState.CONNECTED) return;
+      if (self.state !== ConnectionState.CONNECTED) {
+        self._meterRafId = null;
+        return;
+      }
       self._meterRafId = requestAnimationFrame(tick);
 
       var localLevel = 0;

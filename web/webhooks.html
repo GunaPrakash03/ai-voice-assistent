@@ -635,10 +635,14 @@ function verifyWebhook(secret, bodyStr, timestamp, signature) {
           api("/api/webhooks/test", { endpoint_id: b.dataset.id, event: "call.completed", payload: { ping: true, time: Date.now() } })
             .then(function (res) {
               b.disabled = false; b.textContent = "Test";
-              if (res.status === "ok") {
-                toast("Test event delivered (HTTP " + ((res.delivery.attempts.slice(-1)[0] || {}).status_code || 200) + ")");
+              var dl = res.delivery || {};
+              var last = ((dl.attempts && dl.attempts.slice(-1)[0]) || {});
+              var code = last.status_code || null;
+              var ok = dl.status === "delivered";
+              if (res.status === "ok" && ok) {
+                toast("Test event delivered" + (code ? " (HTTP " + code + ")" : ""));
               } else {
-                toast("Test failed: " + (res.error || "Unknown error"));
+                toast("Test failed: " + (last.error || res.error || (code ? "HTTP " + code : "Delivery failed")));
               }
               loadDeliveries(); loadStats();
             }).catch(function () { b.disabled = false; b.textContent = "Test"; toast("Network error during test"); });
@@ -650,8 +654,13 @@ function verifyWebhook(secret, bodyStr, timestamp, signature) {
           if (!confirm("Rotate secret for this endpoint? Existing integrations must update their secret.")) return;
           api("/api/webhooks/rotate", { endpoint_id: b.dataset.id }).then(function (res) {
             if (res.status === "ok") {
-              toast("Secret rotated: " + res.endpoint.secret);
+              var newSec = (res.endpoint && res.endpoint.secret) || "";
               loadEndpoints();
+              if (newSec) {
+                prompt("Secret rotated! Save this new Webhook Secret safely (it will not be displayed again):", newSec);
+              } else {
+                toast("Secret rotated successfully");
+              }
             } else { toast("Rotation failed: " + res.error); }
           });
         });
@@ -669,7 +678,12 @@ function verifyWebhook(secret, bodyStr, timestamp, signature) {
 
       document.querySelectorAll(".ep-copy").forEach(function (b) {
         b.addEventListener("click", function () {
-          navigator.clipboard.writeText(b.dataset.secret || "");
+          var s = b.dataset.secret || "";
+          if (!s || s.indexOf("••") !== -1 || s.indexOf("...") !== -1) {
+            toast("Secret is hidden for security. Rotate secret to view a new plaintext secret.");
+            return;
+          }
+          navigator.clipboard.writeText(s);
           toast("Secret copied to clipboard");
         });
       });
@@ -725,8 +739,16 @@ function verifyWebhook(secret, bodyStr, timestamp, signature) {
         b.disabled = true; b.textContent = "Replaying...";
         api("/api/webhooks/replay", { delivery_id: b.dataset.id }).then(function (res) {
           b.disabled = false; b.textContent = "Replay";
-          if (res.status === "ok") { toast("Replay dispatched (HTTP " + ((res.delivery.attempts.slice(-1)[0] || {}).status_code || 200) + ")"); loadDeliveries(); loadStats(); }
-          else { toast("Replay error: " + res.error); }
+          var dl = res.delivery || {};
+          var last = ((dl.attempts && dl.attempts.slice(-1)[0]) || {});
+          var code = last.status_code || null;
+          var ok = dl.status === "delivered";
+          if (res.status === "ok" && ok) {
+            toast("Replay delivered" + (code ? " (HTTP " + code + ")" : ""));
+            loadDeliveries(); loadStats();
+          } else {
+            toast("Replay failed: " + (last.error || res.error || (code ? "HTTP " + code : "Delivery failed")));
+          }
         });
       });
     });
@@ -789,8 +811,16 @@ function verifyWebhook(secret, bodyStr, timestamp, signature) {
         b.disabled = true; b.textContent = "Retrying...";
         api("/api/webhooks/replay", { delivery_id: b.dataset.id }).then(function (res) {
           b.disabled = false; b.textContent = "⚡ Replay";
-          if (res.status === "ok") { toast("Replayed dead-letter delivery"); loadDeliveries(); loadStats(); }
-          else { toast("Replay failed: " + res.error); }
+          var dl = res.delivery || {};
+          var last = ((dl.attempts && dl.attempts.slice(-1)[0]) || {});
+          var code = last.status_code || null;
+          var ok = dl.status === "delivered";
+          if (res.status === "ok" && ok) {
+            toast("Replayed dead-letter delivery" + (code ? " (HTTP " + code + ")" : ""));
+            loadDeliveries(); loadStats();
+          } else {
+            toast("Replay failed: " + (last.error || res.error || (code ? "HTTP " + code : "Delivery failed")));
+          }
         });
       });
     });
@@ -812,20 +842,31 @@ function verifyWebhook(secret, bodyStr, timestamp, signature) {
   $("formNewEndpoint").addEventListener("submit", function (e) {
     e.preventDefault();
     var events = Array.from(document.querySelectorAll("#modalEndpoint .ev:checked")).map(function (c) { return c.value; });
+    if (!events.length) {
+      toast("Please select at least one subscribed event.");
+      return;
+    }
+    var schemaFormat = $("modalFormat") ? $("modalFormat").value : "standard";
     $("btnSubmitEndpoint").disabled = true;
     api("/api/webhooks/register", {
       url: $("modalUrl").value.trim(),
       description: $("modalName").value.trim(),
       secret: $("modalSecret").value.trim() || null,
       timeout_s: parseFloat($("modalTimeout").value) || 10,
-      events: events
+      events: events,
+      schema_format: schemaFormat
     }).then(function (res) {
       $("btnSubmitEndpoint").disabled = false;
       if (res.status === "ok") {
-        toast("Endpoint registered! Secret: " + (res.endpoint ? res.endpoint.secret : ""));
+        var sec = res.endpoint ? res.endpoint.secret : "";
         $("modalEndpoint").classList.remove("open");
         $("formNewEndpoint").reset();
         loadEndpoints(); loadStats();
+        if (sec) {
+          prompt("Endpoint registered! Save this Webhook Secret safely now (it will not be displayed again in plaintext):", sec);
+        } else {
+          toast("Endpoint registered!");
+        }
       } else {
         toast("Registration error: " + res.error);
       }
@@ -891,12 +932,12 @@ function verifyWebhook(secret, bodyStr, timestamp, signature) {
       var roundtrip = Date.now() - t0;
       var dl = res.delivery || {};
       var last = (dl.attempts || []).slice(-1)[0] || {};
-      var code = last.status_code || 200;
-      var ok = dl.status === "delivered" || (code >= 200 && code < 300);
-      $("simResultMeta").textContent = ok ? "Acknowledged in " + roundtrip + " ms" : "Failed with status " + code;
+      var code = last.status_code || null;
+      var ok = dl.status === "delivered";
+      $("simResultMeta").textContent = ok ? "Acknowledged in " + roundtrip + " ms" : "Failed" + (code ? " with status " + code : (last.error ? " (" + last.error + ")" : ""));
       $("simResultBody").innerHTML =
         "<div style='margin-bottom:12px;display:flex;align-items:center;gap:10px'>" +
-          "<span class='pill " + (ok ? "pos" : "neg") + "'>" + (ok ? "HTTP " + code + " SUCCESS" : "FAILED") + "</span>" +
+          "<span class='pill " + (ok ? "pos" : "neg") + "'>" + (ok ? ("HTTP " + (code || 200) + " SUCCESS") : (code ? "HTTP " + code + " FAILED" : "FAILED")) + "</span>" +
           "<span class='mono' style='font-size:12px'>" + roundtrip + " ms execution</span>" +
         "</div>" +
         "<div class='crumb'>GENERATED REQUEST HEADERS</div>" +
@@ -1014,7 +1055,7 @@ function verifyWebhook(secret, bodyStr, timestamp, signature) {
       if (d.status !== "ok") { $("pvMeta").textContent = ""; $("pvBody").innerHTML = "<div class='msg err'>" + esc(d.error || "Preview failed") + "</div>"; return; }
       $("pvMeta").textContent = "Call " + d.call_id + " · Coverage " + Math.round((d.coverage || 0) * 100) + "%";
       var rows = (d.fields || []).map(function (f) {
-        return "<tr><td class='mono'>" + esc(f.field_name) + "</td><td><b>" + esc(String(f.value || "—")) + "</b></td><td>" + Math.round((f.confidence || 0) * 100) + "%</td></tr>";
+        return "<tr><td class='mono'>" + esc(f.field_name) + "</td><td><b>" + esc(f.value == null ? "—" : String(f.value)) + "</b></td><td>" + Math.round((f.confidence || 0) * 100) + "%</td></tr>";
       }).join("");
       $("pvBody").innerHTML = "<table><thead><tr><th>Field</th><th>Value</th><th>Confidence</th></tr></thead><tbody>" + rows + "</tbody></table>" +
         "<div style='margin-top:10px'><div class='crumb'>EXTRACTED WEBHOOK DATA</div><pre>" + esc(JSON.stringify(d.values || {}, null, 2)) + "</pre></div>";

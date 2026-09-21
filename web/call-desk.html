@@ -269,10 +269,10 @@
         <h1 id="title">Call history</h1>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button id="btnSimulate" class="btn" title="Generate and execute a real live dynamic call through the AI pipeline">
+        <button id="btnSimulate" class="btn" title="Generate and execute a real live dynamic call through the AI pipeline" data-admin-only>
           Simulate Inbound Call
         </button>
-        <button id="btnOpenMarket" class="btn ghost" title="Browse and purchase carrier phone numbers">
+        <button id="btnOpenMarket" class="btn ghost" title="Browse and purchase carrier phone numbers" data-admin-only>
           Buy Phone Number
         </button>
         <button id="btnSyncToggle" class="btn ghost" title="Toggle real-time auto-refresh polling">
@@ -1073,7 +1073,7 @@
     var fields = call.extracted_fields || {};
     var keys = Object.keys(fields);
     $("#extracted").innerHTML = keys.length
-      ? keys.map(function (k) { return kv(k, CI.escapeHtml(String(fields[k]))); }).join("")
+      ? keys.map(function (k) { return kv(CI.escapeHtml(k), CI.escapeHtml(String(fields[k]))); }).join("")
       : '<div class="empty">No fields extracted for this call.</div>';
   }
 
@@ -1092,11 +1092,12 @@
   // ── SIP Trunks & Phone Numbers ────────────────────────────────────────────
   function loadTelephony() {
     // Resolves once the numbers are in, so show("market") can switch to the marketplace sub-tab.
-    loadAgents();
-    var owned = loadOwnedNumbers();
-    loadAvailableNumbers();
-    loadTrunksAndRules();
-    return Promise.resolve(owned).catch(function () {});
+    return Promise.resolve(loadAgents()).catch(function () {}).then(function () {
+      var owned = loadOwnedNumbers();
+      loadAvailableNumbers();
+      loadTrunksAndRules();
+      return owned;
+    });
   }
 
   function loadOwnedNumbers() {
@@ -1144,24 +1145,38 @@
 
       // Bind inline agent selector change
       Array.prototype.forEach.call(document.querySelectorAll(".agent-inline-select"), function (sel) {
+        var prevAgent = sel.value;
+        sel.addEventListener("focus", function () { prevAgent = sel.value; });
         sel.addEventListener("change", function () {
           var num = sel.dataset.num;
           var agentName = sel.value;
-          var trunkId = sel.dataset.trunk || "trunk-inbound-primary";
           sel.disabled = true;
           fetch("/api/telephony/numbers/route", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               phone_number: num,
-              agent_name: agentName,
-              trunk_id: trunkId
+              agent_name: agentName
             })
-          }).then(function (r) { return r.json(); }).then(function (res) {
+          }).then(function (r) {
+            if (!r.ok) {
+              return r.json().catch(function() { return {}; }).then(function(err) {
+                throw new Error((err && err.error) || ("HTTP " + r.status));
+              });
+            }
+            return r.json();
+          }).then(function (res) {
             sel.disabled = false;
+            if (!res || res.status !== "ok") {
+              sel.value = prevAgent;
+              showToast("Routing failed: " + ((res && res.error) || "Unknown error"));
+              return;
+            }
+            prevAgent = agentName;
             showToast(num + " assigned to " + agentName);
           }).catch(function (e) {
             sel.disabled = false;
+            sel.value = prevAgent;
             showToast("Routing error: " + e.message);
           });
         });
@@ -1739,6 +1754,17 @@
     });
   }
 
+  function closeModals() {
+    document.querySelectorAll(".modal-overlay.open").forEach(function (m) {
+      m.classList.remove("open");
+    });
+  }
+  window.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      closeModals();
+    }
+  });
+
   async function releaseNumber(num) {
     if (!(await uiConfirm("Release phone number " + num + "? Incoming calls to this number will stop.", {title:"Release number", okText:"Release"}))) {
       return;
@@ -1779,8 +1805,10 @@
             .catch(function (e) { $("#agentList").insertAdjacentHTML("afterbegin", '<div class="empty" style="color:var(--neg)">Could not set live: ' + CI.escapeHtml(String(e.message || e)) + '</div>'); });
         });
       });
+      return agents;
     }).catch(function () {
       $("#agentList").innerHTML = '<div class="empty">Agent API unavailable.</div>';
+      return [];
     });
   }
 

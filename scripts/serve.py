@@ -1951,6 +1951,7 @@ class Handler(SimpleHTTPRequestHandler):
                     max_attempts=int(payload.get("max_attempts", 4)),
                     timeout_s=float(payload.get("timeout_s", 10)),
                     headers=payload.get("headers"),
+                    schema_format=payload.get("schema_format", "standard"),
                 )
             except ValueError as e:
                 self._send_json({"status": "error", "error": str(e)}, 400)
