@@ -49,6 +49,11 @@
   foot.insertBefore(card, foot.firstChild);
 
   var $ = function (id) { return document.getElementById(id); };
+  // The quick role switcher is a dev tool: /switch-role only answers from localhost, so only show it there.
+  if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+    var sw = $("rpRoleSwitchers");
+    if (sw) sw.remove();
+  }
   var profile = null;
 
   function initials(name, email) {
