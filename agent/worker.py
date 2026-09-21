@@ -1195,18 +1195,22 @@ async def entrypoint(ctx: agents.JobContext):
             }, topic="amd_state", reliable=True)
 
         elif action == "configure_amd":
-            cfg_kwargs = {}
+            s = amd_manager.get_session(ctx.room.name)
+            existing_cfg = s.config if s else VoicemailDropConfig()
+            merged_dict = existing_cfg.dict() if hasattr(existing_cfg, "dict") else dict(existing_cfg.__dict__)
             if "enabled" in data:
-                cfg_kwargs["enabled"] = bool(data["enabled"])
+                merged_dict["enabled"] = bool(data["enabled"])
             if "message" in data:
-                cfg_kwargs["message"] = str(data["message"])
+                merged_dict["message"] = str(data["message"])
             if "action_on_machine" in data:
-                cfg_kwargs["action_on_machine"] = AMDAction(data["action_on_machine"])
+                merged_dict["action_on_machine"] = AMDAction(data["action_on_machine"])
             if "beep_detection_enabled" in data:
-                cfg_kwargs["beep_detection_enabled"] = bool(data["beep_detection_enabled"])
-            cfg = VoicemailDropConfig(**cfg_kwargs)
-            s = amd_manager.get_or_create_session(ctx.room.name, cfg)
-            s.config = cfg
+                merged_dict["beep_detection_enabled"] = bool(data["beep_detection_enabled"])
+            cfg = VoicemailDropConfig(**merged_dict)
+            if s:
+                s.config = cfg
+            else:
+                s = amd_manager.get_or_create_session(ctx.room.name, cfg)
             publish({
                 "type": "amd_state",
                 "call_id": ctx.room.name,
@@ -1488,8 +1492,8 @@ async def entrypoint(ctx: agents.JobContext):
                 llm_manager.system_instruction = cfg.system_prompt
                 llm_manager.context.system_instruction = cfg.system_prompt
                 llm_manager.temperature = cfg.temperature
-                if cfg.llm_model:
-                    llm_manager.configure_backend(model=cfg.llm_model)
+                target_model = cfg.llm_model if cfg.llm_model else LLM_MODEL
+                llm_manager.configure_backend(model=target_model)
                 llm_manager.enabled_tools = set(cfg.tools or [])
                 voice_opt = agent_builder.get_voice(cfg.voice_id)
                 tts_manager.apply_voice(
@@ -1689,16 +1693,25 @@ async def entrypoint(ctx: agents.JobContext):
             except Exception:
                 pass
 
+    finalize_task: Optional[asyncio.Task] = None
+
     @ctx.room.on("participant_disconnected")
     def on_participant_left(participant):
+        nonlocal finalize_task
         if not [p for p in ctx.room.remote_participants.values() if p.identity != participant.identity]:
-            t = asyncio.create_task(finalize_call("caller_left"))
-            pending.add(t)
-            t.add_done_callback(pending.discard)
-            t.add_done_callback(lambda _t: ctx.shutdown(reason="caller left"))
+            finalize_task = asyncio.create_task(finalize_call("caller_left"))
+            pending.add(finalize_task)
+            finalize_task.add_done_callback(pending.discard)
+            finalize_task.add_done_callback(lambda _t: ctx.shutdown(reason="caller left"))
 
     async def _on_shutdown():
-        await finalize_call("shutdown")
+        if finalize_task and not finalize_task.done():
+            try:
+                await finalize_task
+            except Exception as e:
+                log.debug("Awaiting finalize_task during shutdown: %s", e)
+        else:
+            await finalize_call("shutdown")
     ctx.add_shutdown_callback(_on_shutdown)
 
     # Real callers expect the agent to speak first (Agent Builder "Who speaks first" = AI). Play the

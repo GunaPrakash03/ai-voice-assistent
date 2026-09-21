@@ -108,8 +108,10 @@ class ConversationContextBuffer:
         msgs = [{"role": "system", "content": self.system_instruction}]
         for m in self._history:
             content = m.content
-            if m.interrupted:
+            if m.interrupted and content.strip():
                 content += " [caller interrupted]"
+            elif m.interrupted and not content.strip():
+                continue
             msgs.append({"role": m.role, "content": content})
         return msgs
 
@@ -1057,7 +1059,11 @@ class StreamingDialogueManager:
         except asyncio.CancelledError:
             interrupted = True
             total_text = "".join(accumulated_text).strip()
-            self.context.add_assistant_message(total_text, interrupted=True)
+            if total_text:
+                self.context.add_assistant_message(total_text, interrupted=True)
+            elif self.context._history and self.context._history[-1].role == "user":
+                # Unanswered user turn is folded into next turn; remove to prevent duplicate
+                self.context._history.pop()
             cur = asyncio.current_task()
             if cur and cur.cancelling() > 0:
                 raise
@@ -1072,7 +1078,8 @@ class StreamingDialogueManager:
 
         # Commit response to context buffer if not already committed on cancel
         if not interrupted or (not self.context._history or self.context._history[-1].role != "assistant"):
-            self.context.add_assistant_message(total_text, interrupted=interrupted)
+            if total_text or not interrupted:
+                self.context.add_assistant_message(total_text, interrupted=interrupted)
 
         metrics = {
             "text": total_text,
