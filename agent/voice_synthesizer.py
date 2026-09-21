@@ -14,8 +14,10 @@ import json
 import logging
 import os
 import re
+import threading
 import urllib.error
 import urllib.request
+from collections import OrderedDict
 from typing import Dict, Optional
 
 log = logging.getLogger("voice-synthesizer")
@@ -49,7 +51,27 @@ _load_dotenv_once()
 
 
 # Global in-memory cache for ultra-fast instant audio playback (<5ms response)
-_AUDIO_CACHE: Dict[str, bytes] = {}
+# Bounded LRU cache capped to prevent unbounded memory growth (OOM)
+_AUDIO_CACHE: OrderedDict[str, bytes] = OrderedDict()
+_AUDIO_CACHE_MAX_ENTRIES = 500
+_AUDIO_CACHE_LOCK = threading.RLock()
+
+
+def _cache_put(key: str, data: bytes) -> None:
+    with _AUDIO_CACHE_LOCK:
+        if key in _AUDIO_CACHE:
+            _AUDIO_CACHE.move_to_end(key)
+        _AUDIO_CACHE[key] = data
+        while len(_AUDIO_CACHE) > _AUDIO_CACHE_MAX_ENTRIES:
+            _AUDIO_CACHE.popitem(last=False)
+
+
+def _cache_get(key: str) -> Optional[bytes]:
+    with _AUDIO_CACHE_LOCK:
+        if key in _AUDIO_CACHE:
+            _AUDIO_CACHE.move_to_end(key)
+            return _AUDIO_CACHE[key]
+        return None
 
 # Which engine actually produced the last clip for a voice, and why a fallback was used.
 # Keyed by voice_id so the API layer can tell the UI "you picked Fiona, you are hearing Jenny".
@@ -57,6 +79,8 @@ _LAST_ENGINE: Dict[str, Dict[str, str]] = {}
 # Voices the configured ElevenLabs plan refuses (HTTP 402 "paid_plan_required"). Remembered so
 # every reply does not pay a ~1 s round-trip just to be refused again.
 _PLAN_LOCKED_VOICES: Dict[str, str] = {}
+# Process lifetime memoization for probe results so billable probes are not fired repeatedly per call/page load
+_PROBE_CACHE: Dict[str, str] = {}
 
 
 def _note_engine(voice_id: str, engine: str, fallback_reason: str = "") -> None:
@@ -98,6 +122,8 @@ def _elevenlabs_probe(voice_id: str, api_key: str) -> str:
     """"" if the plan can synthesize this voice, else the reason. One 2-character request, remembered."""
     if voice_id in _PLAN_LOCKED_VOICES:
         return _PLAN_LOCKED_VOICES[voice_id]
+    if voice_id in _PROBE_CACHE:
+        return _PROBE_CACHE[voice_id]
     try:
         req = urllib.request.Request(
             f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format=mp3_22050_32",
@@ -105,6 +131,7 @@ def _elevenlabs_probe(voice_id: str, api_key: str) -> str:
             headers={"xi-api-key": api_key, "Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=8.0) as resp:
             resp.read(64)
+        _PROBE_CACHE[voice_id] = ""
         return ""
     except urllib.error.HTTPError as e:
         detail = ""
@@ -115,9 +142,12 @@ def _elevenlabs_probe(voice_id: str, api_key: str) -> str:
         reason = f"ElevenLabs plan does not allow this voice via the API (402: {detail or 'paid plan required'})" if e.code == 402 else f"ElevenLabs API error {e.code}"
         if e.code == 402:
             _PLAN_LOCKED_VOICES[voice_id] = reason
+        _PROBE_CACHE[voice_id] = reason
         return reason
     except Exception as e:
-        return f"ElevenLabs unreachable: {e}"
+        reason = f"ElevenLabs unreachable: {e}"
+        _PROBE_CACHE[voice_id] = reason
+        return reason
 
 
 def voice_engine_readiness(voice_id: str, provider: str, gender: str = "female") -> Dict[str, object]:
@@ -589,7 +619,10 @@ def clean_spoken_speech_text(text: str) -> str:
     t = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", t)
 
     # 6. Remove Markdown formatting: **bold**, *italic*, ## headings, `code`, bullets
-    t = re.sub(r"[*_~`#]", " ", t)
+    # Preserve _ inside emails/identifiers (john_doe@...) and # before digits (#4)
+    t = re.sub(r"(?<![a-zA-Z0-9])_|_+(?![a-zA-Z0-9])", " ", t)
+    t = re.sub(r"(?<!\w)#+(?!\d)", " ", t)
+    t = re.sub(r"[*~`]", " ", t)
     t = re.sub(r"^\s*[-*+]\s+", "", t, flags=re.M)
     t = re.sub(r"^\s*\d+\.\s+", "", t, flags=re.M)
 
@@ -605,7 +638,7 @@ def clean_spoken_speech_text(text: str) -> str:
     #    readback, so the caller answered a question they never heard.
     sentences = re.split(r"(?<=[.!?])\s+", t)
     if sentences:
-        clean_sentences = [s.strip() for s in sentences if len(s.strip()) > 3]
+        clean_sentences = [s.strip() for s in sentences if s.strip()]
         if len(clean_sentences) > MAX_SPOKEN_SENTENCES:
             kept = clean_sentences[:MAX_SPOKEN_SENTENCES]
             if clean_sentences[-1].endswith("?") and clean_sentences[-1] not in kept:
@@ -617,7 +650,14 @@ def clean_spoken_speech_text(text: str) -> str:
     return t.strip()
 
 
-async def generate_speech_audio_bytes(
+def _cache_key(voice_id: str, text: str, gender: str = "", name: str = "") -> str:
+    cleaned = clean_spoken_speech_text(text or '')
+    g = (gender or "").lower()
+    n = (name or "").lower()
+    return f"{voice_id}:{g}:{n}:{cleaned}"
+
+
+def _sync_generate_speech_audio_bytes(
     voice_id: str,
     name: str = "Assistant",
     gender: str = "female",
@@ -626,22 +666,35 @@ async def generate_speech_audio_bytes(
     text: str = "",
 ) -> bytes:
     """
-    Fetches real authentic human speech audio.
+    Fetches real authentic human speech audio synchronously.
     Prioritizes official cloud provider APIs and CDN portal samples.
     """
-    cleaned_input = clean_spoken_speech_text(text)
-    cache_key = f"{voice_id}:{cleaned_input}"
-    if cache_key in _AUDIO_CACHE:
-        return _AUDIO_CACHE[cache_key]
+    # Resolve actual provider and gender from the voice catalog if not explicitly set
+    try:
+        from agent.agent_builder import VOICE_CATALOG
+        cat_voice = next((v for v in VOICE_CATALOG if v.voice_id == voice_id), None)
+        if cat_voice:
+            provider = cat_voice.provider or provider
+            gender = cat_voice.gender or gender
+            if not name or name == "Assistant":
+                name = cat_voice.name
+        elif voice_id in OFFICIAL_ELEVENLABS_CDN_PREVIEWS or voice_id.startswith("eleven-"):
+            provider = "elevenlabs"
+        elif voice_id.startswith("aura-"):
+            provider = "deepgram"
+        elif voice_id.startswith("openai-"):
+            provider = "openai"
+        elif voice_id.startswith("cartesia-"):
+            provider = "cartesia"
+    except Exception:
+        pass
 
-    provider_labels = {
-        "studio": "Studio Pro Ultra-Realistic",
-        "neural": "Neural Voice",
-        "cartesia": "Cartesia Sonic",
-        "deepgram": "Deepgram Aura",
-        "openai": "OpenAI TTS",
-        "elevenlabs": "ElevenLabs Turbo",
-    }
+    cleaned_input = clean_spoken_speech_text(text)
+    cache_key = _cache_key(voice_id, text, gender, name)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     clean_name = name.replace("(Studio Pro)", "").replace("(Neural HD)", "").replace("(Spanish Studio Pro)", "").replace("(British Free)", "").replace("(Indian English Free)", "").replace("(Aussie Free)", "").strip() or "Assistant"
     
     phrase = cleaned_input or f"Hello! I am {clean_name}, your AI voice assistant. How can I help you today?"
@@ -678,7 +731,7 @@ async def generate_speech_audio_bytes(
                 with urllib.request.urlopen(req, timeout=6.0) as resp:
                     audio_bytes = resp.read()
                     if audio_bytes:
-                        _AUDIO_CACHE[cache_key] = audio_bytes
+                        _cache_put(cache_key, audio_bytes)
                         _note_engine(requested_voice_id, "elevenlabs")
                         return audio_bytes
             except urllib.error.HTTPError as e:
@@ -702,7 +755,7 @@ async def generate_speech_audio_bytes(
         if not cleaned_input:
             cdn_audio = _fetch_elevenlabs_cdn(voice_id)
             if cdn_audio:
-                _AUDIO_CACHE[cache_key] = cdn_audio
+                _cache_put(cache_key, cdn_audio)
                 _note_engine(requested_voice_id, "elevenlabs-cdn-sample")
                 return cdn_audio
 
@@ -712,7 +765,7 @@ async def generate_speech_audio_bytes(
         if dg_key:
             dg_audio = _fetch_deepgram_tts(voice_id, phrase, dg_key)
             if dg_audio:
-                _AUDIO_CACHE[cache_key] = dg_audio
+                _cache_put(cache_key, dg_audio)
                 _note_engine(requested_voice_id, "deepgram")
                 return dg_audio
         else:
@@ -725,7 +778,7 @@ async def generate_speech_audio_bytes(
             voice_name = voice_id.replace("openai-", "")
             oa_audio = _fetch_openai_tts(voice_name, phrase, oa_key)
             if oa_audio:
-                _AUDIO_CACHE[cache_key] = oa_audio
+                _cache_put(cache_key, oa_audio)
                 _note_engine(requested_voice_id, "openai")
                 return oa_audio
         else:
@@ -737,7 +790,7 @@ async def generate_speech_audio_bytes(
         if cart_key:
             cart_audio = _fetch_cartesia_tts(voice_id, phrase, cart_key)
             if cart_audio:
-                _AUDIO_CACHE[cache_key] = cart_audio
+                _cache_put(cache_key, cart_audio)
                 _note_engine(requested_voice_id, "cartesia")
                 return cart_audio
         else:
@@ -789,14 +842,28 @@ async def generate_speech_audio_bytes(
         clean_text = clean_spoken_speech_text(phrase) or phrase
         communicate = edge_tts.Communicate(clean_text, voice=neural, rate=rate, pitch=pitch)
 
-        audio_stream = io.BytesIO()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_stream.write(chunk["data"])
+        async def _stream_edge():
+            stream = io.BytesIO()
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    stream.write(chunk["data"])
+            return stream.getvalue()
 
-        audio_bytes = audio_stream.getvalue()
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                audio_bytes = executor.submit(lambda: asyncio.run(_stream_edge())).result()
+        else:
+            audio_bytes = loop.run_until_complete(_stream_edge())
+
         if audio_bytes:
-            _AUDIO_CACHE[cache_key] = audio_bytes
+            _cache_put(cache_key, audio_bytes)
             # Studio / neural voices are *meant* to run on this engine; anything else got here by falling back.
             is_native = provider in ("studio", "neural")
             _note_engine(requested_voice_id, f"neural:{neural}", "" if is_native else (fallback_reason or f"{provider} engine unavailable"))
@@ -826,24 +893,37 @@ async def generate_speech_audio_bytes(
     return buf.getvalue()
 
 
-import threading
+async def generate_speech_audio_bytes(
+    voice_id: str,
+    name: str = "Assistant",
+    gender: str = "female",
+    style: str = "conversational",
+    provider: str = "cartesia",
+    text: str = "",
+) -> bytes:
+    """
+    Fetches real authentic human speech audio asynchronously without blocking the event loop.
+    Prioritizes official cloud provider APIs and CDN portal samples.
+    """
+    return await asyncio.to_thread(
+        _sync_generate_speech_audio_bytes, voice_id, name, gender, style, provider, text
+    )
+
+
 _INFLIGHT: Dict[str, threading.Event] = {}
 _INFLIGHT_LOCK = threading.Lock()
-
-
-def _cache_key(voice_id: str, text: str) -> str:
-    return f"{voice_id}:{clean_spoken_speech_text(text or '')}"
 
 
 def get_voice_audio(voice_id: str, name: str = "", gender: str = "female", style: str = "", provider: str = "cartesia", text: str = "") -> bytes:
     """Synchronous wrapper for generating speech audio.
 
-    Concurrent requests for the same voice+text (the server pre-warm and the page's own fetch a few
-    milliseconds later) share one synthesis instead of running it twice.
+    Concurrent requests for the same voice+text share one synthesis instead of running it twice.
     """
-    key = _cache_key(voice_id, text)
-    if key in _AUDIO_CACHE:
-        return _AUDIO_CACHE[key]
+    key = _cache_key(voice_id, text, gender, name)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+
     with _INFLIGHT_LOCK:
         ev = _INFLIGHT.get(key)
         owner = ev is None
@@ -852,27 +932,18 @@ def get_voice_audio(voice_id: str, name: str = "", gender: str = "female", style
             _INFLIGHT[key] = ev
     if not owner:
         ev.wait(timeout=30.0)
-        cached = _AUDIO_CACHE.get(key)
+        cached = _cache_get(key)
         if cached is not None:
             return cached
-    loop = asyncio.new_event_loop()
+
     try:
-        return loop.run_until_complete(
-            generate_speech_audio_bytes(
-                voice_id=voice_id,
-                name=name,
-                gender=gender,
-                style=style,
-                provider=provider,
-                text=text,
-            )
-        )
+        data = _sync_generate_speech_audio_bytes(voice_id, name, gender, style, provider, text)
+        _cache_put(key, data)
+        return data
     finally:
-        loop.close()
-        if owner:
-            with _INFLIGHT_LOCK:
-                _INFLIGHT.pop(key, None)
-            ev.set()
+        with _INFLIGHT_LOCK:
+            _INFLIGHT.pop(key, None)
+        ev.set()
 
 
 class _LiveStream:
@@ -900,36 +971,56 @@ _STREAMS: Dict[str, _LiveStream] = {}
 
 def stream_voice_audio(voice_id: str, name: str = "", gender: str = "female", style: str = "",
                        provider: str = "cartesia", text: str = ""):
-    """Yields audio bytes as the engine produces them, so playback can begin before the clip ends.
-
-    Streams ElevenLabs (premade voices), Deepgram Aura and the neural engine; other providers fall
-    back to the whole clip in one piece. A second request for the same clip while one is being
-    produced (the server pre-warm and the page's fetch) follows the same stream chunk by chunk.
-    The completed clip is cached under the same key the non-streaming path uses.
-    """
-    key = _cache_key(voice_id, text)
-    cached = _AUDIO_CACHE.get(key)
+    """Yields audio bytes as the engine produces them, so playback can begin before the clip ends."""
+    key = _cache_key(voice_id, text, gender, name)
+    cached = _cache_get(key)
     if cached is not None:
         yield cached
         return
+
+    owner = False
     with _INFLIGHT_LOCK:
         live = _STREAMS.get(key)
-    if live is not None:
+        if live is None:
+            live = _LiveStream()
+            ev = threading.Event()
+            _STREAMS[key] = live
+            _INFLIGHT[key] = ev
+            owner = True
+
+    if not owner:
         for b in live.follow():
             yield b
         return
-    if key in _INFLIGHT:
-        yield get_voice_audio(voice_id, name, gender, style, provider, text)
-        return
+
     phrase = clean_spoken_speech_text(text or "")
     if not phrase:
-        yield get_voice_audio(voice_id, name, gender, style, provider, text)
+        data = get_voice_audio(voice_id, name, gender, style, provider, text)
+        with live.cond:
+            live.chunks.append(data)
+            live.done = True
+            live.cond.notify_all()
+        with _INFLIGHT_LOCK:
+            _STREAMS.pop(key, None)
+            _INFLIGHT.pop(key, None)
+        ev.set()
+        yield data
         return
+
+    # Resolve provider and gender from catalog if needed
+    try:
+        from agent.agent_builder import VOICE_CATALOG
+        cat_voice = next((v for v in VOICE_CATALOG if v.voice_id == voice_id), None)
+        if cat_voice:
+            provider = cat_voice.provider or provider
+            gender = cat_voice.gender or gender
+    except Exception:
+        pass
 
     provider = (provider or "").lower()
     xi_key = (os.getenv("ELEVEN_API_KEY") or os.getenv("ELEVENLABS_API_KEY") or os.getenv("XI_API_KEY") or "").strip()
     dg_key = (os.getenv("DEEPGRAM_API_KEY") or "").strip()
-    plan: Optional[tuple] = None   # (mode, fallback reason)
+    plan: Optional[tuple] = None
     if provider == "elevenlabs" and xi_key and voice_id not in _PLAN_LOCKED_VOICES:
         plan = ("elevenlabs", "")
     elif provider == "deepgram" and dg_key:
@@ -938,15 +1029,20 @@ def stream_voice_audio(voice_id: str, name: str = "", gender: str = "female", st
         plan = ("neural", "")
     elif provider in ("elevenlabs", "cartesia", "openai"):
         plan = ("neural", _PLAN_LOCKED_VOICES.get(voice_id) or f"{provider} engine unavailable (no API key)")
+
     if plan is None:
-        yield get_voice_audio(voice_id, name, gender, style, provider, text)
+        data = get_voice_audio(voice_id, name, gender, style, provider, text)
+        with live.cond:
+            live.chunks.append(data)
+            live.done = True
+            live.cond.notify_all()
+        with _INFLIGHT_LOCK:
+            _STREAMS.pop(key, None)
+            _INFLIGHT.pop(key, None)
+        ev.set()
+        yield data
         return
 
-    live = _LiveStream()
-    ev = threading.Event()
-    with _INFLIGHT_LOCK:
-        _STREAMS[key] = live
-        _INFLIGHT[key] = ev
     result = {"engine": "", "fallback": plan[1]}
 
     def push(b: bytes):
@@ -956,6 +1052,7 @@ def stream_voice_audio(voice_id: str, name: str = "", gender: str = "female", st
 
     def produce():
         mode = plan[0]
+        completed_cleanly = False
         try:
             if mode == "elevenlabs":
                 req = urllib.request.Request(
@@ -971,6 +1068,7 @@ def stream_voice_audio(voice_id: str, name: str = "", gender: str = "female", st
                             if not b:
                                 break
                             push(b)
+                    completed_cleanly = True
                 except urllib.error.HTTPError as e:
                     if e.code == 402:
                         _PLAN_LOCKED_VOICES[voice_id] = "ElevenLabs plan does not allow this voice via the API (402)"
@@ -989,6 +1087,7 @@ def stream_voice_audio(voice_id: str, name: str = "", gender: str = "female", st
                             if not b:
                                 break
                             push(b)
+                    completed_cleanly = True
                 except Exception as e:
                     result["fallback"] = f"Deepgram error: {e}"
                     mode = "neural"
@@ -1009,13 +1108,16 @@ def stream_voice_audio(voice_id: str, name: str = "", gender: str = "female", st
                 loop = asyncio.new_event_loop()
                 try:
                     loop.run_until_complete(run())
+                    completed_cleanly = True
                 finally:
                     loop.close()
         except Exception as e:
             log.warning("Streaming synthesis failed for %s: %s", voice_id, e)
+            with live.cond:
+                live.chunks.clear()
         finally:
-            if live.chunks:
-                _AUDIO_CACHE[key] = b"".join(live.chunks)
+            if completed_cleanly and live.chunks:
+                _cache_put(key, b"".join(live.chunks))
                 _note_engine(voice_id, result["engine"] or "unknown", result["fallback"])
             with live.cond:
                 live.done = True
