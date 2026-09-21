@@ -172,14 +172,32 @@ class ClauseBoundarySplitter:
         if not text:
             return None
 
+        ABBREVIATIONS = (
+            "dr.", "mr.", "mrs.", "ms.", "prof.", "sr.", "jr.", "vs.", "etc.",
+            "e.g.", "i.e.", "approx.", "dept.", "st.", "ave.", "inc.", "ltd."
+        )
+
         # Look for delimiter positions
         for i, char in enumerate(text):
             is_strong = char in self.STRONG_PUNCT
             is_weak = char in self.WEAK_PUNCT
 
             if is_strong or is_weak:
+                # Do not split on periods between digits (e.g. 3.5)
+                if char == "." and i > 0 and i + 1 < len(text) and text[i - 1].isdigit() and text[i + 1].isdigit():
+                    continue
+                # Do not split on colons inside time strings (e.g. 09:30)
+                if char == ":" and i > 0 and i + 1 < len(text) and text[i - 1].isdigit() and text[i + 1].isdigit():
+                    continue
+
                 candidate = text[: i + 1].strip()
                 words = candidate.split()
+
+                # Avoid splitting on common abbreviations ending in a period
+                if char == "." and words:
+                    last_word = words[-1].lower()
+                    if any(last_word == abbr or last_word.endswith("." + abbr) for abbr in ABBREVIATIONS):
+                        continue
 
                 # Strong punctuation splits if there is at least 1 word
                 if is_strong and len(words) >= 1:
@@ -251,7 +269,10 @@ class StreamingDialogueManager:
 
         self.context = ConversationContextBuffer(system_instruction=system_instruction)
         self.active_generation_task: Optional[asyncio.Task] = None
+        self._active_turn_task: Optional[asyncio.Task] = None
         self._pending_function_calls: List[dict] = []
+        self._pending_openai_tool_calls: dict = {}
+        self._openai_client = None
         # Tools the active agent has switched on in the builder; None = every registered tool.
         self.enabled_tools: Optional[set] = None
 
@@ -263,35 +284,68 @@ class StreamingDialogueManager:
     def configure_backend(self, model: Optional[str] = None, api_key: Optional[str] = None) -> str:
         """Picks the model backend from the model name and the keys available.
 
-        gemini-* -> Google Gemini (GEMINI_API_KEY / GOOGLE_API_KEY), anything else -> OpenAI
-        (OPENAI_API_KEY). With no usable key the local simulator answers, and the worker logs it
-        loudly because a live caller would otherwise hear canned clinic replies.
-        Returns the backend name: "gemini" | "openai" | "mock".
+        gemini-* -> Google Gemini (GEMINI_API_KEY / GOOGLE_API_KEY),
+        claude-* -> Anthropic (ANTHROPIC_API_KEY) or remapped to gpt-4o-mini / gemini-2.5-flash,
+        anything else -> OpenAI (OPENAI_API_KEY).
+        With no usable key the local simulator answers, and the worker logs it loudly.
+        Returns the backend name: "gemini" | "openai" | "anthropic" | "mock".
         """
         if model:
             self.model = model
         gemini_key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
         openai_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+        anthropic_key = (os.getenv("ANTHROPIC_API_KEY") or "").strip()
+
+        # Handle Claude models requested from Agent Builder
+        if self.model.lower().startswith("claude"):
+            if anthropic_key:
+                self.api_key = anthropic_key
+                self.backend = "anthropic"
+            else:
+                fallback_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini") if openai_key else (
+                    os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if gemini_key else "mock-simulator"
+                )
+                log.warning(
+                    "Claude model '%s' requested but ANTHROPIC_API_KEY is not set. Remapping to %s (%s)",
+                    self.model, fallback_model, "openai" if openai_key else ("gemini" if gemini_key else "mock")
+                )
+                self.model = fallback_model
+
         wants_gemini = self.model.lower().startswith("gemini")
+        wants_anthropic = self.model.lower().startswith("claude")
 
         if api_key:
             self.api_key = api_key
-            self.backend = "gemini" if wants_gemini else "openai"
+            self.backend = "gemini" if wants_gemini else ("anthropic" if wants_anthropic else "openai")
         elif wants_gemini and gemini_key:
             self.api_key, self.backend = gemini_key, "gemini"
-        elif not wants_gemini and openai_key:
+        elif wants_anthropic and anthropic_key:
+            self.api_key, self.backend = anthropic_key, "anthropic"
+        elif not wants_gemini and not wants_anthropic and openai_key:
             self.api_key, self.backend = openai_key, "openai"
         elif gemini_key:
-            # Model name asked for OpenAI but only a Gemini key exists (or vice versa): use what works.
+            # Fallback to available Gemini key
             self.api_key, self.backend = gemini_key, "gemini"
             if not wants_gemini:
-                self.model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+                self.model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         elif openai_key:
+            # Fallback to available OpenAI key
             self.api_key, self.backend = openai_key, "openai"
-            if wants_gemini:
+            if wants_gemini or wants_anthropic:
                 self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         else:
             self.api_key, self.backend = "", "mock"
+
+        # Cache reusable AsyncOpenAI client once
+        if self.backend == "openai" and self.api_key:
+            try:
+                from openai import AsyncOpenAI
+                self._openai_client = AsyncOpenAI(api_key=self.api_key)
+            except Exception as e:
+                log.warning("Could not initialize AsyncOpenAI client: %s", e)
+                self._openai_client = None
+        else:
+            self._openai_client = None
 
         self._is_mock = self.backend == "mock"
         if self._is_mock:
@@ -335,8 +389,11 @@ class StreamingDialogueManager:
                 service = "oil change"
             else:
                 service = f"{specialty} with {doctor_name}"
-            return ("check_availability", {"service_type": service, "date": date})
-        elif ("book" in lower or "reserve" in lower or "reservation" in lower or "appointment" in lower or "choose" in lower or "want to choose" in lower or "make an appointment" in lower) and not ("no" in lower and len(lower.split()) <= 4):
+        elif (
+            "book" in lower or "reserve" in lower or "reservation" in lower
+            or "appointment" in lower or "choose" in lower or "want to choose" in lower
+            or "make an appointment" in lower
+        ) and not (re.search(r"\bno\b", lower) and len(lower.split()) <= 4):
             return ("book_appointment", {
                 "name": "Valued Caller",
                 "phone": "555-0199",
@@ -475,23 +532,106 @@ class StreamingDialogueManager:
             await asyncio.sleep(0.018)  # ~18ms per token simulates LLM streaming speed
             yield tok
 
-    async def _openai_stream(self, messages: List[dict]) -> AsyncIterable[str]:
-        """Streams tokens directly from OpenAI using the AsyncClient."""
-        from openai import AsyncOpenAI
+    def _openai_tools(self) -> Optional[List[dict]]:
+        """Registered tools formatted for OpenAI function calling."""
+        tools = []
+        for t in self.tool_registry.get_schemas():
+            fn = t.get("function", t)
+            if self.enabled_tools is not None and fn["name"] not in self.enabled_tools:
+                continue
+            tools.append({"type": "function", "function": fn})
+        return tools if tools else None
 
-        client = AsyncOpenAI(api_key=self.api_key)
-        stream = await client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            stream=True,
-        )
+    async def _openai_stream(self, messages: List[dict], use_tools: bool = True) -> AsyncIterable[str]:
+        """Streams tokens directly from OpenAI using the cached AsyncClient and handles tool calling."""
+        if not self._openai_client:
+            from openai import AsyncOpenAI
+            self._openai_client = AsyncOpenAI(api_key=self.api_key)
+
+        kwargs: dict = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stream": True,
+        }
+        if use_tools:
+            tools = self._openai_tools()
+            if tools:
+                kwargs["tools"] = tools
+
+        self._pending_openai_tool_calls = {}
+        stream = await self._openai_client.chat.completions.create(**kwargs)
         async for chunk in stream:
             if chunk.choices and len(chunk.choices) > 0:
                 delta = chunk.choices[0].delta
+                if delta and delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index if tc.index is not None else 0
+                        if idx not in self._pending_openai_tool_calls:
+                            self._pending_openai_tool_calls[idx] = {
+                                "id": tc.id or f"call_{idx}",
+                                "name": tc.function.name if tc.function and tc.function.name else "",
+                                "arguments": tc.function.arguments if tc.function and tc.function.arguments else "",
+                            }
+                        else:
+                            if tc.id:
+                                self._pending_openai_tool_calls[idx]["id"] = tc.id
+                            if tc.function and tc.function.name:
+                                self._pending_openai_tool_calls[idx]["name"] += tc.function.name
+                            if tc.function and tc.function.arguments:
+                                self._pending_openai_tool_calls[idx]["arguments"] += tc.function.arguments
                 if delta and delta.content:
                     yield delta.content
+
+    async def _anthropic_stream(self, messages: List[dict]) -> AsyncIterable[str]:
+        """Streams tokens directly from Anthropic Messages API using SSE."""
+        import aiohttp
+        system_text = ""
+        user_assistant_msgs = []
+        for m in messages:
+            if m["role"] == "system":
+                system_text += m["content"] + "\n"
+            else:
+                user_assistant_msgs.append({"role": m["role"], "content": m["content"]})
+        if not user_assistant_msgs or user_assistant_msgs[0]["role"] != "user":
+            user_assistant_msgs.insert(0, {"role": "user", "content": "Hello"})
+
+        payload = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
+            "system": system_text.strip() or self.system_instruction,
+            "messages": user_assistant_msgs,
+            "stream": True,
+        }
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        timeout = aiohttp.ClientTimeout(total=None, connect=10, sock_read=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post("https://api.anthropic.com/v1/messages", json=payload, headers=headers) as resp:
+                if resp.status != 200:
+                    err_body = (await resp.text())[:300]
+                    raise RuntimeError(f"Anthropic HTTP {resp.status}: {err_body}")
+                async for raw in resp.content:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if not data or data == "[DONE]":
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    event_type = chunk.get("type")
+                    if event_type == "content_block_delta":
+                        delta = chunk.get("delta", {})
+                        if delta.get("type") == "text_delta":
+                            yield delta.get("text", "")
 
     @staticmethod
     def _gemini_contents(messages: List[dict]) -> tuple[str, List[dict]]:
@@ -515,12 +655,22 @@ class StreamingDialogueManager:
         """Registered tools as Gemini functionDeclarations (OpenAPI-subset schemas only)."""
         allowed = {"type", "properties", "required", "description", "enum", "items", "format", "nullable"}
 
-        def clean(schema):
-            if isinstance(schema, dict):
-                return {k: clean(v) for k, v in schema.items() if k in allowed or k in schema.get("properties", {})}
-            if isinstance(schema, list):
-                return [clean(x) for x in schema]
-            return schema
+        def clean(schema, is_properties_dict: bool = False):
+            if not isinstance(schema, dict):
+                if isinstance(schema, list):
+                    return [clean(x, False) for x in schema]
+                return schema
+            if is_properties_dict:
+                # Inside properties dict, preserve all user property names
+                return {k: clean(v, False) for k, v in schema.items()}
+            cleaned = {}
+            for k, v in schema.items():
+                if k in allowed:
+                    if k == "properties":
+                        cleaned[k] = clean(v, is_properties_dict=True)
+                    else:
+                        cleaned[k] = clean(v, False)
+            return cleaned
 
         decls = []
         for t in self.tool_registry.get_schemas():
@@ -528,7 +678,7 @@ class StreamingDialogueManager:
             if self.enabled_tools is not None and fn["name"] not in self.enabled_tools:
                 continue
             params = fn.get("parameters") or {"type": "object", "properties": {}}
-            props = {k: clean(v) for k, v in (params.get("properties") or {}).items()}
+            props = {k: clean(v, False) for k, v in (params.get("properties") or {}).items()}
             decls.append({
                 "name": fn["name"],
                 "description": fn.get("description", ""),
@@ -576,7 +726,7 @@ class StreamingDialogueManager:
             if tools:
                 payload["tools"] = tools
         self._pending_function_calls = []
-        timeout = aiohttp.ClientTimeout(total=30)
+        timeout = aiohttp.ClientTimeout(total=None, connect=10, sock_read=30)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, json=payload, headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"}) as resp:
                 if resp.status != 200:
@@ -630,7 +780,15 @@ class StreamingDialogueManager:
         - Appends assistant message to context buffer.
         - Handles barge-in cancellation cleanly.
         """
-        # Cancel any previous in-flight generation
+        # Cancel and await any previous in-flight turn so interrupted assistant message commits first
+        current_coro_task = asyncio.current_task()
+        if self._active_turn_task and not self._active_turn_task.done() and self._active_turn_task != current_coro_task:
+            self._active_turn_task.cancel()
+            try:
+                await self._active_turn_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        self._active_turn_task = current_coro_task
         self.cancel_active_generation()
 
         # Add user turn to context
@@ -707,8 +865,10 @@ class StreamingDialogueManager:
                         token_stream = self._mock_stream(user_text)
                     elif self.backend == "gemini":
                         token_stream = self._gemini_stream(messages, audio=user_audio if hear_audio else None)
+                    elif self.backend == "anthropic":
+                        token_stream = self._anthropic_stream(messages)
                     else:
-                        token_stream = self._openai_stream(messages)
+                        token_stream = self._openai_stream(messages, use_tools=True)
 
                     async def _split_transcript(stream):
                         """Peels the leading 'CALLER: ...' line off an audio-turn stream."""
@@ -718,12 +878,14 @@ class StreamingDialogueManager:
                                 yield token
                                 continue
                             head += token
-                            if "\n" not in head:
-                                if len(head) > 600:            # model ignored the format: treat as reply
+                            head_clean = head.lstrip("\r\n")
+                            if "\n" not in head_clean:
+                                if len(head_clean) > 600:            # model ignored the format: treat as reply
                                     transcript_seen.append("")
+                                    user_msg.content = "(caller audio)"
                                     yield head
                                 continue
-                            line, rest = head.split("\n", 1)
+                            line, rest = head_clean.split("\n", 1)
                             m = re.match(r"\s*\**\s*CALLER\s*:\**\s*(.*)$", line, re.I)
                             transcript = _clean_transcript(m.group(1)) if m else ""
                             transcript_seen.append(transcript)
@@ -734,11 +896,12 @@ class StreamingDialogueManager:
                                     if asyncio.iscoroutine(res):
                                         await res
                             else:                               # no CALLER line: everything is reply
-                                rest = head
+                                rest = head_clean
                             if rest.strip():
-                                yield rest.lstrip("\n")
+                                yield rest.lstrip("\r\n")
                         if not transcript_seen and head:
-                            m = re.match(r"\s*\**\s*CALLER\s*:\**\s*(.*)$", head.strip(), re.I | re.S)
+                            head_clean = head.lstrip("\r\n")
+                            m = re.match(r"\s*\**\s*CALLER\s*:\**\s*(.*)$", head_clean.strip(), re.I | re.S)
                             if m:                                   # the model stopped after the transcript line
                                 transcript = _clean_transcript(m.group(1))
                                 transcript_seen.append(transcript)
@@ -749,6 +912,7 @@ class StreamingDialogueManager:
                                         await res
                             else:
                                 transcript_seen.append("")
+                                user_msg.content = "(caller audio)"
                                 yield head
                     if hear_audio:
                         token_stream = _split_transcript(token_stream)
@@ -780,8 +944,7 @@ class StreamingDialogueManager:
                         # Heard the caller but said nothing back: phrase the reply from the transcript.
                         await _consume(self._gemini_stream(self.context.get_messages_for_llm(), use_tools=True))
 
-                    # Gemini asked for a tool: speak a filler, run it, then let the model phrase the
-                    # result. Same callbacks the simulator path uses, so the worker needs no changes.
+                    # Gemini tool execution
                     pending = list(getattr(self, "_pending_function_calls", []) or []) if self.backend == "gemini" else []
                     if pending:
                         follow_up: List[dict] = []
@@ -812,8 +975,6 @@ class StreamingDialogueManager:
                             follow_up.append({"role": "user", "parts": [{"functionResponse": {"name": tool_name, "response": {"result": tool_res}}}]})
                         self._pending_function_calls = []
                         if hear_audio and transcript_seen and transcript_seen[0]:
-                            # The model already told us what it heard: phrase the result from the text,
-                            # no audio and no second "CALLER:" line.
                             follow_stream = self._gemini_stream(self.context.get_messages_for_llm(),
                                                                 extra_contents=follow_up, use_tools=True)
                         else:
@@ -823,7 +984,57 @@ class StreamingDialogueManager:
                                 transcript_seen.clear()
                                 follow_stream = _split_transcript(follow_stream)
                         await _consume(follow_stream)
-                        self._pending_function_calls = []   # no second round of tools in one turn
+                        self._pending_function_calls = []
+
+                    # OpenAI tool execution
+                    pending_openai = list(getattr(self, "_pending_openai_tool_calls", {}).values()) if self.backend == "openai" else []
+                    if pending_openai:
+                        openai_messages = list(messages)
+                        ast_tool_calls = []
+                        for tc in pending_openai:
+                            tool_name = tc.get("name", "")
+                            raw_args = tc.get("arguments", "{}")
+                            try:
+                                tool_args = json.loads(raw_args) if raw_args else {}
+                            except Exception:
+                                tool_args = {}
+                            ast_tool_calls.append({
+                                "id": tc.get("id", f"call_{tool_name}"),
+                                "type": "function",
+                                "function": {"name": tool_name, "arguments": raw_args},
+                            })
+                            log.info("OpenAI requested tool: %s(%s)", tool_name, tool_args)
+                            if on_tool_call:
+                                res = on_tool_call(tool_name, tool_args)
+                                if asyncio.iscoroutine(res):
+                                    await res
+                            filler = self.tool_registry.filler_engine.get_filler(tool_name, tool_args)
+                            if on_filler:
+                                res = on_filler(filler)
+                                if asyncio.iscoroutine(res):
+                                    await res
+                            try:
+                                tool_res = await self.tool_dispatcher.execute_tool(tool_name, tool_args)
+                            except Exception as tool_err:
+                                tool_res = {"error": str(tool_err)}
+                            if on_tool_result:
+                                res = on_tool_result(tool_name, tool_res)
+                                if asyncio.iscoroutine(res):
+                                    await res
+                            tool_calls_executed.append({"tool": tool_name, "args": tool_args, "result": tool_res, "filler": filler})
+
+                        openai_messages.append({"role": "assistant", "content": None, "tool_calls": ast_tool_calls})
+                        for idx, tc in enumerate(pending_openai):
+                            tool_res = tool_calls_executed[idx]["result"]
+                            openai_messages.append({
+                                "role": "tool",
+                                "tool_call_id": tc.get("id", f"call_{tc.get('name')}"),
+                                "name": tc.get("name"),
+                                "content": json.dumps(tool_res),
+                            })
+                        self._pending_openai_tool_calls = {}
+                        follow_stream = self._openai_stream(openai_messages, use_tools=False)
+                        await _consume(follow_stream)
 
                 # Stream ended cleanly: flush remaining buffer
                 final_clauses = splitter.flush()
@@ -845,6 +1056,11 @@ class StreamingDialogueManager:
             await self.active_generation_task
         except asyncio.CancelledError:
             interrupted = True
+            total_text = "".join(accumulated_text).strip()
+            self.context.add_assistant_message(total_text, interrupted=True)
+            cur = asyncio.current_task()
+            if cur and cur.cancelling() > 0:
+                raise
 
         duration = time.perf_counter() - start_time
         ttft_ms = (
@@ -854,8 +1070,9 @@ class StreamingDialogueManager:
         )
         total_text = "".join(accumulated_text).strip()
 
-        # Commit response to context buffer
-        self.context.add_assistant_message(total_text, interrupted=interrupted)
+        # Commit response to context buffer if not already committed on cancel
+        if not interrupted or (not self.context._history or self.context._history[-1].role != "assistant"):
+            self.context.add_assistant_message(total_text, interrupted=interrupted)
 
         metrics = {
             "text": total_text,
