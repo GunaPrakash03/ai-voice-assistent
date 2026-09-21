@@ -9,13 +9,16 @@ Orchestrates post-call asynchronous workflows when a voice call terminates:
 6. WebRTC data channel events & REST API dispatching for Call Desk integration.
 """
 
+import array
 import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import shutil
 import struct
+import threading
 import time
 import wave
 from dataclasses import asdict, dataclass, field
@@ -111,64 +114,64 @@ class AudioMixdownProcessor:
         os.makedirs(archive_dir, exist_ok=True)
         start_t = time.time()
 
-        # If no source audio file is supplied, synthesize a compliant 16kHz stereo WAV container for indexing
+        if not source_audio_path or not os.path.isfile(source_audio_path):
+            return {
+                "source_path": None,
+                "archive_path": None,
+                "archive_url": None,
+                "channels": 0,
+                "sample_rate": 0,
+                "duration_seconds": 0.0,
+                "total_frames": 0,
+                "file_size_bytes": 0,
+                "sha256": None,
+                "rms_db": None,
+                "processing_ms": round((time.time() - start_t) * 1000, 2),
+                "status": "no_audio",
+            }
+
         dest_filename = f"{call_id}_{int(start_t)}.wav"
         dest_path = os.path.join(archive_dir, dest_filename)
 
-        channels = 2
-        sample_rate = 16000
-        sample_width = 2
-        total_frames = 0
-        sha256_hash = ""
-        file_size = 0
-        rms_db = -60.0
+        hasher = hashlib.sha256()
+        sum_sq = 0.0
+        total_samples = 0
 
-        if source_audio_path and os.path.isfile(source_audio_path):
-            # Inspect source WAV
-            with wave.open(source_audio_path, "rb") as wf:
-                channels = wf.getnchannels()
-                sample_width = wf.getsampwidth()
-                sample_rate = wf.getframerate()
-                total_frames = wf.getnframes()
-                raw_data = wf.readframes(total_frames)
+        with wave.open(source_audio_path, "rb") as wf:
+            channels = wf.getnchannels()
+            sample_width = wf.getsampwidth()
+            sample_rate = wf.getframerate()
+            total_frames = wf.getnframes()
 
-            # Copy to archive
-            shutil.copy2(source_audio_path, dest_path)
-            file_size = os.path.getsize(dest_path)
-            sha256_hash = hashlib.sha256(raw_data).hexdigest()
+            # Stream in chunks (16384 frames at a time) to prevent multi-GB memory spikes
+            chunk_frames = 16384
+            while True:
+                frames = wf.readframes(chunk_frames)
+                if not frames:
+                    break
+                hasher.update(frames)
+                if sample_width == 2:
+                    arr = array.array("h")
+                    arr.frombytes(frames)
+                    for s in arr:
+                        sum_sq += s * s
+                    total_samples += len(arr)
+                else:
+                    total_samples += len(frames) // max(1, sample_width)
 
-            # Compute RMS energy
-            if raw_data:
-                sample_count = len(raw_data) // sample_width
-                unpacked = struct.unpack(f"<{sample_count}h", raw_data)
-                sum_sq = sum(s * s for s in unpacked)
-                rms = (sum_sq / max(1, sample_count)) ** 0.5
-                rms_db = round(20 * (len(str(int(rms))) - 1), 1) if rms > 0 else -60.0
+        # Copy to archive
+        shutil.copy2(source_audio_path, dest_path)
+        file_size = os.path.getsize(dest_path)
+        sha256_hash = hasher.hexdigest()
 
+        if total_samples > 0:
+            rms = (sum_sq / total_samples) ** 0.5
+            # Reference for 16-bit PCM is 32768.0
+            rms_db = round(20 * math.log10(rms / 32768.0), 1) if rms > 0 else -96.0
         else:
-            # Generate reference stereo mixdown WAV (1.5 seconds of stereo PCM frames)
-            duration_s = 1.5
-            total_frames = int(sample_rate * duration_s)
-            # Left=caller tone, Right=agent tone
-            frames_left = [int(1200 * ((i % 80) / 40 - 1)) for i in range(total_frames)]
-            frames_right = [int(1500 * ((i % 60) / 30 - 1)) for i in range(total_frames)]
-            interleaved = []
-            for l, r in zip(frames_left, frames_right):
-                interleaved.append(l)
-                interleaved.append(r)
+            rms_db = -96.0
 
-            pcm_bytes = struct.pack(f"<{len(interleaved)}h", *interleaved)
-            with wave.open(dest_path, "wb") as wf:
-                wf.setnchannels(2)
-                wf.setsampwidth(2)
-                wf.setframerate(sample_rate)
-                wf.writeframes(pcm_bytes)
-
-            file_size = os.path.getsize(dest_path)
-            sha256_hash = hashlib.sha256(pcm_bytes).hexdigest()
-            rms_db = -18.5
-
-        duration_seconds = round(total_frames / sample_rate, 3)
+        duration_seconds = round(total_frames / max(1, sample_rate), 3)
         simulated_s3_uri = f"s3://voice-archive/recordings/{dest_filename}"
 
         return {
@@ -183,6 +186,7 @@ class AudioMixdownProcessor:
             "sha256": sha256_hash,
             "rms_db": rms_db,
             "processing_ms": round((time.time() - start_t) * 1000, 2),
+            "status": "archived",
         }
 
 
@@ -256,7 +260,8 @@ class PostCallPipelineWorker:
         self._running = False
         self._worker_tasks: List[asyncio.Task] = []
         self._subscribers: List[Callable[[Dict[str, Any]], Any]] = []
-        self._lock = asyncio.Lock()
+        self._lock = threading.RLock()
+        self._save_lock = threading.Lock()
         self._load_state()
 
     def _load_state(self):
@@ -264,42 +269,56 @@ class PostCallPipelineWorker:
             try:
                 with open(STATE_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    for item in data.get("jobs", []):
-                        job = PostCallJob(**item)
-                        self._jobs[job.job_id] = job
+                    with self._lock:
+                        for item in data.get("jobs", []):
+                            job = PostCallJob(**item)
+                            self._jobs[job.job_id] = job
             except Exception as e:
                 log.warning("Failed to load pipeline jobs state: %s", e)
 
-    def _save_state(self):
-        try:
-            os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-            # The dashboard server and the call worker both keep jobs and share this file, so merge
-            # what is on disk with what this process knows before writing (ours win on conflict).
-            merged: Dict[str, Dict[str, Any]] = {}
-            if os.path.isfile(STATE_FILE):
-                try:
-                    with open(STATE_FILE, "r", encoding="utf-8") as f:
-                        for item in json.load(f).get("jobs", []):
-                            if item.get("job_id"):
-                                merged[item["job_id"]] = item
-                except Exception:
-                    pass
-            for j in self._jobs.values():
-                merged[j.job_id] = j.to_dict()
-            jobs_data = sorted(merged.values(), key=lambda d: d.get("created_at", 0))[-100:]
-            tmp = STATE_FILE + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump({"jobs": jobs_data, "updated_at": time.time()}, f, indent=2)
-            os.replace(tmp, STATE_FILE)
+    def _save_state(self, changed_job: Optional[PostCallJob] = None):
+        with self._save_lock:
             try:
-                from agent import storage
-                # The file keeps the last 100 jobs; the database keeps every job ever completed.
-                for j in list(self._jobs.values())[-100:]:
-                    storage.save_document("call_jobs", j.job_id, j.to_dict())
+                os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+                merged: Dict[str, Dict[str, Any]] = {}
+                if os.path.isfile(STATE_FILE):
+                    try:
+                        with open(STATE_FILE, "r", encoding="utf-8") as f:
+                            for item in json.load(f).get("jobs", []):
+                                if item.get("job_id"):
+                                    merged[item["job_id"]] = item
+                    except Exception:
+                        pass
+                with self._lock:
+                    for j in self._jobs.values():
+                        j_dict = j.to_dict()
+                        existing = merged.get(j.job_id)
+                        if not existing:
+                            merged[j.job_id] = j_dict
+                        else:
+                            ours_ts = max(j_dict.get("completed_at") or 0, j_dict.get("started_at") or 0, j_dict.get("created_at") or 0)
+                            theirs_ts = max(existing.get("completed_at") or 0, existing.get("started_at") or 0, existing.get("created_at") or 0)
+                            if ours_ts >= theirs_ts:
+                                merged[j.job_id] = j_dict
+
+                jobs_data = sorted(merged.values(), key=lambda d: d.get("created_at", 0))[-100:]
+                tmp = f"{STATE_FILE}.{os.getpid()}.{threading.get_ident()}.{time.time()}.tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump({"jobs": jobs_data, "updated_at": time.time()}, f, indent=2)
+                os.replace(tmp, STATE_FILE)
+                try:
+                    from agent import storage
+                    if changed_job:
+                        storage.save_document("call_jobs", changed_job.job_id, changed_job.to_dict())
+                    else:
+                        with self._lock:
+                            recent_jobs = list(self._jobs.values())[-10:]
+                        for j in recent_jobs:
+                            storage.save_document("call_jobs", j.job_id, j.to_dict())
+                except Exception as e:
+                    log.debug("storage sync skipped: %s", e)
             except Exception as e:
-                log.debug("storage sync skipped: %s", e)
-        except Exception as e:
-            log.warning("Failed to save pipeline state: %s", e)
+                log.warning("Failed to save pipeline state: %s", e)
 
     def subscribe(self, callback: Callable[[Dict[str, Any]], Any]):
         """Subscribe to pipeline telemetry events."""
@@ -352,10 +371,11 @@ class PostCallPipelineWorker:
         for stage in PipelineStage:
             job.stages[stage.value] = StageResult(stage=stage.value).to_dict()
 
-        self._jobs[job_id] = job
+        with self._lock:
+            self._jobs[job_id] = job
         # Priority queue item: (priority, created_at, job_id)
         self._queue.put_nowait((priority, job.created_at, job_id))
-        self._save_state()
+        self._save_state(job)
 
         log.info("Enqueued post-call job: %s for call %s (priority=%d)", job_id, call_id, priority)
         self._emit_event("job_enqueued", job)
@@ -363,12 +383,16 @@ class PostCallPipelineWorker:
 
     async def execute_job(self, job_id: str) -> PostCallJob:
         """Executes the complete post-call processing pipeline for a specific job."""
-        job = self._jobs.get(job_id)
-        if not job:
-            raise KeyError(f"Job '{job_id}' not found")
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                raise KeyError(f"Job '{job_id}' not found")
+            if job.status in (JobStatus.PROCESSING.value, JobStatus.COMPLETED.value):
+                log.warning("Job %s is already %s, skipping redundant execution", job_id, job.status)
+                return job
+            job.status = JobStatus.PROCESSING.value
+            job.started_at = time.time()
 
-        job.status = JobStatus.PROCESSING.value
-        job.started_at = time.time()
         self._emit_event("job_processing", job)
         log.info("Processing post-call job: %s (call: %s)", job_id, job.call_id)
 
@@ -380,18 +404,30 @@ class PostCallPipelineWorker:
             job.stages[PipelineStage.AUDIO_MIXDOWN.value]["status"] = StageStatus.RUNNING.value
             job.stages[PipelineStage.AUDIO_MIXDOWN.value]["started_at"] = s1_start
 
-            audio_result = AudioMixdownProcessor.process_and_archive(
-                call_id=job.call_id,
-                source_audio_path=job.audio_path,
-            )
-            job.archive_url = audio_result["archive_url"]
-            job.stages[PipelineStage.AUDIO_MIXDOWN.value].update({
-                "status": StageStatus.COMPLETED.value,
-                "completed_at": time.time(),
-                "duration_ms": round((time.time() - s1_start) * 1000, 2),
-                "output": audio_result,
-            })
-            self._emit_event("stage_completed", job, {"stage": PipelineStage.AUDIO_MIXDOWN.value})
+            audio_result = {"duration_seconds": 0.0, "archive_url": None, "status": "no_audio"}
+            try:
+                audio_result = AudioMixdownProcessor.process_and_archive(
+                    call_id=job.call_id,
+                    source_audio_path=job.audio_path,
+                )
+                job.archive_url = audio_result.get("archive_url")
+                job.stages[PipelineStage.AUDIO_MIXDOWN.value].update({
+                    "status": StageStatus.COMPLETED.value if audio_result.get("status") != "failed" else StageStatus.FAILED.value,
+                    "completed_at": time.time(),
+                    "duration_ms": round((time.time() - s1_start) * 1000, 2),
+                    "output": audio_result,
+                })
+                self._emit_event("stage_completed", job, {"stage": PipelineStage.AUDIO_MIXDOWN.value})
+            except Exception as audio_err:
+                log.warning("Audio mixdown failed for call %s: %s", job.call_id, audio_err)
+                job.stages[PipelineStage.AUDIO_MIXDOWN.value].update({
+                    "status": StageStatus.FAILED.value,
+                    "completed_at": time.time(),
+                    "duration_ms": round((time.time() - s1_start) * 1000, 2),
+                    "error": str(audio_err),
+                    "output": audio_result,
+                })
+                self._emit_event("stage_failed", job, {"stage": PipelineStage.AUDIO_MIXDOWN.value, "error": str(audio_err)})
 
             # -------------------------------------------------------------
             # Stage 2: Transcript Normalization
@@ -431,7 +467,7 @@ class PostCallPipelineWorker:
             job.stages[PipelineStage.METRICS_CALCULATION.value]["status"] = StageStatus.RUNNING.value
             job.stages[PipelineStage.METRICS_CALCULATION.value]["started_at"] = s3_start
 
-            call_dur = audio_result.get("duration_seconds", 0.0)
+            call_dur = (audio_result or {}).get("duration_seconds", 0.0) or 0.0
             metrics = MetricsProcessor.calculate_metrics(job.transcript_turns, call_duration_seconds=call_dur)
             job.metrics = metrics
             job.stages[PipelineStage.METRICS_CALCULATION.value].update({
@@ -620,7 +656,7 @@ class PostCallPipelineWorker:
                 job.total_duration_ms = round((job.completed_at - job.started_at) * 1000, 2)
                 self._emit_event("job_failed", job, {"error": str(err)})
 
-        self._save_state()
+        self._save_state(job)
         return job
 
     async def _worker_loop(self):
@@ -662,17 +698,19 @@ class PostCallPipelineWorker:
 
     def get_job(self, job_id: Optional[str] = None, call_id: Optional[str] = None) -> Optional[PostCallJob]:
         """Retrieves a job by job_id or call_id."""
-        if job_id and job_id in self._jobs:
-            return self._jobs[job_id]
-        if call_id:
-            for j in self._jobs.values():
-                if j.call_id == call_id:
-                    return j
+        with self._lock:
+            if job_id and job_id in self._jobs:
+                return self._jobs[job_id]
+            if call_id:
+                for j in list(self._jobs.values()):
+                    if j.call_id == call_id:
+                        return j
         return None
 
     def list_jobs(self, status: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
         """Lists recent jobs with optional status filter."""
-        jobs = list(self._jobs.values())
+        with self._lock:
+            jobs = list(self._jobs.values())
         if status:
             jobs = [j for j in jobs if j.status == status]
         jobs.sort(key=lambda x: x.created_at, reverse=True)
@@ -680,25 +718,31 @@ class PostCallPipelineWorker:
 
     def retry_job(self, job_id: str) -> Optional[PostCallJob]:
         """Manually retries a failed or stuck job."""
-        job = self._jobs.get(job_id)
-        if not job:
-            return None
-        job.status = JobStatus.QUEUED.value
-        job.error = None
-        self._queue.put_nowait((job.priority, time.time(), job.job_id))
-        self._save_state()
-        self._emit_event("job_enqueued", job, {"manual_retry": True})
-        return job
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return None
+            if job.status in (JobStatus.PROCESSING.value, JobStatus.QUEUED.value):
+                log.warning("Job %s is already %s, skipping re-queue", job_id, job.status)
+                return job
+            job.status = JobStatus.QUEUED.value
+            job.error = None
+            self._queue.put_nowait((job.priority, time.time(), job.job_id))
+            self._save_state(job)
+            self._emit_event("job_enqueued", job, {"manual_retry": True})
+            return job
 
     def get_stats(self) -> Dict[str, Any]:
         """Queue and performance telemetry."""
-        total = len(self._jobs)
-        queued = sum(1 for j in self._jobs.values() if j.status == JobStatus.QUEUED.value)
-        processing = sum(1 for j in self._jobs.values() if j.status == JobStatus.PROCESSING.value)
-        completed = sum(1 for j in self._jobs.values() if j.status == JobStatus.COMPLETED.value)
-        failed = sum(1 for j in self._jobs.values() if j.status == JobStatus.FAILED.value)
+        with self._lock:
+            jobs = list(self._jobs.values())
+        total = len(jobs)
+        queued = sum(1 for j in jobs if j.status == JobStatus.QUEUED.value)
+        processing = sum(1 for j in jobs if j.status == JobStatus.PROCESSING.value)
+        completed = sum(1 for j in jobs if j.status == JobStatus.COMPLETED.value)
+        failed = sum(1 for j in jobs if j.status == JobStatus.FAILED.value)
 
-        completed_jobs = [j for j in self._jobs.values() if j.status == JobStatus.COMPLETED.value and j.total_duration_ms > 0]
+        completed_jobs = [j for j in jobs if j.status == JobStatus.COMPLETED.value and j.total_duration_ms > 0]
         avg_time_ms = round(sum(j.total_duration_ms for j in completed_jobs) / max(1, len(completed_jobs)), 2)
 
         return {
