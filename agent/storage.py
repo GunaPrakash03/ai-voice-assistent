@@ -69,7 +69,8 @@ CREATE TABLE IF NOT EXISTS collection_meta (
 FILE_COLLECTIONS: Dict[str, List[Tuple[str, str, str]]] = {
     os.path.join(CONFIG_DIR, "agents.json"): [("agents", "agents", "agent_id")],
     os.path.join(CONFIG_DIR, "phone_numbers.json"): [("phone_numbers", "numbers", "phone_number")],
-    os.path.join(CONFIG_DIR, "sip_trunks.json"): [("sip_trunks_inbound", "inbound", "trunk_id"),
+    os.path.join(CONFIG_DIR, "sip_trunks.json"): [("sip_trunks_unified", "trunks", "trunk_id"),
+                                                  ("sip_trunks_inbound", "inbound", "trunk_id"),
                                                   ("sip_trunks_outbound", "outbound", "trunk_id"),
                                                   ("sip_dispatch_rules", "rules", "rule_id")],
     os.path.join(RECORDINGS_DIR, "pipeline_jobs.json"): [("call_jobs", "jobs", "job_id")],
@@ -90,13 +91,14 @@ def _connect():
 
 
 def available(recheck: bool = False) -> bool:
-    """True when DATABASE_URL is set and the server answers (result cached for 30 s)."""
+    """True when DATABASE_URL is set and the server answers. Caches success for 30s, errors for 3s."""
     url = database_url()
     if not url:
         _state.update(url=None, ok=False, error="DATABASE_URL not set")
         return False
     with _lock:
-        if not recheck and _state["url"] == url and time.time() - _state["checked"] < 30:
+        cache_ttl = 30 if _state.get("ok") else 3
+        if not recheck and _state.get("url") == url and time.time() - float(_state.get("checked") or 0.0) < cache_ttl:
             return bool(_state["ok"])
         try:
             with _connect() as conn:
@@ -147,18 +149,19 @@ def _redact(url: str) -> str:
 # ── write-through ────────────────────────────────────────────────────────────
 def save_collection(collection: str, docs: Iterable[Dict[str, Any]], id_field: str, updated_at: Optional[float] = None) -> bool:
     """Makes the table's rows for ``collection`` equal to ``docs`` (upsert + delete the rest)."""
-    if not available():
+    if not available() and not available(recheck=True):
         return False
     rows = []
+    stamp = float(updated_at or time.time())
     for d in docs:
         key = str(d.get(id_field, "") or "")
         if key:
-            rows.append((collection, key, json.dumps(d, default=str)))
+            rows.append((collection, key, json.dumps(d, default=str), stamp))
     try:
         with _connect() as conn, conn.cursor() as cur:
             cur.executemany(
-                "INSERT INTO app_documents (collection, doc_id, doc, updated_at) VALUES (%s, %s, %s::jsonb, now()) "
-                "ON CONFLICT (collection, doc_id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = now()",
+                "INSERT INTO app_documents (collection, doc_id, doc, updated_at) VALUES (%s, %s, %s::jsonb, to_timestamp(%s)) "
+                "ON CONFLICT (collection, doc_id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = EXCLUDED.updated_at",
                 rows,
             )
             ids = [r[1] for r in rows]
@@ -169,7 +172,7 @@ def save_collection(collection: str, docs: Iterable[Dict[str, Any]], id_field: s
             cur.execute(
                 "INSERT INTO collection_meta (collection, updated_at) VALUES (%s, %s) "
                 "ON CONFLICT (collection) DO UPDATE SET updated_at = EXCLUDED.updated_at",
-                (collection, float(updated_at or time.time())),
+                (collection, stamp),
             )
             conn.commit()
         return True
@@ -178,20 +181,21 @@ def save_collection(collection: str, docs: Iterable[Dict[str, Any]], id_field: s
         return False
 
 
-def save_document(collection: str, doc_id: str, doc: Dict[str, Any]) -> bool:
-    if not available():
+def save_document(collection: str, doc_id: str, doc: Dict[str, Any], updated_at: Optional[float] = None) -> bool:
+    if not available() and not available(recheck=True):
         return False
     try:
+        doc_stamp = float(updated_at if updated_at is not None else (doc.get("updated_at") or doc.get("created_at") or time.time()))
         with _connect() as conn, conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO app_documents (collection, doc_id, doc, updated_at) VALUES (%s, %s, %s::jsonb, now()) "
-                "ON CONFLICT (collection, doc_id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = now()",
-                (collection, doc_id, json.dumps(doc, default=str)),
+                "INSERT INTO app_documents (collection, doc_id, doc, updated_at) VALUES (%s, %s, %s::jsonb, to_timestamp(%s)) "
+                "ON CONFLICT (collection, doc_id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = to_timestamp(%s)",
+                (collection, doc_id, json.dumps(doc, default=str), doc_stamp, doc_stamp),
             )
             cur.execute(
                 "INSERT INTO collection_meta (collection, updated_at) VALUES (%s, %s) "
-                "ON CONFLICT (collection) DO UPDATE SET updated_at = EXCLUDED.updated_at",
-                (collection, time.time()),
+                "ON CONFLICT (collection) DO UPDATE SET updated_at = GREATEST(collection_meta.updated_at, EXCLUDED.updated_at)",
+                (collection, doc_stamp),
             )
             conn.commit()
         return True
@@ -205,7 +209,7 @@ def load_collection(collection: str) -> List[Dict[str, Any]]:
         return []
     try:
         with _connect() as conn, conn.cursor() as cur:
-            cur.execute("SELECT doc FROM app_documents WHERE collection = %s ORDER BY updated_at", (collection,))
+            cur.execute("SELECT doc FROM app_documents WHERE collection = %s ORDER BY updated_at ASC, doc_id ASC", (collection,))
             return [row[0] for row in cur.fetchall()]
     except Exception as e:
         log.warning("Load from PostgreSQL failed for %s: %s", collection, e)
@@ -300,21 +304,21 @@ def _file_stamp(path: str) -> float:
         return 0.0
 
 
-def db_collections() -> set:
-    """Set of collection names that already exist in PostgreSQL (have a collection_meta row)."""
+def db_collections() -> Optional[set]:
+    """Set of collection names that already exist in PostgreSQL (have a collection_meta row). Returns None on error."""
     if not available():
-        return set()
+        return None
     try:
         with _connect() as conn, conn.cursor() as cur:
             cur.execute("SELECT collection FROM collection_meta")
             return {r[0] for r in cur.fetchall()}
     except Exception as e:
         log.warning("Cannot read collection list: %s", e)
-        return set()
+        return None
 
 
 def restore_files() -> List[str]:
-    """Rebuilds JSON files that are missing or older than the database copy. Returns what it restored."""
+    """Rebuilds JSON files from the database copy. Returns what it restored."""
     if not available():
         return []
     restored: List[str] = []
@@ -330,9 +334,6 @@ def restore_files() -> List[str]:
         db_stamp = max(stamps) if stamps else 0.0
         if db_stamp <= 0.0:
             continue  # nothing in the database for this file
-        file_stamp = _file_stamp(path) if os.path.isfile(path) else -1.0
-        if file_stamp >= db_stamp:
-            continue
         data: Dict[str, Any] = {}
         if os.path.isfile(path):
             try:
@@ -348,9 +349,13 @@ def restore_files() -> List[str]:
                 data[extra] = doc.get("value")
         data["updated_at"] = db_stamp
         try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
+            import tempfile
+            dir_name = os.path.dirname(path)
+            os.makedirs(dir_name, exist_ok=True)
+            with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, encoding="utf-8") as tf:
+                json.dump(data, tf, indent=2)
+                temp_name = tf.name
+            os.replace(temp_name, path)
             restored.append(os.path.relpath(path, ROOT_DIR))
         except Exception as e:
             log.warning("Could not restore %s from PostgreSQL: %s", path, e)
@@ -397,6 +402,9 @@ def bootstrap(label: str = "") -> Dict[str, Any]:
     # trunk edits undone) on every boot. Restore above already pulled DB -> file for the running
     # process; runtime writes (user actions) still push through sync_file() as normal.
     existing = db_collections()
+    if existing is None:
+        log.warning("Cannot query PostgreSQL collections; aborting seed push to protect database")
+        return {"connected": True, "restored_files": files, "restored_recordings": recs, "pushed_files": 0, "uploaded_recordings": 0}
     pushed = 0
     for path, specs in FILE_COLLECTIONS.items():
         path_cols = {c for c, _, _ in specs}
