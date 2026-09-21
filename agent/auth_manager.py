@@ -660,6 +660,9 @@ class AuthManager:
         email = (email or "").strip()
         if "@" not in email or " " in email:
             raise ValueError("Enter a valid email address")
+        existing = self._find_user_by_email(email)
+        if existing and existing.user_id != user.user_id:
+            raise ValueError("An account with this email address already exists")
         user.email = email
         if name:
             user.name = name.strip()[:120]
@@ -1003,6 +1006,17 @@ class AuthManager:
         if not name:
             raise ValueError("Organization name is required")
 
+        if (admin_email and not admin_password) or (admin_password and not admin_email):
+            raise ValueError("Both admin_email and admin_password must be provided together")
+        if admin_email and admin_password:
+            admin_email = admin_email.strip()
+            if "@" not in admin_email or " " in admin_email:
+                raise ValueError("Enter a valid email address for admin")
+            if len(admin_password or "") < 8:
+                raise ValueError("Admin password must be at least 8 characters")
+            if self._find_user_by_email(admin_email):
+                raise ValueError("A user with that admin email already exists")
+
         if not slug:
             slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
             if not slug:
@@ -1026,16 +1040,20 @@ class AuthManager:
         self._workspaces[ws_id] = ws
 
         created_admin = None
-        if admin_email and admin_password:
-            created_admin = self.add_member(
-                workspace_id=ws_id,
-                email=admin_email,
-                password=admin_password,
-                role=UserRole.ADMIN.value,
-                name=admin_name or f"{name} Admin",
-            )
+        try:
+            if admin_email and admin_password:
+                created_admin = self.add_member(
+                    workspace_id=ws_id,
+                    email=admin_email,
+                    password=admin_password,
+                    role=UserRole.ADMIN.value,
+                    name=admin_name or f"{name} Admin",
+                )
+            self._save_store()
+        except Exception:
+            self._workspaces.pop(ws_id, None)
+            raise
 
-        self._save_store()
         res = ws.to_dict()
         res["admin"] = created_admin.to_dict() if created_admin else None
         return res
