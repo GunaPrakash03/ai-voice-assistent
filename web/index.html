@@ -242,12 +242,12 @@
       <a role="tab" href="/" aria-selected="true" data-v="overview">Overview<span class="ct" id="ctOverview">…</span></a>
       <a role="tab" href="/calls" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls">…</span></a>
       <a role="tab" href="/call-detail" aria-selected="false" data-v="detail">Call detail</a>
-      <a role="tab" href="/sip-trunks" aria-selected="false" data-v="telephony" data-admin-only>SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></a>
-      <a role="tab" href="/phone-numbers" aria-selected="false" data-v="market" data-admin-only style="color:var(--accent);font-weight:600">Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></a>
-      <a role="tab" href="/agents" aria-selected="false" data-v="agents" data-admin-only>Agents<span class="ct" id="ctAgents">…</span></a>
-      <a href="/api-keys" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers</a>
-      <a href="/webhooks" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Webhooks &amp; Data</a>
-      <div id="railSuperAdminSection" class="sa-nav-section" data-super-admin-only style="display:flex;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);flex-direction:column;gap:1px">
+      <a role="tab" href="/sip-trunks" aria-selected="false" data-v="telephony" data-admin-only style="display:none">SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></a>
+      <a role="tab" href="/phone-numbers" aria-selected="false" data-v="market" data-admin-only style="display:none;color:var(--accent);font-weight:600">Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></a>
+      <a role="tab" href="/agents" aria-selected="false" data-v="agents" data-admin-only style="display:none">Agents<span class="ct" id="ctAgents">…</span></a>
+      <a href="/api-keys" data-admin-only data-display="flex" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:none;justify-content:space-between;align-items:center">API Keys &amp; Providers</a>
+      <a href="/webhooks" data-admin-only data-display="flex" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:none;justify-content:space-between;align-items:center">Webhooks &amp; Data</a>
+      <div id="railSuperAdminSection" class="sa-nav-section" data-super-admin-only style="display:none;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);flex-direction:column;gap:1px">
         <div style="font-family:var(--f-mono,monospace);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#c084fc;padding:4px 12px 6px;font-weight:700">👑 Overall System</div>
         <a href="/organizations" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
           <span>🏢 Organizations</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">ALL</span>
@@ -270,10 +270,10 @@
         <h1 id="title">Call history</h1>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button id="btnSimulate" class="btn" title="Generate and execute a real live dynamic call through the AI pipeline">
+        <button id="btnSimulate" class="btn" data-admin-only style="display:none" title="Generate and execute a real live dynamic call through the AI pipeline">
           Simulate Inbound Call
         </button>
-        <button id="btnOpenMarket" class="btn ghost" title="Browse and purchase carrier phone numbers">
+        <button id="btnOpenMarket" class="btn ghost" data-admin-only style="display:none" title="Browse and purchase carrier phone numbers">
           Buy Phone Number
         </button>
         <button id="btnSyncToggle" class="btn ghost" title="Toggle real-time auto-refresh polling">
@@ -899,7 +899,7 @@
       card("Calls recorded", stats.calls, stats.with_audio + " with audio", countChanged) +
       card("Avg duration", CI.formatDuration(stats.avg_duration_seconds), stats.total_turns + " turns total") +
       card("Resolved", Math.round(stats.resolution_rate * 100) + "%", (stats.outcomes.resolved || 0) + " calls") +
-      card("Frustration flags", stats.frustrated_calls, stats.transferred_calls + " escalated");
+      card("Frustration flags", stats.frustrated_calls || 0, ((stats.transferred_calls !== undefined && stats.transferred_calls !== null) ? stats.transferred_calls : (stats.escalated || stats.escalated_calls || 0)) + " escalated");
 
     $("#statCards").innerHTML = cardsHtml;
 
@@ -995,9 +995,13 @@
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ call_id: cid })
-            }).then(function () {
+            }).then(function (res) {
+              if (!res.ok) throw new Error("HTTP " + res.status);
               showToast("Call ended: " + cid);
               checkActiveCalls();
+            }).catch(function (err) {
+              btn.disabled = false;
+              showToast("Failed to end call: " + err.message, "error");
             });
           });
         });
@@ -1083,16 +1087,20 @@
   });
 
   // ── Detail View ───────────────────────────────────────────────────────────
+  var currentOpenCallId = null;
   function openCall(callId) {
     show("detail");
     $("#recMeta").textContent = callId;
+    currentOpenCallId = callId;
     CI.fetchDetail(callId).then(function (detail) {
+      if (currentOpenCallId !== callId) return;
       renderAnalysis(detail);
       $("#audioNote").textContent = (detail.audio && detail.audio.available)
         ? Math.round(detail.audio.bytes / 1024) + " KB · range-streamed"
         : "no recording stored";
       return player.load(callId, detail);
     }).catch(function (e) {
+      if (currentOpenCallId !== callId) return;
       $("#transcript").innerHTML = '<div class="empty">Failed to load call: ' +
         CI.escapeHtml(e.message) + "</div>";
     });
@@ -1134,16 +1142,21 @@
 
   // ── SIP Trunks & Phone Numbers ────────────────────────────────────────────
   function loadTelephony() {
-    // Resolves once the numbers are in, so show("market") can switch to the marketplace sub-tab.
-    loadAgents();
-    var owned = loadOwnedNumbers();
-    loadAvailableNumbers();
-    loadTrunksAndRules();
-    return Promise.resolve(owned).catch(function () {});
+    // Ensure agent catalogue is loaded before rendering DID routing dropdowns
+    var agentsPromise = cachedAgents.length ? Promise.resolve() : loadAgents();
+    return agentsPromise.then(function () {
+      var owned = loadOwnedNumbers();
+      loadAvailableNumbers();
+      loadTrunksAndRules();
+      return owned;
+    }).catch(function () {});
   }
 
   function loadOwnedNumbers() {
-    return fetch("/api/telephony/numbers").then(function (r) { return r.json(); }).then(function (data) {
+    var agentsPromise = cachedAgents.length ? Promise.resolve() : loadAgents();
+    return agentsPromise.then(function () {
+      return fetch("/api/telephony/numbers");
+    }).then(function (r) { return r.json(); }).then(function (data) {
       var nums = data.numbers || [];
       $("#ctDids").textContent = nums.length;
       $("#telStatDids").innerHTML = nums.length + '<span class="delta" style="color:var(--pos)">active DIDs</span>';
@@ -1200,12 +1213,20 @@
               agent_name: agentName,
               trunk_id: trunkId
             })
-          }).then(function (r) { return r.json(); }).then(function (res) {
+          }).then(function (r) {
+            if (!r.ok) {
+              return r.json().then(function (d) { throw new Error(d.error || ("HTTP " + r.status)); });
+            }
+            return r.json();
+          }).then(function (res) {
             sel.disabled = false;
+            if (res.status === "error" || res.error) {
+              throw new Error(res.error || "Routing update failed");
+            }
             showToast(num + " assigned to " + agentName);
           }).catch(function (e) {
             sel.disabled = false;
-            showToast("Routing error: " + e.message);
+            showToast("Routing error: " + e.message, "error");
           });
         });
       });
@@ -1229,9 +1250,9 @@
   var activeCarrier = "telnyx";
   var CARRIER_LABEL = { telnyx: "Telnyx", twilio: "Twilio" };
   function carrierBadge(c) {
-    var id = (c || "telnyx").toLowerCase();
+    var id = CI.escapeHtml((c || "telnyx").toLowerCase());
     var col = id === "twilio" ? "#F22F46" : "#00C08B";
-    return '<span class="carrier-chip carrier-' + id + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;letter-spacing:.3px;color:#fff;background:' + col + '">' + (CARRIER_LABEL[id] || id) + '</span>';
+    return '<span class="carrier-chip carrier-' + id + '" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;letter-spacing:.3px;color:#fff;background:' + col + '">' + CI.escapeHtml(CARRIER_LABEL[id] || id) + '</span>';
   }
 
   function loadAvailableNumbers() {
@@ -1326,8 +1347,9 @@
       }).join("") : '<div class="empty">No legacy outbound trunks.</div>';
 
       $("#dispatchRulesList").innerHTML = rules.length ? rules.map(function (r) {
+        var trunkList = (r.trunk_ids && r.trunk_ids.length) ? r.trunk_ids.map(CI.escapeHtml).join(", ") : "primary";
         return '<div class="agent-card"><div><strong>' + CI.escapeHtml(r.name) + '</strong><br>' +
-          '<code style="font-size:11px">Trunk: ' + (r.trunk_ids ? r.trunk_ids.join(", ") : "primary") + ' → Agent: <b style="color:var(--accent)">' + CI.escapeHtml(r.agent_name) + '</b> (prefix: ' + CI.escapeHtml(r.room_prefix) + ')</code></div></div>';
+          '<code style="font-size:11px">Trunk: ' + trunkList + ' → Agent: <b style="color:var(--accent)">' + CI.escapeHtml(r.agent_name) + '</b> (prefix: ' + CI.escapeHtml(r.room_prefix) + ')</code></div></div>';
       }).join("") : '<div class="empty">No dispatch rules defined.</div>';
 
       // Bind delete trunk buttons

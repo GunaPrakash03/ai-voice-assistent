@@ -111,15 +111,15 @@
     nav.appendChild(sec);
   }
 
-  window.currentRole = "super_admin";
+  window.currentRole = null;
   window.applyRoleVisibility = function () {
-    var role = (window.currentRole || (profile && profile.role) || "super_admin").toLowerCase();
+    var role = (window.currentRole || (profile && profile.role) || "viewer").toLowerCase();
     var isSuperAdmin = role === "super_admin" || (profile && Boolean(profile.is_super_admin));
     var isAdmin = isSuperAdmin || role === "admin" || (profile && Boolean(profile.is_admin));
 
     Array.prototype.forEach.call(document.querySelectorAll("[data-admin-only]"), function (el) {
       el.hidden = !isAdmin;
-      el.style.display = isAdmin ? "" : "none";
+      el.style.display = isAdmin ? (el.dataset.display || "") : "none";
     });
 
     Array.prototype.forEach.call(document.querySelectorAll("[data-super-admin-only]"), function (el) {
