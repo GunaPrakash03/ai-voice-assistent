@@ -538,24 +538,25 @@ class TwilioMediaStreamSession:
         duration = time.time() - self.started_at
         log.info("Twilio Stream call completed: %s (duration: %.1fs)", self.call_sid, duration)
 
-        # Dispatch Retell AI compatible call_ended webhook
-        try:
-            from agent.webhook_dispatcher import webhook_dispatcher
-            webhook_dispatcher.dispatch_soon("call_ended", {
-                "call": {
-                    "call_id": self.call_sid,
-                    "agent_id": getattr(self.agent_cfg, "agent_id", "agent_default"),
-                    "direction": "inbound",
-                    "from_number": self.caller_number,
-                    "to_number": self.called_number,
-                    "started_at": self.started_at,
-                    "duration_seconds": round(duration, 2),
-                },
-                "transcript": self.history,
-                "disconnection_reason": "user_hangup",
-            }, call_id=self.call_sid)
-        except Exception as ex:
-            log.warning("Could not dispatch call_ended webhook: %s", ex)
+        # Dispatch terminal webhook if pipeline_worker will not be enqueued (no transcript turns)
+        if not self.history:
+            try:
+                from agent.webhook_dispatcher import webhook_dispatcher
+                webhook_dispatcher.dispatch_soon("call_ended", {
+                    "call": {
+                        "call_id": self.call_sid,
+                        "agent_id": getattr(self.agent_cfg, "agent_id", "agent_default"),
+                        "direction": "inbound",
+                        "from_number": self.caller_number,
+                        "to_number": self.called_number,
+                        "started_at": self.started_at,
+                        "duration_seconds": round(duration, 2),
+                    },
+                    "transcript": [],
+                    "disconnection_reason": "user_hangup",
+                }, call_id=self.call_sid)
+            except Exception as ex:
+                log.warning("Could not dispatch call_ended webhook: %s", ex)
 
         # Close Deepgram
         if self._deepgram_ws:

@@ -112,7 +112,7 @@ class WebhookEndpoint:
         data = asdict(self)
         if redact_secret:
             prefix = "whsec_" if self.secret.startswith("whsec_") else ""
-            data["secret"] = f"{prefix}***" + self.secret[-4:] if len(self.secret) > 8 else "***"
+            data["secret"] = f"{prefix}..." + self.secret[-4:] if len(self.secret) > 8 else "..."
         return data
 
 
@@ -355,6 +355,7 @@ class WebhookDispatcher:
         self._deliveries: List[WebhookDelivery] = []
         self._seen_deliveries: Dict[str, float] = {}
         self._dead_letters: List[Dict[str, Any]] = []
+        self._terminal_sent: Dict[Tuple[str, str], float] = {}
         self._pending_tasks: Set[asyncio.Task] = set()
         self._lock = threading.Lock()
         self._last_state_mtime: float = 0.0
@@ -681,6 +682,26 @@ class WebhookDispatcher:
         targets = [e for e in self._endpoints.values() if e.subscribes_to(event)]
         if not targets:
             return []
+
+        # Dedupe terminal events (call_ended / call.completed) per (endpoint_id, call_id)
+        effective_cid = call_id or payload.get("call_id") or (payload.get("call", {}).get("call_id") if isinstance(payload.get("call"), dict) else None)
+        if event in ("call_ended", "call.completed") and effective_cid:
+            now = time.time()
+            if len(self._terminal_sent) > 5000:
+                self._terminal_sent = {k: v for k, v in self._terminal_sent.items() if now - v < 3600}
+            filtered_targets = []
+            for ep in targets:
+                term_key = (ep.endpoint_id, str(effective_cid))
+                if term_key in self._terminal_sent:
+                    log.info("Endpoint %s already received terminal event for call %s; skipping duplicate %s",
+                             ep.endpoint_id, effective_cid, event)
+                    continue
+                self._terminal_sent[term_key] = now
+                filtered_targets.append(ep)
+            targets = filtered_targets
+
+        if not targets:
+            return []
         results = await asyncio.gather(
             *[self.deliver(ep, event, payload, call_id, sleep) for ep in targets],
             return_exceptions=True,
@@ -794,6 +815,7 @@ class WebhookDispatcher:
         self._deliveries.clear()
         self._dead_letters.clear()
         self._seen_deliveries.clear()
+        self._terminal_sent.clear()
 
     def persist(self):
         """Writes the current registry and audit log to disk."""
