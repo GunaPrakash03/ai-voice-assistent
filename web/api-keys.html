@@ -419,12 +419,18 @@
               <div class="pcard-icon" style="background:#F22F46;color:#fff">TW</div>
               <div>
                 <div class="pcard-name">Twilio Voice</div>
-                <div class="pcard-meta"><code>TWILIO_AUTH_TOKEN</code> · Programmable Voice</div>
+                <div class="pcard-meta"><code>TWILIO_ACCOUNT_SID</code> &amp; <code>TWILIO_AUTH_TOKEN</code> · Programmable Voice</div>
               </div>
             </div>
             <span class="status-pill sp-off" id="pill-twilio">UNCONFIGURED</span>
           </div>
           <div class="pcard-desc">Inbound and outbound programmable voice calls, webhooks, and phone number rental.</div>
+          <div class="key-input-row" style="margin-bottom:8px">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-TWILIO_ACCOUNT_SID" placeholder="Twilio Account SID (AC...)..." data-provider="twilio">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
+            </div>
+          </div>
           <div class="key-input-row">
             <div class="key-input-wrapper">
               <input type="password" class="key-input" id="key-TWILIO_AUTH_TOKEN" placeholder="Twilio Auth Token..." data-provider="twilio">
@@ -479,13 +485,17 @@
       .then(function(data) {
         var providers = data.providers || [];
         providers.forEach(function(p) {
-          var input = $("#key-" + p.primary_env_key);
           var pill = $("#pill-" + p.provider_id);
+          var envKeys = p.all_env_keys || [p.primary_env_key];
+          envKeys.forEach(function(k) {
+            var input = $("#key-" + k);
+            if (input && !input.value) {
+              var mask = (p.masked_keys && p.masked_keys[k]) || (k === p.primary_env_key ? p.masked_key : "");
+              if (mask) input.placeholder = mask;
+            }
+          });
           
           if (p.is_configured) {
-            if (input && !input.value) {
-              input.placeholder = p.masked_key;
-            }
             if (pill) {
               pill.className = "status-pill sp-ok";
               if (p.provider_id === "elevenlabs") {
@@ -519,7 +529,7 @@
     });
 
     if (Object.keys(updates).length === 0) {
-      showToast("ℹNo new keys entered to save.");
+      showToast("ℹ No new keys entered to save.");
       return;
     }
 
@@ -556,7 +566,7 @@
     btn.addEventListener("click", function() {
       var providerId = this.dataset.provider;
       var card = $("#card-" + providerId);
-      var input = card ? card.querySelector(".key-input") : null;
+      var input = card ? (card.querySelector("#key-TWILIO_AUTH_TOKEN") || card.querySelector(".key-input")) : null;
       var diag = $("#diag-" + providerId);
       var pill = $("#pill-" + providerId);
       var rawKey = input ? input.value.trim() : "";
@@ -564,13 +574,21 @@
       btn.disabled = true;
       btn.textContent = "Testing…";
 
+      var testPayload = {
+        provider_id: providerId,
+        api_key: rawKey
+      };
+      if (providerId === "twilio") {
+        var sidInput = $("#key-TWILIO_ACCOUNT_SID");
+        if (sidInput && sidInput.value.trim()) {
+          testPayload.account_sid = sidInput.value.trim();
+        }
+      }
+
       fetch("/api/providers/test", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          provider_id: providerId,
-          api_key: rawKey
-        })
+        body: JSON.stringify(testPayload)
       })
       .then(function(r) { return r.json(); })
       .then(function(res) {

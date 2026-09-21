@@ -174,6 +174,11 @@ class ProviderManager:
             primary_key_name = meta["env_keys"][0]
             val = self.get_provider_key(pid)
             is_set = bool(val)
+            masked_keys_map = {}
+            for k in meta["env_keys"]:
+                kv = os.getenv(k, "").strip()
+                if kv:
+                    masked_keys_map[k] = mask_key(kv)
             res.append({
                 "provider_id": pid,
                 "name": meta["name"],
@@ -182,6 +187,7 @@ class ProviderManager:
                 "all_env_keys": meta["env_keys"],
                 "is_configured": is_set,
                 "masked_key": mask_key(val) if is_set else "",
+                "masked_keys": masked_keys_map,
                 "description": meta["description"],
                 "docs_url": meta["docs_url"],
             })
@@ -261,7 +267,7 @@ class ProviderManager:
         return {"status": "ok", "updated": list(sanitized.keys())}
 
 
-    def test_provider_connection(self, provider_id: str, api_key: Optional[str] = None) -> Dict[str, Any]:
+    def test_provider_connection(self, provider_id: str, api_key: Optional[str] = None, account_sid: Optional[str] = None) -> Dict[str, Any]:
         """
         Live-tests connectivity with a provider API.
         Returns live latency, status code, model/voice metadata, and human diagnostics.
@@ -505,7 +511,7 @@ class ProviderManager:
         elif provider_id == "twilio":
             try:
                 import base64
-                sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+                sid = (account_sid or "").strip() or os.getenv("TWILIO_ACCOUNT_SID", "").strip()
                 # If key looks like SID, or if separate token provided
                 auth_token = key
                 if key.startswith("AC") and not sid:
@@ -554,12 +560,49 @@ class ProviderManager:
                     "error": f"Failed to connect to Twilio: {str(ex)}",
                 }
 
+        # 8. Telnyx Telephony
+        elif provider_id == "telnyx":
+            try:
+                url = "https://api.telnyx.com/v2/phone_numbers?page[size]=1"
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {key}",
+                        "User-Agent": "VoiceAgentService/1.0"
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=6.0) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    elapsed_ms = int((time.perf_counter() - start) * 1000)
+                    total_dids = data.get("meta", {}).get("total_results", 0)
+                    return {
+                        "status": "ok",
+                        "provider": "telnyx",
+                        "connected": True,
+                        "latency_ms": elapsed_ms,
+                        "details": f"Authenticated successfully with Telnyx! Active E.164 phone numbers found: {total_dids}.",
+                    }
+            except urllib.error.HTTPError as he:
+                return {
+                    "status": "error",
+                    "provider": "telnyx",
+                    "connected": False,
+                    "code": he.code,
+                    "error": f"Telnyx API returned HTTP {he.code}: {he.reason}",
+                }
+            except Exception as ex:
+                return {
+                    "status": "error",
+                    "provider": "telnyx",
+                    "connected": False,
+                    "error": f"Failed to connect to Telnyx: {str(ex)}",
+                }
+
         return {
-            "status": "ok",
+            "status": "error",
             "provider": provider_id,
-            "connected": True,
-            "latency_ms": 10,
-            "details": f"Key for {provider_id} configured and validated.",
+            "connected": False,
+            "error": f"Live test connection handler not implemented for provider '{provider_id}'.",
         }
 
 

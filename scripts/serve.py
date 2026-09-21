@@ -2454,7 +2454,8 @@ class Handler(SimpleHTTPRequestHandler):
             from agent.provider_manager import provider_manager
             provider_id = payload.get("provider_id") or payload.get("provider") or ""
             api_key = payload.get("api_key") or payload.get("key") or None
-            res = provider_manager.test_provider_connection(provider_id, api_key)
+            account_sid = payload.get("account_sid") or payload.get("sid") or None
+            res = provider_manager.test_provider_connection(provider_id, api_key, account_sid=account_sid)
             self._send_json(res, 200 if res.get("status") == "ok" else 400)
             return
 
