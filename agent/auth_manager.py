@@ -294,12 +294,15 @@ class AuthManager:
     def _ensure_env_super_admins(self) -> None:
         """SUPER_ADMIN_EMAIL (comma-separated) names accounts that must exist as active Super Admins:
         promoted if present, created in the default workspace otherwise. SUPER_ADMIN_PASSWORD, when set,
-        gives a created account (or one with no password yet) its first password. Lets a deployment
-        (Railway) get its owner account from a variable instead of a database edit."""
+        gives a created account (or one with no password yet) its first password; with
+        SUPER_ADMIN_RESET_PASSWORD=1 it overwrites an existing password too (a one-shot recovery: unset
+        it afterwards). Lets a deployment (Railway) get its owner account from a variable instead of a
+        database edit."""
         emails = [e.strip().lower() for e in os.getenv("SUPER_ADMIN_EMAIL", "").split(",") if e.strip()]
         if not emails:
             return
         password = os.getenv("SUPER_ADMIN_PASSWORD", "")
+        reset = os.getenv("SUPER_ADMIN_RESET_PASSWORD", "").strip().lower() in ("1", "true", "yes")
         changed = False
         for email in emails:
             user = self._find_user_by_email(email) or next(
@@ -316,11 +319,12 @@ class AuthManager:
                 self._users[user.user_id] = user
                 changed = True
                 log.info("SUPER_ADMIN_EMAIL: created super_admin %s", email)
-            if password and not user.password_hash and len(password) >= 8:
+            if password and len(password) >= 8 and (reset or not user.password_hash):
                 salt = secrets.token_hex(16)
                 user.password_salt = salt
                 user.password_hash = self._hash_password(password, salt)
                 changed = True
+                log.info("SUPER_ADMIN_EMAIL: password %s for %s", "reset" if reset else "set", email)
         if changed:
             self._save_store()
 
