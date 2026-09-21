@@ -25,6 +25,7 @@ import wave
 from typing import Any, Dict, List, Optional, Tuple
 
 import urllib.request
+import aiohttp
 
 log = logging.getLogger("twilio-stream")
 
@@ -399,8 +400,11 @@ class TwilioMediaStreamSession:
                         await asyncio.sleep(ahead)
                 done_len += len(sentence)
             self._playing_progress = 1.0
-            self._playing_text = ""
+        except asyncio.CancelledError:
+            log.info("Speech playback cancelled (interrupted).")
+            raise
         finally:
+            self._playing_text = ""
             if next_synth is not None and not next_synth.done():
                 next_synth.cancel()       # a barge-in or hang-up must not leave a paid TTS call running
             if self._current_speech_task is current_task or self._current_speech_task is None:
@@ -416,19 +420,20 @@ class TwilioMediaStreamSession:
         if dg_key and (raw_voice_id.startswith("aura-") or "aura" in raw_voice_id):
             try:
                 url = f"https://api.deepgram.com/v1/speak?model={raw_voice_id}&encoding=mulaw&sample_rate=8000&container=none"
-                payload = json.dumps({"text": text}).encode("utf-8")
-                req = urllib.request.Request(
-                    url,
-                    data=payload,
-                    headers={
-                        "Authorization": f"Token {dg_key}",
-                        "Content-Type": "application/json",
-                    },
-                )
-                loop = asyncio.get_running_loop()
-                data = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=5.0).read())
-                if data:
-                    return data
+                headers = {
+                    "Authorization": f"Token {dg_key}",
+                    "Content-Type": "application/json",
+                }
+                timeout = aiohttp.ClientTimeout(total=5.0)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(url, json={"text": text}, headers=headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            if data:
+                                return data
+            except asyncio.CancelledError:
+                log.info("Deepgram synthesis cancelled mid-flight.")
+                raise
             except Exception as ex:
                 log.warning("Deepgram Aura mu-law synthesis failed for %s: %s", raw_voice_id, ex)
 
@@ -437,25 +442,27 @@ class TwilioMediaStreamSession:
         if cartesia_key and not raw_voice_id.startswith("aura-"):
             try:
                 url = "https://api.cartesia.ai/tts/bytes"
-                payload = json.dumps({
+                headers = {
+                    "X-API-Key": cartesia_key,
+                    "Cartesia-Version": "2024-06-10",
+                    "Content-Type": "application/json",
+                }
+                payload = {
                     "model_id": "sonic-3",
                     "transcript": text,
                     "voice": {"mode": "id", "id": raw_voice_id},
                     "output_format": {"container": "raw", "sample_rate": 8000, "encoding": "pcm_mulaw"},
-                }).encode("utf-8")
-                req = urllib.request.Request(
-                    url,
-                    data=payload,
-                    headers={
-                        "X-API-Key": cartesia_key,
-                        "Cartesia-Version": "2024-06-10",
-                        "Content-Type": "application/json",
-                    },
-                )
-                loop = asyncio.get_running_loop()
-                data = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=5.0).read())
-                if data:
-                    return data
+                }
+                timeout = aiohttp.ClientTimeout(total=5.0)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(url, json=payload, headers=headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            if data:
+                                return data
+            except asyncio.CancelledError:
+                log.info("Cartesia synthesis cancelled mid-flight.")
+                raise
             except Exception as ex:
                 log.warning("Cartesia native mu-law synthesis failed: %s", ex)
 
@@ -469,6 +476,9 @@ class TwilioMediaStreamSession:
             )
             if pcm_bytes:
                 return self._convert_pcm_to_mulaw(pcm_bytes)
+        except asyncio.CancelledError:
+            log.info("Fallback synthesis cancelled mid-flight.")
+            raise
         except Exception as ex:
             log.error("Fallback speech synthesis failed: %s", ex)
 
@@ -730,13 +740,27 @@ def handle_twilio_media_stream(handler, request_path: str) -> None:
             log.debug("Error sending WS frame to Twilio: %s", ex)
 
     session = TwilioMediaStreamSession(send_ws_json)
+    start_deadline = time.monotonic() + 15.0
 
     async def stream_loop():
         rfile = handler.rfile
         while session.is_active:
             try:
-                # Read next frame in executor so as not to block asyncio
-                opcode, payload = await loop.run_in_executor(None, read_ws_frame, rfile)
+                # If 'start' event has not arrived yet, bound read time by remaining start deadline
+                if not session.stream_sid:
+                    remaining = start_deadline - time.monotonic()
+                    if remaining <= 0:
+                        log.warning("Twilio stream timed out waiting for 'start' event (deadline exceeded); closing socket.")
+                        break
+                    read_timeout = max(0.1, remaining)
+                else:
+                    read_timeout = 60.0
+
+                # Read next frame in executor with timeout to prevent pinning the worker thread
+                opcode, payload = await asyncio.wait_for(
+                    loop.run_in_executor(None, read_ws_frame, rfile),
+                    timeout=read_timeout,
+                )
                 if opcode == 0x8:  # Close frame
                     log.info("Twilio WebSocket sent close frame.")
                     break
@@ -761,6 +785,12 @@ def handle_twilio_media_stream(handler, request_path: str) -> None:
                     elif evt_type == "stop":
                         await session.on_stop()
                         break
+            except asyncio.TimeoutError:
+                if not session.stream_sid:
+                    log.warning("Twilio stream timed out waiting for 'start' event from peer; closing connection.")
+                else:
+                    log.warning("Twilio stream read timed out; closing inactive connection.")
+                break
             except Exception as ex:
                 log.warning("Twilio stream loop error: %s", ex)
                 break
