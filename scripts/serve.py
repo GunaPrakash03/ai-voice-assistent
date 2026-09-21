@@ -104,6 +104,7 @@ class Handler(SimpleHTTPRequestHandler):
     SESSION_COOKIE = "va_session"
     PUBLIC_PATHS = ("/login", "/switch-role", "/api/v1/auth/switch-role", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/session",
                     "/api/v1/auth/setup", "/api/v1/auth/otp/resend", "/api/v1/auth/otp/verify", "/api/v1/auth/dev-session",
+                    "/reset-password", "/api/v1/auth/forgot", "/api/v1/auth/reset", "/api/v1/auth/reset/check",
                     "/api/v1/health", "/favicon.ico")
     STATIC_SUFFIXES = (".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".mp3", ".wav", ".map", ".d.ts")
     # Pages have clean URLs: /api-keys serves web/api-keys.html. Anything else (/api/..., /token, files
@@ -1109,6 +1110,72 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"status": "ok", "token": token, "cookie": self.SESSION_COOKIE, **auth_manager.session_info(token)},
                             200, self._set_session_cookie(token, doc["expires_at"] - time.time()))
             return
+        if parsed.path == "/api/v1/auth/forgot":
+            # Forgotten password: email a single-use link. The answer is the same whether or not the
+            # address has an account, so the form cannot be used to discover who has one.
+            from agent import mailer
+            from agent.telephony_manager import public_base_url
+            email = str(payload.get("email") or "").strip()
+            if "@" not in email:
+                self._send_json({"status": "error", "error": "Enter the email address of your account"}, 400)
+                return
+            generic = {"status": "ok", "message": "If that email has an account, a reset link is on its way. It expires in 1 hour."}
+            mail_cfg = mailer.configured()
+            if not mail_cfg["ready"]:
+                log.error("Password reset requested for %s but email is not configured: %s", email, mail_cfg["reason"])
+                self._send_json({"status": "error", "error": "Password reset email is not set up on this server yet. "
+                                 "Ask your administrator to reset your password."}, 503)
+                return
+            try:
+                issued = auth_manager.create_password_reset(email)
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 429)
+                return
+            if not issued:
+                self._send_json(generic)
+                return
+            user, token = issued
+            base = public_base_url() or self._public_base_url()
+            link = f"{base}/reset-password?token={token}"
+            name = user.name or user.email.split("@")[0]
+            text = (f"Hi {name},\n\nSomeone asked to reset the password for {user.email} on the Voice Agent dashboard.\n"
+                    f"Open this link to choose a new password (valid for 1 hour):\n\n{link}\n\n"
+                    "If you did not ask for this, ignore this email; your password stays the same.")
+            html = (f"<p>Hi {xml_escape(name)},</p><p>Someone asked to reset the password for <b>{xml_escape(user.email)}</b> "
+                    "on the Voice Agent dashboard.</p>"
+                    f"<p><a href=\"{xml_escape(link)}\" style=\"display:inline-block;padding:10px 18px;background:#C2560F;color:#fff;"
+                    "border-radius:6px;text-decoration:none;font-weight:600\">Choose a new password</a></p>"
+                    f"<p style=\"color:#666;font-size:13px\">Or paste this link: {xml_escape(link)}<br>It expires in 1 hour. "
+                    "If you did not ask for this, ignore this email; your password stays the same.</p>")
+            result = mailer.send_email(user.email, "Reset your Voice Agent password", text, html)
+            if not result.get("ok"):
+                log.error("Reset email to %s failed: %s", user.email, result.get("error"))
+                self._send_json({"status": "error", "error": "The reset email could not be sent. Try again in a minute or contact your administrator."}, 502)
+                return
+            self._send_json(generic)
+            return
+
+        if parsed.path == "/api/v1/auth/reset/check":
+            user = auth_manager.peek_password_reset(str(payload.get("token") or ""))
+            if not user:
+                self._send_json({"status": "error", "error": "This reset link is invalid or has expired. Request a new one."}, 400)
+                return
+            masked = user.email[:2] + "•••" + user.email[user.email.find("@"):]
+            self._send_json({"status": "ok", "email_masked": masked})
+            return
+
+        if parsed.path == "/api/v1/auth/reset":
+            try:
+                user = auth_manager.consume_password_reset(str(payload.get("token") or ""), str(payload.get("password") or ""))
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            # Sign them straight in on the new password.
+            token, doc = auth_manager.create_session(user, remember=False, user_agent=self.headers.get("User-Agent", ""), method="password_reset")
+            self._send_json({"status": "ok", "email": user.email},
+                            extra_headers=self._set_session_cookie(token, doc["expires_at"] - time.time()))
+            return
+
         if parsed.path == "/api/v1/auth/otp/resend":
             from agent import sms
             try:

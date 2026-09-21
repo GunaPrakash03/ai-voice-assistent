@@ -649,10 +649,59 @@ class AuthManager:
         if not token:
             return None
         doc = self._sessions.get(hashlib.sha256(token.encode("utf-8")).hexdigest())
-        if not doc or float(doc.get("expires_at", 0)) < time.time():
+        if not doc or float(doc.get("expires_at", 0)) < time.time() or doc.get("kind") == "password_reset":
             return None
         user = self._users.get(doc["user_id"])
         return user if (user and user.active) else None
+
+    # ── Forgotten password (email link) ─────────────────────────────────────
+    # Reset tickets are stored beside sessions (same persisted collection, same expiry pruning) but
+    # carry kind="password_reset" so they can never be presented as a login session.
+    RESET_TTL = 60 * 60          # a reset link is good for one hour
+    RESET_RESEND_WAIT = 60       # and a new one cannot be requested more often than once a minute
+
+    def create_password_reset(self, email: str) -> Optional[Tuple[AuthUser, str]]:
+        """Issue a single-use reset token for an active account. Returns None for unknown emails so
+        the caller can answer identically either way (no account enumeration); raises ValueError
+        when one was requested too recently."""
+        user = self._find_user_by_email(email)
+        if not user:
+            return None
+        now = time.time()
+        for h, doc in list(self._sessions.items()):
+            if doc.get("kind") == "password_reset" and doc.get("user_id") == user.user_id:
+                if now - float(doc.get("created_at", 0)) < self.RESET_RESEND_WAIT:
+                    raise ValueError("A reset link was sent a moment ago. Check your inbox or try again in a minute.")
+                self._sessions.pop(h, None)          # one outstanding link per account
+        token = secrets.token_urlsafe(32)
+        self._sessions[hashlib.sha256(token.encode("utf-8")).hexdigest()] = {
+            "token_hash": hashlib.sha256(token.encode("utf-8")).hexdigest(),
+            "kind": "password_reset", "user_id": user.user_id, "workspace_id": user.workspace_id,
+            "created_at": now, "expires_at": now + self.RESET_TTL, "remember": False,
+            "user_agent": "", "method": "password_reset",
+        }
+        self._save_store()
+        return user, token
+
+    def peek_password_reset(self, token: str) -> Optional[AuthUser]:
+        """The account a still-valid reset token belongs to (for the reset page), else None."""
+        doc = self._sessions.get(hashlib.sha256((token or "").encode("utf-8")).hexdigest())
+        if not doc or doc.get("kind") != "password_reset" or float(doc.get("expires_at", 0)) < time.time():
+            return None
+        user = self._users.get(doc["user_id"])
+        return user if (user and user.active) else None
+
+    def consume_password_reset(self, token: str, new_password: str) -> AuthUser:
+        """Set a new password from a valid token, burn the token and sign the account out everywhere."""
+        user = self.peek_password_reset(token)
+        if not user:
+            raise ValueError("This reset link is invalid or has expired. Request a new one.")
+        self.set_password(user.user_id, new_password)   # validates length; saves
+        for h in [h for h, d in self._sessions.items() if d.get("user_id") == user.user_id]:
+            self._sessions.pop(h, None)
+        self._save_store()
+        log.info("Password reset completed for %s", user.email)
+        return user
 
     def logout(self, token: str) -> bool:
         if not token:

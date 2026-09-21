@@ -111,9 +111,22 @@
         <form id="loginForm">
           <div class="field"><label for="email">Email</label><input id="email" type="email" placeholder="you@company.com" autocomplete="username" required autofocus></div>
           <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
-          <div class="row"><label><input type="checkbox" id="remember"> Keep me signed in for 30 days</label></div>
+          <div class="row"><label><input type="checkbox" id="remember"> Keep me signed in for 30 days</label><button class="link" type="button" id="forgotLink">Forgot password?</button></div>
           <button class="btn btn-primary" id="loginBtn" type="submit">Continue →</button>
           <div class="msg" id="loginMsg"></div>
+        </form>
+      </section>
+
+      <!-- Forgot password: email a reset link -->
+      <section class="step" id="stepForgot">
+        <div class="crumb">Password help</div>
+        <h1>Reset your password</h1>
+        <p class="sub">Enter your account email and we'll send a link to choose a new password. No current password needed.</p>
+        <form id="forgotForm">
+          <div class="field"><label for="fpEmail">Email</label><input id="fpEmail" type="email" placeholder="you@company.com" autocomplete="username" required></div>
+          <button class="btn btn-primary" id="fpBtn" type="submit">Email me a reset link</button>
+          <button class="btn btn-ghost" type="button" id="fpBack">← Back to sign in</button>
+          <div class="msg" id="fpMsg"></div>
         </form>
       </section>
 
@@ -139,7 +152,7 @@
   var ticket = null, countdownTimer = null, resendTimer = null;
 
   function show(step) {
-    ["stepSetup", "stepPassword", "stepCode"].forEach(function (id) { $(id).classList.toggle("on", id === step); });
+    ["stepSetup", "stepPassword", "stepCode", "stepForgot"].forEach(function (id) { $(id).classList.toggle("on", id === step); });
     $("dot2").classList.toggle("done", step === "stepCode");
     var first = $(step).querySelector("input"); if (first) setTimeout(function () { first.focus(); }, 50);
   }
@@ -194,6 +207,21 @@
     post("/api/v1/auth/setup", { name: $("suName").value, email: $("suEmail").value, password: $("suPass").value })
       .then(function (d) { if (d.status === "ok") { done(); } else { msg($("suMsg"), d.error || "Could not set up", false); $("suBtn").disabled = false; } })
       .catch(function () { msg($("suMsg"), "Network error", false); $("suBtn").disabled = false; });
+  });
+
+  $("forgotLink").addEventListener("click", function () {
+    $("fpEmail").value = $("email").value; msg($("fpMsg"), "", true); show("stepForgot");
+  });
+  $("fpBack").addEventListener("click", function () { show("stepPassword"); });
+  $("forgotForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    $("fpBtn").disabled = true; msg($("fpMsg"), "Sending…", true);
+    post("/api/v1/auth/forgot", { email: $("fpEmail").value })
+      .then(function (d) {
+        $("fpBtn").disabled = false;
+        msg($("fpMsg"), d.status === "ok" ? d.message : (d.error || "Could not send the reset link"), d.status === "ok");
+      })
+      .catch(function () { msg($("fpMsg"), "Network error", false); $("fpBtn").disabled = false; });
   });
 
   $("loginForm").addEventListener("submit", function (e) {
