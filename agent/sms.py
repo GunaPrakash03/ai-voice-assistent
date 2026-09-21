@@ -29,8 +29,12 @@ def sender_number() -> Optional[str]:
         return override
     try:
         from agent.telephony_manager import telephony_manager
-        for rec in telephony_manager._owned_numbers.values():
-            if rec.status == "active" and getattr(rec, "carrier", "") == "twilio" and "sms" in (rec.capabilities or []):
+        # Snapshot dictionary values to prevent RuntimeError on concurrent mutations
+        numbers = list(telephony_manager._owned_numbers.values())
+        for rec in numbers:
+            metadata = getattr(rec, "metadata", {}) or {}
+            has_sid = bool(metadata.get("twilio_sid") or metadata.get("sid") or getattr(rec, "sid", ""))
+            if rec.status == "active" and getattr(rec, "carrier", "") == "twilio" and "sms" in (rec.capabilities or []) and has_sid:
                 return rec.phone_number
     except Exception as e:
         log.debug("no telephony numbers available for SMS: %s", e)
@@ -41,8 +45,13 @@ def configured() -> Dict[str, object]:
     sid = (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
     tok = (os.getenv("TWILIO_AUTH_TOKEN") or "").strip()
     frm = sender_number()
-    return {"ready": bool(sid and tok and frm) or os.getenv("SMS_DRY_RUN") == "1", "from": frm,
-            "reason": "" if (sid and tok) else "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not configured" if not frm else ""}
+    ready = bool(sid and tok and frm) or os.getenv("SMS_DRY_RUN") == "1"
+    reason = ""
+    if not (sid and tok):
+        reason = "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not configured"
+    elif not frm:
+        reason = "No SMS-capable Twilio phone number available in this workspace"
+    return {"ready": ready, "from": frm, "reason": reason}
 
 
 def send_sms(to: str, body: str) -> Dict[str, object]:

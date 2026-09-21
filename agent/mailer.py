@@ -24,7 +24,12 @@ log = logging.getLogger("voice-agent.mailer")
 
 
 def _from_address() -> str:
-    return (os.getenv("MAIL_FROM") or os.getenv("SMTP_FROM") or os.getenv("SMTP_USER") or "").strip()
+    addr = (os.getenv("MAIL_FROM") or os.getenv("SMTP_FROM") or "").strip()
+    if not addr:
+        u = (os.getenv("SMTP_USER") or "").strip()
+        if "@" in u:
+            addr = u
+    return addr
 
 
 def configured() -> Dict[str, object]:
@@ -35,7 +40,7 @@ def configured() -> Dict[str, object]:
                 "reason": "" if sender else "MAIL_FROM is not set"}
     if os.getenv("SMTP_HOST", "").strip():
         return {"ready": bool(sender), "transport": "smtp", "from": sender,
-                "reason": "" if sender else "MAIL_FROM (or SMTP_USER) is not set"}
+                "reason": "" if sender else "MAIL_FROM (or SMTP_USER containing '@') is not set"}
     return {"ready": False, "transport": "", "from": sender,
             "reason": "No email transport: set RESEND_API_KEY or SMTP_HOST (+ MAIL_FROM)"}
 
@@ -80,6 +85,10 @@ def _send_smtp(to: str, subject: str, text: str, html: str) -> Dict[str, object]
     port = int(os.getenv("SMTP_PORT", "587") or 587)
     user = os.getenv("SMTP_USER", "").strip()
     password = os.getenv("SMTP_PASSWORD", "")
+    tls_mode = (os.getenv("SMTP_TLS") or "").strip().lower()
+    use_ssl = tls_mode in ("ssl", "tls") or (port == 465 and tls_mode != "starttls")
+    allow_insecure = os.getenv("SMTP_ALLOW_INSECURE") == "1"
+
     msg = EmailMessage()
     msg["From"] = _from_address()
     msg["To"] = to
@@ -88,7 +97,7 @@ def _send_smtp(to: str, subject: str, text: str, html: str) -> Dict[str, object]
     if html:
         msg.add_alternative(html, subtype="html")
     ctx = ssl.create_default_context()
-    if port == 465:
+    if use_ssl:
         with smtplib.SMTP_SSL(host, port, context=ctx, timeout=20) as s:
             if user:
                 s.login(user, password)
@@ -99,6 +108,11 @@ def _send_smtp(to: str, subject: str, text: str, html: str) -> Dict[str, object]
             if s.has_extn("starttls"):
                 s.starttls(context=ctx)
                 s.ehlo()
+            elif not allow_insecure and (user or password):
+                raise RuntimeError(
+                    f"SMTP server {host}:{port} does not advertise STARTTLS. "
+                    "Refusing to transmit credentials in plaintext (set SMTP_ALLOW_INSECURE=1 to bypass)."
+                )
             if user:
                 s.login(user, password)
             s.send_message(msg)
