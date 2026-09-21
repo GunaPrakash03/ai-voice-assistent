@@ -1229,7 +1229,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not result.get("ok"):
                 self._send_json({"status": "error", "error": str(result.get("error", "SMS could not be sent"))}, 502)
                 return
-            body = {"status": "ok", "phone_masked": step["phone_masked"], "expires_in": auth_manager.OTP_TTL}
+            body = {"status": "ok", "phone_masked": step["phone_masked"], "expires_in": step.get("expires_in", auth_manager.OTP_TTL)}
             if result.get("dry_run"):
                 body["dry_run_code"] = step["code"]
             self._send_json(body)
@@ -2350,7 +2350,13 @@ class Handler(SimpleHTTPRequestHandler):
         elif parsed.path == "/api/v1/auth/profile":
             try:
                 su = self._session_user()
-                self._send_json({"status": "ok", "profile": auth_manager.update_profile(payload, su.user_id if su else None)})
+                if not su:
+                    self._send_json({"status": "error", "error": "Authentication required"}, 401)
+                    return
+                if "workspace" in payload and not (su.is_admin or su.is_super_admin):
+                    self._send_json({"status": "error", "error": "Admin access required to rename workspace"}, 403)
+                    return
+                self._send_json({"status": "ok", "profile": auth_manager.update_profile(payload, su.user_id)})
             except (KeyError, ValueError) as e:
                 self._send_json({"status": "error", "error": str(e)}, 400)
             return

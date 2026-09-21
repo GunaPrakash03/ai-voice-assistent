@@ -370,20 +370,40 @@ document.getElementById('btnOpenAddUser').addEventListener('click', () => {
   document.getElementById('modalAddUser').classList.add('show');
 });
 
+let currentViewerId = null;
+let currentViewerEmail = null;
+
 async function loadData() {
   try {
-    const [statsRes, usersRes, orgsRes] = await Promise.all([
+    const [statsRes, usersRes, orgsRes, profileRes] = await Promise.all([
       fetch('/api/v1/system/stats'),
       fetch('/api/v1/system/users'),
-      fetch('/api/v1/system/organizations')
+      fetch('/api/v1/system/organizations'),
+      fetch('/api/v1/auth/profile').catch(() => null)
     ]);
 
-    if (!statsRes.ok || !usersRes.ok) {
-      if (statsRes.status === 403 || usersRes.status === 403) {
+    if (!statsRes.ok || !usersRes.ok || !orgsRes.ok) {
+      if (statsRes.status === 401 || usersRes.status === 401 || orgsRes.status === 401) {
+        location.href = '/login?next=' + encodeURIComponent(location.pathname);
+        return;
+      }
+      if (statsRes.status === 403 || usersRes.status === 403 || orgsRes.status === 403) {
         alert('Access Denied: Super Admin privilege required.');
         location.href = '/?denied=super_admin';
         return;
       }
+      throw new Error(`Server returned error: ${usersRes.status || statsRes.status || orgsRes.status}`);
+    }
+
+    if (profileRes && profileRes.ok) {
+      const pData = await profileRes.json().catch(() => null);
+      if (pData && pData.profile) {
+        currentViewerId = pData.profile.user_id;
+        currentViewerEmail = pData.profile.email;
+      }
+    } else if (window.currentProfile) {
+      currentViewerId = window.currentProfile.user_id;
+      currentViewerEmail = window.currentProfile.email;
     }
 
     const stats = await statsRes.json();
@@ -413,12 +433,13 @@ async function loadData() {
     renderUsers();
   } catch (err) {
     console.error('Failed to load users data', err);
-    document.getElementById('usersTbody').innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--neg)">Failed to load users. Super Admin access required.</td></tr>`;
+    document.getElementById('usersTbody').innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--neg)">Failed to load users: ${escapeHtml(err.message || 'Super Admin access required.')}</td></tr>`;
   }
 }
 
 function populateOrgDropdowns() {
   const filterSelect = document.getElementById('orgFilter');
+  const currentFilterVal = filterSelect ? filterSelect.value : 'all';
   const addSelect = document.getElementById('userOrg');
   const reSelect = document.getElementById('reTargetOrg');
 
@@ -431,6 +452,9 @@ function populateOrgDropdowns() {
   });
 
   filterSelect.innerHTML = filterOpts.join('');
+  if (currentFilterVal && Array.from(filterSelect.options).some(opt => opt.value === currentFilterVal)) {
+    filterSelect.value = currentFilterVal;
+  }
   addSelect.innerHTML = modalOpts.join('');
   reSelect.innerHTML = modalOpts.join('');
 }
@@ -448,35 +472,46 @@ function renderUsers() {
   const org = document.getElementById('orgFilter').value;
 
   const filtered = allUsers.filter(u => {
-    const matchSearch = (u.name || '').toLowerCase().includes(search) || u.email.toLowerCase().includes(search) || u.user_id.toLowerCase().includes(search);
-    const matchRole = role === 'all' || u.role === role;
+    const matchSearch = (u.name || '').toLowerCase().includes(search) || (u.email || '').toLowerCase().includes(search) || (u.user_id || '').toLowerCase().includes(search);
+    const matchRole = role === 'all' || (u.role || '').toLowerCase() === role.toLowerCase();
     const matchOrg = org === 'all' || u.workspace_id === org;
     return matchSearch && matchRole && matchOrg;
   });
 
   const tbody = document.getElementById('usersTbody');
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:36px;color:var(--ink-faint)">No users match your criteria.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:36px;color:var(--ink-faint)">No users match your filters.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = filtered.map(u => {
-    const initials = (u.name || u.email || 'U').substring(0, 2).toUpperCase();
+    const isViewer = (currentViewerId && u.user_id === currentViewerId) || (currentViewerEmail && u.email === currentViewerEmail);
+    const initials = (u.name || u.email || 'U').split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase();
     const createdStr = u.created_at ? new Date(u.created_at * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
-    const statusBadge = u.active !== false
-      ? `<span class="badge badge-active">● Active</span>` 
-      : `<span class="badge badge-suspended">● Inactive</span>`;
+    const isSuper = (u.role || '').toLowerCase() === 'super_admin';
+    const statusBadge = u.active !== false 
+      ? `<span class="pill pos">● Active</span>` 
+      : `<span class="pill neg">● Disabled</span>`;
 
-    const authInfo = [
-      u.has_password ? `<span title="Password Protected">🔑 Pass</span>` : `<span style="color:var(--ink-faint)">No pass</span>`,
-      u.phone ? `<span style="font-family:var(--f-mono);font-size:11px" title="${escapeHtml(u.phone)}">📱 OTP</span>` : ''
-    ].filter(Boolean).join(' · ');
+    let authInfo = 'Password';
+    if (u.auth_method === 'sso') authInfo = 'SSO';
+    else if (u.auth_method === 'token') authInfo = 'API Key';
+
+    const actionsHtml = isViewer 
+      ? `<span class="pill neu" style="font-size:11px">Current User</span>`
+      : `<div style="display:inline-flex;gap:5px;justify-content:flex-end">
+          <button class="btn ghost sm" onclick="openRoleModal('${u.user_id}')">Role</button>
+          <button class="btn ghost sm" onclick="openReassignModal('${u.user_id}')">Reassign</button>
+          <button class="btn ghost sm" style="${u.active !== false ? 'color:var(--neg)' : 'color:var(--pos)'}" onclick="toggleUserActive('${u.user_id}', ${u.active === false})">
+            ${u.active !== false ? 'Disable' : 'Enable'}
+          </button>
+        </div>`;
 
     return `
       <tr>
         <td>
-          <div class="user-info">
-            <div class="user-avatar">${escapeHtml(initials)}</div>
+          <div class="user-cell">
+            <div class="user-avatar ${isSuper ? 'sa' : ''}">${escapeHtml(initials)}</div>
             <div class="user-details">
               <b>${escapeHtml(u.name || 'User')}</b>
               <span>${escapeHtml(u.user_id)}</span>
@@ -493,13 +528,7 @@ function renderUsers() {
         <td>${statusBadge}</td>
         <td style="color:var(--ink-soft);font-size:12.5px">${createdStr}</td>
         <td style="text-align:right">
-          <div style="display:inline-flex;gap:5px;justify-content:flex-end">
-            <button class="btn ghost sm" onclick="openRoleModal('${u.user_id}')">Role</button>
-            <button class="btn ghost sm" onclick="openReassignModal('${u.user_id}')">Reassign</button>
-            <button class="btn ghost sm" style="${u.active !== false ? 'color:var(--neg)' : 'color:var(--pos)'}" onclick="toggleUserActive('${u.user_id}', ${u.active === false})">
-              ${u.active !== false ? 'Disable' : 'Enable'}
-            </button>
-          </div>
+          ${actionsHtml}
         </td>
       </tr>
     `;
@@ -516,6 +545,10 @@ document.getElementById('roleFilter').addEventListener('change', renderUsers);
 document.getElementById('orgFilter').addEventListener('change', renderUsers);
 
 function openRoleModal(userId) {
+  if (currentViewerId && userId === currentViewerId) {
+    alert("You cannot modify your own role.");
+    return;
+  }
   const u = allUsers.find(x => x.user_id === userId);
   if (!u) return;
   document.getElementById('crUserId').value = u.user_id;
@@ -525,6 +558,10 @@ function openRoleModal(userId) {
 }
 
 function openReassignModal(userId) {
+  if (currentViewerId && userId === currentViewerId) {
+    alert("You cannot reassign your own workspace.");
+    return;
+  }
   const u = allUsers.find(x => x.user_id === userId);
   if (!u) return;
   document.getElementById('reUserId').value = u.user_id;
@@ -534,6 +571,10 @@ function openReassignModal(userId) {
 }
 
 async function toggleUserActive(userId, nextActive) {
+  if (currentViewerId && userId === currentViewerId) {
+    alert("You cannot disable your own user account.");
+    return;
+  }
   const act = nextActive ? 'Enable' : 'Disable';
   if (!confirm(`Are you sure you want to ${act} this user account?`)) return;
   try {

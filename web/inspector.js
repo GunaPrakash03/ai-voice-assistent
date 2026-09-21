@@ -298,11 +298,19 @@
           paint();
           return Promise.resolve(null);
         }
+        var currentCallId = callId;
         return fetchWaveform(callId).then(function (data) {
-          state.waveform = data.waveform;
-          if (data.waveform.duration_seconds) { state.duration = data.waveform.duration_seconds; }
+          if (state.callId !== currentCallId) { return null; }
+          state.waveform = (data && data.waveform) ? data.waveform : null;
+          if (state.waveform && state.waveform.duration_seconds) { state.duration = state.waveform.duration_seconds; }
           paint();
-          return data.waveform;
+          return state.waveform;
+        }).catch(function () {
+          if (state.callId !== currentCallId) { return null; }
+          state.waveform = null;
+          if (refs.waveform) { refs.waveform.innerHTML = ""; }
+          paint();
+          return null;
         });
       }
     };
@@ -328,24 +336,31 @@
       ov.innerHTML =
         '<div style="background:#fff;color:#131725;max-width:420px;width:100%;border-radius:10px;' +
         'box-shadow:0 12px 48px rgba(0,0,0,.35);font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;overflow:hidden">' +
-          '<div style="padding:20px 22px 6px;font-size:16px;font-weight:700">' + (opts.title || "Please confirm") + '</div>' +
-          '<div style="padding:0 22px 18px;font-size:13.5px;line-height:1.5;color:#4E556B" id="uiConfirmMsg"></div>' +
-          '<div style="display:flex;gap:10px;justify-content:flex-end;padding:14px 22px;background:#F5F6F8;border-top:1px solid #E4E7EC">' +
-            '<button type="button" id="uiConfirmCancel" style="padding:8px 16px;border-radius:6px;border:1px solid #D0D5DD;' +
-            'background:#fff;color:#344054;font-size:13px;font-weight:600;cursor:pointer">' + (opts.cancelText || "Cancel") + '</button>' +
-            '<button type="button" id="uiConfirmOk" style="padding:8px 16px;border-radius:6px;border:1px solid ' + accent + ';' +
-            'background:' + accent + ';color:#fff;font-size:13px;font-weight:600;cursor:pointer">' + (opts.okText || "Confirm") + '</button>' +
-          '</div>' +
-        '</div>';
+        '<div style="padding:20px 22px 6px;font-size:16px;font-weight:700">' + (opts.title || "Please confirm") + '</div>' +
+        '<div style="padding:0 22px 18px;font-size:13.5px;line-height:1.5;color:#4E556B" id="uiConfirmMsg"></div>' +
+        '<div style="display:flex;gap:10px;justify-content:flex-end;padding:14px 22px;background:#F5F6F8;border-top:1px solid #E4E7EC">' +
+          '<button type="button" id="uiConfirmCancel" style="padding:8px 16px;border-radius:6px;border:1px solid #D0D5DD;' +
+          'background:#fff;color:#344054;font-size:13px;font-weight:600;cursor:pointer">' + (opts.cancelText || "Cancel") + '</button>' +
+          '<button type="button" id="uiConfirmOk" style="padding:8px 16px;border-radius:6px;border:1px solid ' + accent + ';' +
+          'background:' + accent + ';color:#fff;font-size:13px;font-weight:600;cursor:pointer">' + (opts.okText || "Confirm") + '</button>' +
+        '</div>' +
+      '</div>';
       document.body.appendChild(ov);
       ov.querySelector("#uiConfirmMsg").textContent = message;  // textContent = no HTML injection
+      var okBtn = ov.querySelector("#uiConfirmOk");
       var done = function (val) { ov.remove(); document.removeEventListener("keydown", onKey); resolve(val); };
-      function onKey(e) { if (e.key === "Escape") { done(false); } else if (e.key === "Enter") { done(true); } }
-      ov.querySelector("#uiConfirmOk").addEventListener("click", function () { done(true); });
+      function onKey(e) {
+        if (e.key === "Escape") {
+          done(false);
+        } else if (e.key === "Enter" && document.activeElement === okBtn) {
+          done(true);
+        }
+      }
+      okBtn.addEventListener("click", function () { done(true); });
       ov.querySelector("#uiConfirmCancel").addEventListener("click", function () { done(false); });
       ov.addEventListener("click", function (e) { if (e.target === ov) { done(false); } });
       document.addEventListener("keydown", onKey);
-      ov.querySelector("#uiConfirmOk").focus();
+      okBtn.focus();
     });
   };
 

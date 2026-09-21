@@ -249,19 +249,23 @@
       .catch(function () { msg($("loginMsg"), "Network error", false); $("loginBtn").disabled = false; });
   });
 
+  var verifying = false;
   $("codeForm").addEventListener("submit", function (e) {
     e.preventDefault();
+    if (verifying) return;
+    verifying = true;
     $("codeBtn").disabled = true; msg($("codeMsg"), "Verifying…", true);
     post("/api/v1/auth/otp/verify", { ticket: ticket, code: $("code").value.replace(/\D/g, "") })
       .then(function (d) {
+        verifying = false;
         $("codeBtn").disabled = false;
         if (d.status === "ok") { done(); return; }
         msg($("codeMsg"), d.error || "Could not verify", false);
         if (/start again/i.test(d.error || "")) { setTimeout(function () { show("stepPassword"); }, 1500); }
       })
-      .catch(function () { msg($("codeMsg"), "Network error", false); $("codeBtn").disabled = false; });
+      .catch(function () { verifying = false; msg($("codeMsg"), "Network error", false); $("codeBtn").disabled = false; });
   });
-  $("code").addEventListener("input", function () { if (this.value.replace(/\D/g, "").length === 6) { $("codeForm").requestSubmit(); } });
+  $("code").addEventListener("input", function () { if (!verifying && this.value.replace(/\D/g, "").length === 6) { $("codeForm").requestSubmit(); } });
 
   $("resendBtn").addEventListener("click", function () {
     $("resendBtn").disabled = true;
@@ -270,7 +274,7 @@
       else { msg($("codeMsg"), d.error || "Could not resend", false); startResendWait(5); }
     }).catch(function () { msg($("codeMsg"), "Network error", false); startResendWait(5); });
   });
-  $("backBtn").addEventListener("click", function () { ticket = null; clearInterval(countdownTimer); clearInterval(resendTimer); $("password").value = ""; show("stepPassword"); });
+  $("backBtn").addEventListener("click", function () { verifying = false; ticket = null; clearInterval(countdownTimer); clearInterval(resendTimer); $("password").value = ""; show("stepPassword"); });
 })();
 </script>
 </body>

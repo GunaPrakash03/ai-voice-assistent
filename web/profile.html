@@ -187,7 +187,7 @@
           </div>
 
           <!-- Workspace -->
-          <div class="card">
+          <div class="card" data-admin-only>
             <div class="card-h"><h2>Workspace</h2><span class="meta" id="wsMeta"></span></div>
             <div class="card-b">
               <div class="field"><label for="fWs">Workspace name</label><input id="fWs" placeholder="Workspace"><div class="hint">Shown in the sidebar on every page.</div></div>
@@ -225,7 +225,6 @@
                   <div class="field"><label for="mPhone">Phone (SMS code)</label><input id="mPhone" type="tel" placeholder="+1 555 010 0000"></div>
                   <div class="field"><label for="mRole">Role</label>
                     <select id="mRole" style="width:100%;padding:9px 11px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13.5px">
-                      <option value="user">User — Standard workspace access</option>
                       <option value="member_admin">Member Admin — Manage workspace members and users</option>
                       <option value="admin" id="mRoleAdminOpt">Product Admin — Workspace configuration, agents, webhooks</option>
                     </select></div>
@@ -345,9 +344,9 @@
     return fetch("/api/v1/auth/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (d.status === "ok") { profile = d.profile; render(); setMsg(msgEl, okText, true); toast(okText); }
-        else { setMsg(msgEl, d.error || "Could not save", false); }
-      }).catch(function () { setMsg(msgEl, "Network error", false); });
+        if (d.status === "ok") { profile = d.profile; render(); setMsg(msgEl, okText, true); toast(okText); return true; }
+        else { setMsg(msgEl, d.error || "Could not save", false); return false; }
+      }).catch(function () { setMsg(msgEl, "Network error", false); return false; });
   }
 
   $("profileForm").addEventListener("submit", function (e) {
@@ -358,7 +357,9 @@
   $("pwForm").addEventListener("submit", function (e) {
     e.preventDefault();
     if (($("pwNew").value || "").length < 8) { setMsg($("pwMsg"), "New password must be at least 8 characters", false); return; }
-    save({ current_password: $("pwCurrent").value, new_password: $("pwNew").value }, $("pwMsg"), "Password changed").then(function () { $("pwCurrent").value = ""; $("pwNew").value = ""; });
+    save({ current_password: $("pwCurrent").value, new_password: $("pwNew").value }, $("pwMsg"), "Password changed").then(function (ok) {
+      if (ok) { $("pwCurrent").value = ""; $("pwNew").value = ""; }
+    });
   });
   $("btnSignOut").addEventListener("click", function () {
     fetch("/api/v1/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(function () { location.href = "/login"; });

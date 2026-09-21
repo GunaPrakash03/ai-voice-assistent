@@ -112,7 +112,9 @@
   }
 
   window.currentRole = null;
+  window.currentProfile = null;
   window.applyRoleVisibility = function () {
+    if (!profile) return;
     var role = (window.currentRole || (profile && profile.role) || "viewer").toLowerCase();
     var isSuperAdmin = role === "super_admin" || (profile && Boolean(profile.is_super_admin));
     var isAdmin = isSuperAdmin || role === "admin" || (profile && Boolean(profile.is_admin));
@@ -140,9 +142,11 @@
     return fetch("/api/v1/auth/profile").then(function (r) { return r.json(); }).then(function (d) {
       if (d.status === "ok") {
         profile = d.profile;
+        window.currentProfile = profile;
         window.currentRole = profile.role || (profile.is_super_admin ? "super_admin" : (profile.is_admin ? "admin" : "member_admin"));
         render();
         window.applyRoleVisibility();
+        window.dispatchEvent(new CustomEvent("profileLoaded", { detail: profile }));
       } else {
         $("rpName").textContent = "Profile unavailable";
       }

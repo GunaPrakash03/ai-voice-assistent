@@ -844,9 +844,11 @@ class AuthManager:
             raise ValueError(f"Wait {int(self.OTP_RESEND_AFTER - (now - rec['sent_at']))}s before requesting another code")
         code = f"{secrets.randbelow(1_000_000):06d}"
         salt = secrets.token_hex(8)
+        code_exp = now + self.OTP_TTL
+        ticket_exp = max(float(rec.get("expires_at", 0)), code_exp)
         rec.update(code_hash=hashlib.sha256((salt + code).encode()).hexdigest(), salt=salt, sent_at=now,
-                   code_expires_at=now + self.OTP_TTL, attempts=0)
-        return {"code": code, "phone": rec["phone"], "phone_masked": self.mask_phone(rec["phone"])}
+                   code_expires_at=code_exp, expires_at=ticket_exp, attempts=0)
+        return {"code": code, "phone": rec["phone"], "phone_masked": self.mask_phone(rec["phone"]), "expires_in": self.OTP_TTL}
 
     def complete_two_step(self, ticket: str, code: str) -> Tuple[str, Dict[str, Any]]:
         key = hashlib.sha256((ticket or "").encode()).hexdigest()

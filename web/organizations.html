@@ -269,7 +269,7 @@
         </div>
         <div class="form-group">
           <label for="adminPassword">Admin Password</label>
-          <input type="password" id="adminPassword" placeholder="Minimum 8 characters">
+          <input type="password" id="adminPassword" placeholder="Minimum 8 characters" minlength="8">
         </div>
       </div>
       <div class="modal-f">
@@ -348,11 +348,16 @@ async function loadData() {
     ]);
 
     if (!statsRes.ok || !orgsRes.ok) {
+      if (statsRes.status === 401 || orgsRes.status === 401) {
+        location.href = '/login?next=' + encodeURIComponent(location.pathname);
+        return;
+      }
       if (statsRes.status === 403 || orgsRes.status === 403) {
         alert('Access Denied: Super Admin privilege required.');
         location.href = '/?denied=super_admin';
         return;
       }
+      throw new Error(`Server returned error: ${orgsRes.status || statsRes.status}`);
     }
 
     const stats = await statsRes.json();
@@ -370,7 +375,7 @@ async function loadData() {
     renderOrgs();
   } catch (err) {
     console.error('Failed to load system data', err);
-    document.getElementById('orgsTbody').innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--neg)">Failed to load organizations. Please ensure you are logged in as Super Admin.</td></tr>`;
+    document.getElementById('orgsTbody').innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--neg)">Failed to load organizations: ${escapeHtml(err.message || 'Super Admin access required.')}</td></tr>`;
   }
 }
 
@@ -472,13 +477,35 @@ document.getElementById('formCreateOrg').addEventListener('submit', async (e) =>
   btn.disabled = true;
   btn.textContent = 'Creating...';
 
+  const adminEmail = document.getElementById('adminEmail').value.trim();
+  const adminPassword = document.getElementById('adminPassword').value;
+
+  if (adminEmail && !adminPassword) {
+    alert('An initial admin password (min 8 characters) is required when specifying an admin email.');
+    btn.disabled = false;
+    btn.textContent = 'Create Organization';
+    return;
+  }
+  if (!adminEmail && adminPassword) {
+    alert('An admin email is required when specifying an admin password.');
+    btn.disabled = false;
+    btn.textContent = 'Create Organization';
+    return;
+  }
+  if (adminEmail && adminPassword.length < 8) {
+    alert('Admin password must be at least 8 characters long.');
+    btn.disabled = false;
+    btn.textContent = 'Create Organization';
+    return;
+  }
+
   const payload = {
     action: 'create',
     name: document.getElementById('createName').value.trim(),
     slug: document.getElementById('createSlug').value.trim() || undefined,
     rate_limit_rpm: parseInt(document.getElementById('createRpm').value, 10),
-    admin_email: document.getElementById('adminEmail').value.trim() || undefined,
-    admin_password: document.getElementById('adminPassword').value || undefined,
+    admin_email: adminEmail || undefined,
+    admin_password: adminPassword || undefined,
   };
 
   try {
