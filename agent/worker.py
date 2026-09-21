@@ -379,6 +379,24 @@ async def entrypoint(ctx: agents.JobContext):
         llm_manager.temperature = active_cfg.temperature
         llm_manager.enabled_tools = set(active_cfg.tools or [])
     log.info("Dialogue backend: %s (%s)", llm_manager.backend, llm_manager.model)
+
+    primary_part_id = "caller"
+    for p in ctx.room.remote_participants.values():
+        if p.identity:
+            primary_part_id = p.identity
+            break
+    transfer_manager.register_call_context(ctx.room.name, ctx.room.name, primary_part_id)
+    if hasattr(llm_manager, "tool_registry"):
+        llm_manager.tool_registry.set_call_context(ctx.room.name, ctx.room.name, primary_part_id)
+
+    @ctx.room.on("participant_connected")
+    def on_participant_joined(participant):
+        p_id = participant.identity
+        if p_id:
+            transfer_manager.register_call_context(ctx.room.name, ctx.room.name, p_id)
+            if hasattr(llm_manager, "tool_registry"):
+                llm_manager.tool_registry.set_call_context(ctx.room.name, ctx.room.name, p_id)
+
     current_turn_texts: list[str] = []
     current_turn_audio: list[bytes] = []      # WAV clips of this turn when Gemini hears the caller directly
     user_is_speaking = False
@@ -645,6 +663,9 @@ async def entrypoint(ctx: agents.JobContext):
         interrupted previous turn never got to answer)."""
         nonlocal turn_process_task
         if finalized["done"]:
+            return
+        if transfer_manager.is_on_hold(ctx.room.name):
+            log.info("Call %s is on hold; ignoring caller turn while held", ctx.room.name)
             return
         tokens = text.split()
         handles = [t for t in tokens if t.startswith(AUDIO_MARK)]
@@ -1007,7 +1028,10 @@ async def entrypoint(ctx: agents.JobContext):
             mode_str = str(data.get("mode", data.get("transfer_type", "blind"))).strip().lower()
             dept = data.get("department")
             reason = data.get("reason", "Caller request")
-            participant_id = packet.participant.identity if packet.participant else "caller"
+            participant_id = packet.participant.identity if packet.participant else primary_part_id
+            transfer_manager.register_call_context(ctx.room.name, ctx.room.name, participant_id)
+            if hasattr(llm_manager, "tool_registry"):
+                llm_manager.tool_registry.set_call_context(ctx.room.name, ctx.room.name, participant_id)
             log.info("Call transfer requested over data channel: %s -> %s (mode=%s, dept=%s)", participant_id, target, mode_str, dept)
 
             async def run_transfer():
@@ -1062,12 +1086,18 @@ async def entrypoint(ctx: agents.JobContext):
             reason = data.get("reason", "manual_hold")
             if hold:
                 st = transfer_manager.put_on_hold(ctx.room.name, reason=reason)
+                if turn_process_task and not turn_process_task.done():
+                    turn_process_task.cancel()
+                if in_flight.get("audio"):
+                    in_flight["audio"] = None
             else:
                 st = transfer_manager.remove_from_hold(ctx.room.name)
             publish({
                 "type": "hold_state",
                 "call_id": ctx.room.name,
                 "is_held": st.is_held,
+                "is_muted": st.is_muted,
+                "dialogue_suppressed": st.dialogue_suppressed,
                 "reason": st.hold_reason,
                 "timestamp": time.time(),
             }, topic="hold_state", reliable=True)

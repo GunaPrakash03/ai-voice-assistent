@@ -176,9 +176,34 @@ class ToolRegistry:
     def __init__(self):
         self._tools: Dict[str, ToolDefinition] = {}
         self.filler_engine = FillerSpeechEngine()
+        self._call_id: Optional[str] = None
+        self._room_name: Optional[str] = None
+        self._participant_identity: Optional[str] = None
         self._register_default_tools()
         for custom_tool in self._custom_tools.values():
             self.register(custom_tool, persist=False)
+
+    def set_call_context(self, call_id: str, room_name: str, participant_identity: str) -> None:
+        """Sets the active call context so tools know the target room and caller participant identity."""
+        self._call_id = call_id
+        self._room_name = room_name
+        self._participant_identity = participant_identity
+        try:
+            from agent.transfer_manager import transfer_manager
+            transfer_manager.register_call_context(call_id, room_name, participant_identity)
+        except Exception as e:
+            log.debug("Could not register call context with transfer_manager: %s", e)
+
+    def get_call_context(self) -> Tuple[str, str, str]:
+        """Returns (call_id, room_name, participant_identity)."""
+        if self._room_name and self._participant_identity:
+            return (self._call_id or self._room_name, self._room_name, self._participant_identity)
+        try:
+            from agent.transfer_manager import transfer_manager
+            room, part = transfer_manager.get_call_context(self._call_id)
+            return (self._call_id or room, room, part)
+        except Exception:
+            return (self._call_id or "default-room", self._room_name or "default-room", self._participant_identity or "caller")
 
     def register(self, tool: ToolDefinition, persist: bool = True) -> None:
         """Registers a tool definition and its filler phrases."""
@@ -451,18 +476,22 @@ class ToolRegistry:
         ) -> dict:
             from agent.transfer_manager import transfer_manager, TransferMode, TransferStatus
             norm_type = TransferMode.WARM if str(transfer_type).lower() == "warm" else TransferMode.BLIND
+            call_id, room_name, participant_id = self.get_call_context()
+            effective_call_id = room_name or call_id
             if norm_type == TransferMode.WARM:
                 rec = await transfer_manager.initiate_warm_transfer(
-                    call_id=f"call-{int(time.time())}",
+                    call_id=effective_call_id,
                     target_number=destination,
+                    source_participant=participant_id,
                     department=department,
                     reason=reason,
                     caller_inquiry=reason or "Customer inquiry",
                 )
             else:
                 rec = await transfer_manager.initiate_blind_transfer(
-                    call_id=f"call-{int(time.time())}",
+                    call_id=effective_call_id,
                     target_number=destination,
+                    source_participant=participant_id,
                     department=department,
                     reason=reason,
                 )

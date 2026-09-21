@@ -47,6 +47,8 @@ class CallHoldState:
     held_at: Optional[float] = None
     hold_reason: str = ""
     hold_music: bool = True
+    is_muted: bool = True
+    dialogue_suppressed: bool = True
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -85,10 +87,40 @@ class TransferManager:
         self._hold_states: Dict[str, CallHoldState] = {}
         self._warm_tasks: Dict[str, asyncio.Task] = {}
         self._call_contexts: Dict[str, Tuple[str, str]] = {}
+        self._active_call_context: Optional[Tuple[str, str, str]] = None
 
     def register_call_context(self, call_id: str, room_name: str, participant_identity: str):
         """Records active LiveKit room and caller SIP participant identity for call transfer dispatch."""
         self._call_contexts[call_id] = (room_name, participant_identity)
+        if room_name and room_name != call_id:
+            self._call_contexts[room_name] = (room_name, participant_identity)
+        self._active_call_context = (call_id, room_name, participant_identity)
+        log.debug("Registered transfer call context: call_id=%s room=%s participant=%s", call_id, room_name, participant_identity)
+
+    def get_call_context(self, call_id: Optional[str] = None) -> Tuple[str, str]:
+        """Returns (room_name, participant_identity) for the given call_id, or the most recent active call context."""
+        if call_id and call_id in self._call_contexts:
+            return self._call_contexts[call_id]
+        if self._active_call_context:
+            return self._active_call_context[1], self._active_call_context[2]
+        return (call_id or "default-room", "caller")
+
+    @staticmethod
+    def generate_hold_tone_pcm(duration_s: float = 1.0, sample_rate: int = 16000) -> bytes:
+        """
+        Generates standard 16-bit mono PCM calming dual chord (440Hz A4 / 554.37Hz C#5)
+        for hold music audio streaming or testing.
+        """
+        import math
+        import struct
+        total_samples = int(duration_s * sample_rate)
+        pcm = bytearray()
+        for i in range(total_samples):
+            t = i / sample_rate
+            val = 0.1 * math.sin(2 * math.pi * 440.0 * t) + 0.08 * math.sin(2 * math.pi * 554.37 * t)
+            sample_int = int(max(-32768, min(32767, val * 32767)))
+            pcm.extend(struct.pack("<h", sample_int))
+        return bytes(pcm)
 
     # -------------------------------------------------------------------------
     # Hold / Resume Management
@@ -105,7 +137,9 @@ class TransferManager:
         state.held_at = time.time()
         state.hold_reason = reason
         state.hold_music = hold_music
-        log.info("Call %s placed on hold (reason: %s, music=%s)", call_id, reason, hold_music)
+        state.is_muted = True
+        state.dialogue_suppressed = True
+        log.info("Call %s placed on hold (reason: %s, music=%s, muted=True)", call_id, reason, hold_music)
         return state
 
     def remove_from_hold(self, call_id: str) -> CallHoldState:
@@ -153,9 +187,9 @@ class TransferManager:
             raise ValueError(f"Invalid E.164 transfer target number: '{target_number}'")
 
         transfer_id = f"xfer-blind-{int(time.time()*1000)}-{secrets.token_hex(3)}"
-        real_room, real_part = self._call_contexts.get(call_id, (call_id, source_participant))
+        real_room, real_part = self.get_call_context(call_id)
         effective_participant = real_part if source_participant in ("caller", "active-call", "") else source_participant
-        effective_room = real_room if call_id.startswith("call-") else call_id
+        effective_room = real_room if (call_id.startswith("call-") or call_id in ("default-room", "active-call")) else (real_room or call_id)
 
         record = TransferRecord(
             transfer_id=transfer_id,
@@ -237,6 +271,10 @@ class TransferManager:
             raise ValueError(f"Invalid E.164 transfer target number: '{target_number}'")
 
         transfer_id = f"xfer-warm-{int(time.time()*1000)}-{secrets.token_hex(3)}"
+        real_room, real_part = self.get_call_context(call_id)
+        effective_participant = real_part if source_participant in ("caller", "active-call", "") else source_participant
+        effective_room = real_room if (call_id.startswith("call-") or call_id in ("default-room", "active-call")) else (real_room or call_id)
+
         briefing = self.generate_briefing(
             caller_name=caller_name,
             topic=caller_inquiry,
@@ -248,12 +286,19 @@ class TransferManager:
         consult_participant = f"agent-{norm_target}"
 
         record_meta = dict(metadata or {})
-        record_meta["simulated"] = True
+        is_test_call = effective_room.startswith(("test-", "verify-", "mock-", "sandbox-"))
+        is_live_livekit = (
+            bool(self.api_key and self.api_secret)
+            and "127.0.0.1" not in self.livekit_url
+            and not is_test_call
+        )
+        if not is_live_livekit:
+            record_meta["simulated"] = True
 
         record = TransferRecord(
             transfer_id=transfer_id,
-            call_id=call_id,
-            source_participant=source_participant,
+            call_id=effective_room,
+            source_participant=effective_participant,
             target_number=norm_target,
             mode=TransferMode.WARM,
             status=TransferStatus.INITIATED,
@@ -266,7 +311,7 @@ class TransferManager:
             metadata=record_meta,
         )
         self._transfers[transfer_id] = record
-        log.info("Initiating warm transfer: %s -> %s (consult_room=%s)", call_id, norm_target, consult_room)
+        log.info("Initiating warm transfer: %s -> %s (consult_room=%s, participant=%s)", effective_room, norm_target, consult_room, effective_participant)
 
         current_task = asyncio.current_task()
         if current_task:
@@ -274,7 +319,7 @@ class TransferManager:
 
         try:
             # Step 1: Put caller on hold
-            self.put_on_hold(call_id, reason=f"Transferring to {department or target_name or 'specialist'}")
+            self.put_on_hold(effective_room, reason=f"Transferring to {department or target_name or 'specialist'}")
             record.status = TransferStatus.HOLD
             await asyncio.sleep(0.04)
             if record.status in (TransferStatus.CANCELLED, TransferStatus.FAILED):
@@ -283,7 +328,43 @@ class TransferManager:
             # Step 2: Establish consultation leg with receiving agent
             record.status = TransferStatus.CONSULTING
             log.info("Consultation leg active: dialing %s (%s)", norm_target, consult_participant)
-            await asyncio.sleep(0.05)
+
+            if is_live_livekit:
+                from livekit import api
+                trunk_id = os.getenv("SIP_OUTBOUND_TRUNK_ID", "")
+                if not trunk_id:
+                    try:
+                        from agent.telephony_manager import telephony_manager
+                        for t in telephony_manager.list_trunks():
+                            if t.get("direction") in ("outbound", "bidirectional"):
+                                trunk_id = t.get("trunk_id", "")
+                                break
+                    except Exception as te:
+                        log.debug("Could not resolve outbound trunk from telephony_manager: %s", te)
+
+                if not trunk_id:
+                    raise RuntimeError(
+                        "Warm transfer consultation requires an active outbound SIP trunk (SIP_OUTBOUND_TRUNK_ID). "
+                        "Live consultation leg cannot be dialed."
+                    )
+
+                lk_api = api.LiveKitAPI(self.livekit_url, self.api_key, self.api_secret)
+                try:
+                    target_uri = norm_target if norm_target.startswith(("tel:", "sip:")) else f"tel:{norm_target}"
+                    sip_call_req = api.CreateSIPParticipantRequest(
+                        sip_trunk_id=trunk_id,
+                        sip_call_to=target_uri,
+                        room_name=consult_room,
+                        participant_identity=consult_participant,
+                        participant_name=f"Consult: {target_name or norm_target}",
+                    )
+                    await lk_api.sip.create_sip_participant(sip_call_req)
+                    record.metadata["livekit_consult_participant"] = consult_participant
+                finally:
+                    await lk_api.aclose()
+            else:
+                await asyncio.sleep(0.05)
+
             if record.status in (TransferStatus.CANCELLED, TransferStatus.FAILED):
                 return record
 
@@ -296,8 +377,8 @@ class TransferManager:
 
             # Step 4: Bridge participants together (take caller off hold & connect tracks)
             record.status = TransferStatus.BRIDGED
-            self.remove_from_hold(call_id)
-            log.info("Call %s bridged with receiving specialist %s", call_id, norm_target)
+            self.remove_from_hold(effective_room)
+            log.info("Call %s bridged with receiving specialist %s", effective_room, norm_target)
             await asyncio.sleep(0.04)
             if record.status in (TransferStatus.CANCELLED, TransferStatus.FAILED):
                 return record
@@ -308,13 +389,20 @@ class TransferManager:
             record.duration_seconds = round(record.completed_at - record.created_at, 2)
             log.info("Warm transfer %s completed successfully (duration=%.2fs)", transfer_id, record.duration_seconds)
         except asyncio.CancelledError:
-            self.remove_from_hold(call_id)
+            self.remove_from_hold(effective_room)
             if record.status not in (TransferStatus.CANCELLED, TransferStatus.FAILED):
                 record.status = TransferStatus.CANCELLED
                 record.failure_reason = "task_cancelled"
             record.completed_at = time.time()
             record.duration_seconds = round(record.completed_at - record.created_at, 2)
             raise
+        except Exception as err:
+            self.remove_from_hold(effective_room)
+            log.error("Warm transfer failed: %s", err)
+            record.status = TransferStatus.FAILED
+            record.failure_reason = str(err)
+            record.completed_at = time.time()
+            record.duration_seconds = round(record.completed_at - record.created_at, 2)
         finally:
             self._warm_tasks.pop(transfer_id, None)
 
