@@ -568,6 +568,16 @@
     $("alone").hidden = !alone;
   }
 
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function renderPeople(speaking) {
     var list = $("people");
     if (!room) { list.innerHTML = '<li><span style="color:var(--faint)">nobody yet</span></li>'; return; }
@@ -577,7 +587,7 @@
       var li = document.createElement("li");
       var isMe = p === room.localParticipant;
       li.className = (speaking || []).indexOf(p.identity) > -1 ? "speaking" : "";
-      li.innerHTML = '<span>' + p.identity + (isMe ? ' <span class="tag">you</span>' : '') +
+      li.innerHTML = '<span>' + escapeHtml(p.identity) + (isMe ? ' <span class="tag">you</span>' : '') +
                      '</span><span class="tag">' + (li.className ? 'speaking' : 'quiet') + '</span>';
       list.appendChild(li);
     });
@@ -614,7 +624,7 @@
       var timeStr = new Date(m.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
       div.innerHTML = '<strong>' + (isUser ? 'Caller' : 'AI Assistant') + '</strong> ' +
                       '<span class="tag" style="float:right">' + timeStr + (m.interrupted ? ' [interrupted]' : '') + '</span>' +
-                      '<div style="margin-top:4px">' + m.content + '</div>';
+                      '<div style="margin-top:4px">' + escapeHtml(m.content) + '</div>';
       box.appendChild(div);
     });
     box.scrollTop = box.scrollHeight;
@@ -839,6 +849,7 @@
           }
         } else if (topic === "hold_state") {
           var isHeld = !!msg.is_held;
+          isCallOnHold = isHeld;
           $("xfer-hold-text").textContent = isHeld ? "ON HOLD (Music Playing)" : "Active (Talking)";
           $("xfer-hold-text").style.color = isHeld ? "var(--warn)" : "var(--ok)";
           $("btn-toggle-hold").textContent = isHeld ? "Resume Call" : "Hold Call";
@@ -1144,6 +1155,8 @@
   if (fromUrl) $("room").value = fromUrl;
 
   var currentActiveCallId = null;
+  var lastActiveCallId = null;
+  var activeRecordingCallId = null;
 
   async function dialPhone() {
     var dest = $("tel-dest").value.trim();
@@ -1157,19 +1170,7 @@
     tb.style.background = "var(--accent)";
     tb.style.color = "#fff";
 
-    // If connected to room, also notify via WebRTC data channel
-    if (room && room.localParticipant) {
-      try {
-        await room.localParticipant.publishData(
-          new TextEncoder().encode(JSON.stringify({ action: "dial_phone", destination: dest })),
-          { reliable: true }
-        );
-      } catch (e) {
-        log("Data channel dial notification warning: " + e);
-      }
-    }
-
-    // Call REST endpoint
+    // Call authoritative REST endpoint to place outbound call
     try {
       var chosenAgent = $("tel-agent-select") ? $("tel-agent-select").value.trim() : "";
       var resp = await fetch("/api/telephony/dial", {
@@ -1186,11 +1187,12 @@
       if (resp.ok && data.call) {
         currentActiveCallId = data.call.call_id;
         $("m-call-id").textContent = data.call.call_id;
-        $("m-call-state").textContent = data.call.state.toUpperCase();
+        var st = (data.call.status || data.call.state || "active").toString();
+        $("m-call-state").textContent = st.toUpperCase();
         $("m-call-state").style.color = "var(--ok)";
-        $("m-call-dest").textContent = data.call.destination_number;
+        $("m-call-dest").textContent = data.call.to_number || data.call.destination_number || dest;
         $("m-call-room").textContent = data.call.room_name;
-        tb.textContent = "Call Active (" + data.call.state + ")";
+        tb.textContent = "Call Active (" + st + ")";
         tb.style.background = "var(--ok)";
         $("btn-hangup-phone").disabled = false;
         log("Outbound call placed! Call ID: " + data.call.call_id + " -> room: " + data.call.room_name + (chosenAgent ? " [Agent: " + chosenAgent + "]" : ""));
@@ -1218,17 +1220,21 @@
         })
       });
       var data = await resp.json();
-      if (resp.ok && data.route) {
-        log("Inbound DID routed! Trunk: " + data.route.trunk + " -> Room: " + data.route.room);
-        $("m-call-id").textContent = "inbound-did-" + Date.now().toString().slice(-4);
-        $("m-call-state").textContent = "ROUTED";
+      var routed = data.routed || data.route;
+      if (resp.ok && routed) {
+        log("Inbound DID routed! Trunk: " + (routed.trunk || (routed.trunk_info && routed.trunk_info.trunk_id) || "default") + " -> Room: " + (routed.room || routed.room_name));
+        var simCallId = routed.call_id || ("inbound-did-" + Date.now().toString().slice(-4));
+        currentActiveCallId = simCallId;
+        $("m-call-id").textContent = simCallId;
+        $("m-call-state").textContent = (routed.status || "ROUTED").toUpperCase();
         $("m-call-state").style.color = "var(--ok)";
-        $("m-call-dest").textContent = data.route.caller_number;
-        $("m-call-room").textContent = data.route.room;
+        $("m-call-dest").textContent = routed.from_number || routed.caller_number || "+15559876543";
+        $("m-call-room").textContent = routed.room || routed.room_name;
         var tb = $("tel-status-badge");
         tb.textContent = "Incoming Call Routed";
         tb.style.background = "var(--ok)";
         tb.style.color = "#fff";
+        $("btn-hangup-phone").disabled = false;
       } else {
         log("Inbound simulation failed: " + (data.error || "Unknown error"));
       }
@@ -1237,8 +1243,9 @@
     }
   }
 
-  function hangupPhone() {
-    log("Hanging up telephony call (" + (currentActiveCallId || "active") + ")...");
+  async function hangupPhone() {
+    var callIdToHangup = currentActiveCallId || lastActiveCallId;
+    log("Hanging up telephony call (" + (callIdToHangup || "active") + ")...");
     $("m-call-state").textContent = "COMPLETED";
     $("m-call-state").style.color = "var(--soft)";
     var tb = $("tel-status-badge");
@@ -1246,8 +1253,34 @@
     tb.style.background = "var(--rule)";
     tb.style.color = "var(--soft)";
     $("btn-hangup-phone").disabled = true;
+    lastActiveCallId = currentActiveCallId;
     currentActiveCallId = null;
-    log("Telephony call terminated.");
+
+    if (room && room.localParticipant) {
+      try {
+        await room.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify({ action: "hangup_call", call_id: callIdToHangup })),
+          { reliable: true }
+        );
+      } catch (e) {
+        log("Data channel hangup notification warning: " + e);
+      }
+    }
+
+    try {
+      var resp = await fetch("/api/telephony/calls/hangup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callIdToHangup || "active-call" })
+      });
+      if (resp.ok) {
+        log("Telephony call terminated on server.");
+      } else {
+        log("Telephony hangup status: " + resp.status);
+      }
+    } catch (err) {
+      log("Telephony hangup request error: " + err);
+    }
   }
 
   $("btn-dial-phone").addEventListener("click", dialPhone);
@@ -1295,7 +1328,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          call_id: currentActiveCallId || $("room").value || "web-call",
+          call_id: currentActiveCallId || lastActiveCallId || $("room").value || "web-call",
           target_number: dest,
           mode: mode,
           department: dept,
@@ -1304,7 +1337,7 @@
         })
       });
       var data = await resp.json();
-      if (resp.ok && data.transfer) {
+      if (resp.ok && data.transfer && data.transfer.status !== "failed") {
         xb.textContent = "Transferred";
         xb.style.background = "var(--ok)";
         $("xfer-state-text").textContent = "Completed (" + data.transfer.mode + ")";
@@ -1315,8 +1348,9 @@
       } else {
         xb.textContent = "Transfer Failed";
         xb.style.background = "var(--err)";
-        $("xfer-state-text").textContent = "Error: " + (data.error || "Unknown");
-        log("Transfer failed: " + (data.error || "Unknown error"));
+        var errDetail = data.error || (data.transfer && data.transfer.reason) || "Unknown error";
+        $("xfer-state-text").textContent = "Error: " + errDetail;
+        log("Transfer failed: " + errDetail);
       }
     } catch (err) {
       xb.textContent = "Transfer Error";
@@ -1349,17 +1383,24 @@
     }
 
     try {
-      await fetch("/api/telephony/hold", {
+      var resp = await fetch("/api/telephony/hold", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          call_id: currentActiveCallId || $("room").value || "web-call",
+          call_id: currentActiveCallId || lastActiveCallId || $("room").value || "web-call",
           hold: isCallOnHold,
           reason: isCallOnHold ? "manual_hold" : "resumed"
         })
       });
+      if (!resp.ok) {
+        throw new Error("HTTP " + resp.status);
+      }
       log("Call hold state updated: " + (isCallOnHold ? "HELD" : "RESUMED"));
     } catch (err) {
+      isCallOnHold = !isCallOnHold;
+      btn.textContent = isCallOnHold ? "Resume Call" : "Hold Call";
+      $("xfer-hold-text").textContent = isCallOnHold ? "ON HOLD (Music Playing)" : "Active (Talking)";
+      $("xfer-hold-text").style.color = isCallOnHold ? "var(--warn)" : "var(--ok)";
       log("Failed to update hold state: " + err);
     }
   }
@@ -1431,12 +1472,15 @@
       });
       if (res.ok) {
         var data = await res.json();
-        if (data.session) {
-          $("dtmf-display").textContent = data.session.buffer || "—";
-          if (data.session.active_node) {
-            $("ivr-badge").textContent = "IVR: " + (data.session.active_node.name || "Active");
-            if (data.session.active_node.prompt) {
-              $("ivr-prompt-text").textContent = data.session.active_node.prompt;
+        var sess = data.result || data.session;
+        if (sess) {
+          $("dtmf-display").textContent = sess.buffer || sess.buffered_digits || "—";
+          var activeNode = sess.node || sess.active_node;
+          if (activeNode) {
+            $("ivr-badge").textContent = "IVR: " + (typeof activeNode === "object" ? (activeNode.name || "Active") : activeNode);
+            var promptText = sess.prompt || (typeof activeNode === "object" ? activeNode.prompt : null);
+            if (promptText) {
+              $("ivr-prompt-text").textContent = promptText;
             }
           }
         }
@@ -1584,6 +1628,7 @@
 
   $("btn-start-rec").addEventListener("click", async function () {
     var callId = currentActiveCallId || $("room").value || "web-call";
+    activeRecordingCallId = callId;
     log("Initiating dual-channel stereo call recording...");
 
     if (room && room.state === "connected") {
@@ -1632,7 +1677,7 @@
   });
 
   $("btn-pause-rec").addEventListener("click", async function () {
-    var callId = currentActiveCallId || $("room").value || "web-call";
+    var callId = activeRecordingCallId || currentActiveCallId || lastActiveCallId || $("room").value || "web-call";
     if (room && room.state === "connected") {
       try {
         var payload = new TextEncoder().encode(JSON.stringify({
@@ -1658,7 +1703,7 @@
   });
 
   $("btn-resume-rec").addEventListener("click", async function () {
-    var callId = currentActiveCallId || $("room").value || "web-call";
+    var callId = activeRecordingCallId || currentActiveCallId || lastActiveCallId || $("room").value || "web-call";
     if (room && room.state === "connected") {
       try {
         var payload = new TextEncoder().encode(JSON.stringify({ action: "resume_recording" }));
@@ -1681,7 +1726,7 @@
   });
 
   $("btn-stop-rec").addEventListener("click", async function () {
-    var callId = currentActiveCallId || $("room").value || "web-call";
+    var callId = activeRecordingCallId || currentActiveCallId || lastActiveCallId || $("room").value || "web-call";
     if (recTimerInterval) clearInterval(recTimerInterval);
 
     if (room && room.state === "connected") {
@@ -1706,6 +1751,7 @@
         $("btn-pause-rec").disabled = true;
         $("btn-resume-rec").disabled = true;
         $("btn-stop-rec").disabled = true;
+        activeRecordingCallId = null;
         if (rec.file_path) {
           $("rec-path-text").textContent = rec.file_path + " (" + ((rec.file_size_bytes || 0) / 1024).toFixed(1) + " KB)";
         }
@@ -1792,7 +1838,7 @@
           for (var i = 0; i < crmKeys.length; i++) {
             var sName = crmKeys[i];
             var payload = crmPayloads[sName];
-            crmTexts.push("<b>[" + sName + "]</b> " + JSON.stringify(payload));
+            crmTexts.push("<b>[" + escapeHtml(sName) + "]</b> " + escapeHtml(JSON.stringify(payload)));
           }
           crmEl.innerHTML = " <b>CRM Extracted Data:</b><br>" + crmTexts.join("<br>");
         }
