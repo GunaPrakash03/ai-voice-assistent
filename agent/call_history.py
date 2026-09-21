@@ -91,6 +91,18 @@ class CallHistoryStore:
         self._cache: Dict[str, CallRecord] = {}
         self._raw_jobs: Dict[str, Dict[str, Any]] = {}
         self._loaded_at = 0.0
+        self._waveform_cache: Dict[Tuple[str, int], Dict[str, Any]] = {}
+
+    def _is_call_transferred(self, call_id: str) -> bool:
+        """Checks if a call was transferred according to live transfer manager state."""
+        try:
+            from agent.transfer_manager import transfer_manager
+            for t in transfer_manager.list_transfers():
+                if t.get("call_id") == call_id and t.get("status") in ("completed", "bridged", "initiated"):
+                    return True
+        except Exception:
+            pass
+        return False
 
     # ── Loading ──────────────────────────────────────────────────────────────
     def _audio_index(self) -> Dict[str, str]:
@@ -158,18 +170,42 @@ class CallHistoryStore:
         tel = telephony.get(call_id, {})
 
         audio_path = audio.get(call_id)
-        started = job.get("created_at", 0.0) or 0.0
-        duration = float(metrics.get("call_duration_seconds") or tel.get("duration_seconds") or metadata.get("duration_seconds") or 0.0)
+        # Prefer actual call start / end timestamps from metadata or telephony over pipeline enqueue time
+        started = float(metadata.get("started_at") or metadata.get("call_started_at") or tel.get("started_at") or job.get("created_at", 0.0) or 0.0)
+        duration = float(
+            metadata.get("duration_seconds")
+            or tel.get("duration_seconds")
+            or metrics.get("call_duration_seconds")
+            or 0.0
+        )
+        ended = float(
+            metadata.get("ended_at")
+            or metadata.get("call_ended_at")
+            or tel.get("ended_at")
+            or job.get("completed_at")
+            or (started + duration if (started and duration) else 0.0)
+        )
+        if duration == 0.0 and ended > started:
+            duration = round(ended - started, 2)
 
         outcome = summary.get("resolution_status", "unknown")
-        transferred = outcome == "escalated" or bool(sentiment.get("frustration_detected")) and outcome == "escalated"
+        # Real transfer signals rather than dead clause on outcome string
+        transfer_meta = metadata.get("transfer") or {}
+        transferred = bool(
+            metadata.get("transferred")
+            or metadata.get("transfer_id")
+            or (isinstance(transfer_meta, dict) and transfer_meta.get("status") in ("completed", "bridged", "initiated"))
+            or tel.get("transferred")
+            or self._is_call_transferred(call_id)
+            or outcome == "escalated"
+        )
 
         return CallRecord(
             call_id=call_id,
             job_id=job.get("job_id"),
             room_name=job.get("room_name", ""),
             started_at=started,
-            ended_at=job.get("completed_at") or started + duration,
+            ended_at=ended,
             duration_seconds=round(duration, 2),
             # Sandbox test calls carry their own direction/numbers in metadata (no SIP leg).
             direction=tel.get("direction") or metadata.get("direction", "inbound"),
@@ -190,7 +226,7 @@ class CallHistoryStore:
             has_audio=bool(audio_path),
             audio_path=audio_path,
             audio_bytes=os.path.getsize(audio_path) if audio_path and os.path.isfile(audio_path) else 0,
-            archive_url=job.get("archive_url"),
+            archive_url=job.get("archive_url") or (f"s3://voice-archive/recordings/{os.path.basename(audio_path)}" if audio_path else None),
             extracted_fields=self._first_crm_payload(metadata),
             status=job.get("status", "completed"),
             workspace_id=str(metadata.get("workspace_id") or job.get("workspace_id") or tel.get("workspace_id") or "ws-default"),
@@ -342,24 +378,50 @@ class CallHistoryStore:
         origin = float(call_start) if isinstance(call_start, (int, float)) and call_start else (min(stamps) if stamps else 0.0)
 
         timeline, cursor = [], 0.0
+        last_raw_stamp: Optional[float] = None
+        last_interval: Optional[float] = None
         for index, turn in enumerate(turns):
             words = int(turn.get("word_count") or len(str(turn.get("text", "")).split()))
             spoken = max(words / WORDS_PER_SECOND, MIN_TURN_SECONDS)
             stamp = turn.get("timestamp")
             end_stamp = turn.get("end_timestamp")
+            has_explicit_end = False
             if isinstance(stamp, (int, float)) and isinstance(end_stamp, (int, float)) and end_stamp > stamp:
                 spoken = max(round(end_stamp - stamp, 2), 0.3)
-            start = round(stamp - origin, 2) if isinstance(stamp, (int, float)) and origin else 0.0
-            start = max(start, 0.0)
-            # Timestamps written in the same millisecond collapse to 0, so the
-            # running cursor keeps turns in order and non-overlapping.
-            start = max(start, cursor)
+                has_explicit_end = True
+
+            has_real_stamp = isinstance(stamp, (int, float)) and stamp > 0
+            if has_real_stamp and origin:
+                calc_start = max(round(stamp - origin, 2), 0.0)
+                # Only apply the running cursor to same-timestamp collisions, avoiding highlight drift
+                if last_raw_stamp is not None and abs(stamp - last_raw_stamp) < 0.001:
+                    start = max(calc_start, cursor)
+                else:
+                    start = calc_start
+                last_raw_stamp = stamp
+            else:
+                start = max(0.0, cursor)
+                last_raw_stamp = None
+
+            # Prevent turn overlap when next turn has a known subsequent start timestamp
+            if not has_explicit_end:
+                if index + 1 < len(turns):
+                    next_turn = turns[index + 1]
+                    next_stamp = next_turn.get("timestamp")
+                    if isinstance(next_stamp, (int, float)) and origin and next_stamp > (stamp or 0):
+                        next_start = max(round(next_stamp - origin, 2), 0.0)
+                        if next_start > start:
+                            last_interval = round(next_start - start, 2)
+                            spoken = max(0.3, min(spoken, last_interval))
+                elif last_interval is not None:
+                    spoken = max(0.3, min(spoken, last_interval))
+
             turn_sentiment = sentiment_by_turn.get(turn.get("turn_index", index + 1), {})
             timeline.append({
                 "turn_index": turn.get("turn_index", index + 1),
-                "role": turn.get("role", "caller"),
-                "speaker": turn.get("speaker", "Customer" if turn.get("role") == "caller" else "AI Agent"),
-                "text": turn.get("text", ""),
+                "role": str(turn.get("role", "caller")),
+                "speaker": str(turn.get("speaker", "Customer" if turn.get("role") == "caller" else "AI Agent")),
+                "text": str(turn.get("text", "")),
                 "start_s": round(start, 2),
                 "end_s": round(start + spoken, 2),
                 "duration_s": round(spoken, 2),
@@ -399,10 +461,14 @@ class CallHistoryStore:
 
     def waveform(self, call_id: str, buckets: int = DEFAULT_WAVEFORM_BUCKETS) -> Optional[Dict[str, Any]]:
         """Per-channel peak envelope: left = caller, right = agent."""
+        buckets = max(10, min(int(buckets), MAX_WAVEFORM_BUCKETS))
+        cache_key = (call_id, buckets)
+        if cache_key in self._waveform_cache:
+            return self._waveform_cache[cache_key]
+
         path = self.audio_path(call_id)
         if not path or not os.path.isfile(path):
             return None
-        buckets = max(10, min(int(buckets), MAX_WAVEFORM_BUCKETS))
 
         try:
             with wave.open(path, "rb") as wav:
@@ -410,28 +476,30 @@ class CallHistoryStore:
                 rate = wav.getframerate()
                 width = wav.getsampwidth()
                 frames = wav.getnframes()
-                raw = wav.readframes(frames)
+                if width != 2 or frames == 0:
+                    return None
+
+                per_bucket = max(1, frames // buckets)
+                peaks: List[List[float]] = [[] for _ in range(channels)]
+
+                # Read chunk by chunk per bucket to avoid loading whole WAV file into memory
+                for _ in range(min(buckets, frames)):
+                    raw_chunk = wav.readframes(per_bucket)
+                    if not raw_chunk:
+                        break
+                    chunk_samples = array("h")
+                    chunk_samples.frombytes(raw_chunk)
+                    sample_count = len(chunk_samples)
+                    for ch in range(channels):
+                        ch_slice = chunk_samples[ch:sample_count:channels]
+                        peak = max((abs(s) for s in ch_slice), default=0) / 32768.0
+                        peaks[ch].append(round(peak, 4))
+
         except Exception as e:
             log.warning("Failed to read waveform for %s: %s", call_id, e)
             return None
 
-        if width != 2 or frames == 0:
-            return None
-
-        samples = array("h")
-        samples.frombytes(raw[: frames * channels * width])
-        per_bucket = max(1, frames // buckets)
-
-        peaks: List[List[float]] = [[] for _ in range(channels)]
-        for bucket in range(min(buckets, frames)):
-            head = bucket * per_bucket
-            tail = min(head + per_bucket, frames)
-            for ch in range(channels):
-                window = samples[head * channels + ch: tail * channels: channels]
-                peak = max((abs(s) for s in window), default=0) / 32768.0
-                peaks[ch].append(round(peak, 4))
-
-        return {
+        result = {
             "call_id": call_id,
             "channels": channels,
             "sample_rate": rate,
@@ -442,13 +510,29 @@ class CallHistoryStore:
             "peak_level": round(max((max(ch, default=0.0) for ch in peaks), default=0.0), 4),
         }
 
+        if len(self._waveform_cache) > 200:
+            self._waveform_cache.pop(next(iter(self._waveform_cache)))
+        self._waveform_cache[cache_key] = result
+        return result
+
     # ── Aggregates & export ──────────────────────────────────────────────────
     def stats(self, visible_agents: Optional[Set[str]] = None) -> Dict[str, Any]:
         rows = self._visible_rows(visible_agents)
         if not rows:
-            return {"calls": 0, "with_audio": 0, "avg_duration_seconds": 0.0,
-                    "sentiment": {}, "outcomes": {}, "agents": {},
-                    "resolution_rate": 0.0, "frustrated_calls": 0, "total_turns": 0}
+            return {
+                "calls": 0,
+                "with_audio": 0,
+                "avg_duration_seconds": 0.0,
+                "sentiment": {},
+                "outcomes": {},
+                "agents": {},
+                "resolution_rate": 0.0,
+                "frustrated_calls": 0,
+                "total_turns": 0,
+                "total_words": 0,
+                "transferred_calls": 0,
+                "newest_call_at": None,
+            }
 
         sentiment_counts: Dict[str, int] = {}
         outcome_counts: Dict[str, int] = {}
@@ -476,8 +560,17 @@ class CallHistoryStore:
 
     def export_csv(self, **filters) -> str:
         """Flat CSV of the filtered log, for spreadsheets and BI imports."""
-        filters.setdefault("page_size", MAX_PAGE_SIZE)
-        rows = self.list_calls(**filters)["items"]
+        # Un-capped CSV export: iterate all pages of filtered results
+        filters_copy = dict(filters)
+        filters_copy["page_size"] = MAX_PAGE_SIZE
+        filters_copy["page"] = 1
+        first_page = self.list_calls(**filters_copy)
+        rows = list(first_page.get("items", []))
+        total_pages = first_page.get("pages", 1)
+        for p in range(2, total_pages + 1):
+            filters_copy["page"] = p
+            rows.extend(self.list_calls(**filters_copy).get("items", []))
+
         columns = ["call_id", "started_at", "duration_seconds", "direction", "from_number",
                    "agent_name", "sentiment", "sentiment_score", "outcome", "turns",
                    "words", "transferred", "has_audio", "key_intent", "summary"]
