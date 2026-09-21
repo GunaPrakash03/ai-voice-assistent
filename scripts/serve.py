@@ -2136,6 +2136,7 @@ class Handler(SimpleHTTPRequestHandler):
                 handler=custom_handler,
                 filler_phrases=fillers if isinstance(fillers, list) else [str(fillers)],
                 timeout=timeout,
+                metadata={"endpoint_url": endpoint, "method": method},
             )
             reg.register(tool_def, persist=True)
             self._send_json({"status": "ok", "tool": {

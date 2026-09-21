@@ -14,9 +14,13 @@ Components:
 """
 
 import asyncio
+import concurrent.futures
+import functools
+import inspect
 import ipaddress
 import json
 import logging
+import os
 import random
 import re
 import socket
@@ -27,6 +31,34 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 log = logging.getLogger("tool-manager")
 
+CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
+CUSTOM_TOOLS_FILE = os.path.join(CONFIG_DIR, "custom_tools.json")
+
+_TOOL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=16, thread_name_prefix="tool-exec")
+
+
+def _storage_sync(path: str) -> None:
+    try:
+        from agent import storage
+        storage.sync_file(path)
+    except Exception as e:
+        log.debug("Storage sync skipped for %s: %s", path, e)
+
+
+def make_http_tool_handler(endpoint: str, method: str, timeout: float):
+    async def custom_handler(**kwargs):
+        if endpoint:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                if method.upper() == "POST":
+                    async with session.post(endpoint, json=kwargs, timeout=timeout) as resp:
+                        return {"status_code": resp.status, "body": await resp.text()}
+                else:
+                    async with session.get(endpoint, params=kwargs, timeout=timeout) as resp:
+                        return {"status_code": resp.status, "body": await resp.text()}
+        else:
+            return {"status": "executed", "echo": kwargs}
+    return custom_handler
 
 
 @dataclass
@@ -38,6 +70,7 @@ class ToolDefinition:
     handler: Callable[..., Any]
     filler_phrases: List[str] = field(default_factory=list)
     timeout: float = 3.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_json_schema(self) -> dict:
         """Returns standard OpenAI / LiveKit compatible tool schema."""
@@ -124,12 +157,15 @@ class AsyncToolDispatcher:
 
         try:
             handler = tool.handler
-            if asyncio.iscoroutinefunction(handler):
-                coro = handler(**arguments)
+            if inspect.iscoroutinefunction(handler):
+                result = await asyncio.wait_for(handler(**arguments), timeout=exec_timeout)
             else:
-                coro = asyncio.to_thread(handler, **arguments)
+                loop = asyncio.get_running_loop()
+                fut = loop.run_in_executor(_TOOL_EXECUTOR, functools.partial(handler, **arguments))
+                result = await asyncio.wait_for(fut, timeout=exec_timeout)
+                if inspect.isawaitable(result):
+                    result = await asyncio.wait_for(result, timeout=exec_timeout)
 
-            result = await asyncio.wait_for(coro, timeout=exec_timeout)
             duration_ms = round((time.perf_counter() - t0) * 1000.0, 2)
             log.info("Tool '%s' executed successfully in %.2fms", name, duration_ms)
             return {
@@ -180,8 +216,60 @@ class ToolRegistry:
         self._room_name: Optional[str] = None
         self._participant_identity: Optional[str] = None
         self._register_default_tools()
+        self._load_custom_tools()
         for custom_tool in self._custom_tools.values():
             self.register(custom_tool, persist=False)
+
+    def _load_custom_tools(self) -> None:
+        if not os.path.isfile(CUSTOM_TOOLS_FILE):
+            return
+        try:
+            with open(CUSTOM_TOOLS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for item in data.get("tools", []):
+                try:
+                    name = item["name"]
+                    endpoint = item.get("endpoint_url", "")
+                    method = item.get("method", "POST")
+                    timeout = float(item.get("timeout", 3.0))
+                    handler = make_http_tool_handler(endpoint, method, timeout)
+                    tool = ToolDefinition(
+                        name=name,
+                        description=item.get("description", ""),
+                        parameters=item.get("parameters") or {"type": "object", "properties": {}},
+                        handler=handler,
+                        filler_phrases=item.get("filler_phrases") or [],
+                        timeout=timeout,
+                        metadata=item.get("metadata") or {"endpoint_url": endpoint, "method": method},
+                    )
+                    self.register(tool, persist=False)
+                    ToolRegistry._custom_tools[name] = tool
+                except Exception as ex:
+                    log.warning("Skipping malformed custom tool: %s", ex)
+        except Exception as e:
+            log.warning("Failed to load custom tools from disk: %s", e)
+
+    def _save_custom_tools(self) -> None:
+        try:
+            os.makedirs(os.path.dirname(CUSTOM_TOOLS_FILE), exist_ok=True)
+            tool_list = []
+            for t in ToolRegistry._custom_tools.values():
+                meta = getattr(t, "metadata", {}) or {}
+                tool_list.append({
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                    "timeout": t.timeout,
+                    "filler_phrases": t.filler_phrases,
+                    "endpoint_url": meta.get("endpoint_url", ""),
+                    "method": meta.get("method", "POST"),
+                    "metadata": meta,
+                })
+            with open(CUSTOM_TOOLS_FILE, "w", encoding="utf-8") as f:
+                json.dump({"tools": tool_list, "updated_at": time.time()}, f, indent=2)
+            _storage_sync(CUSTOM_TOOLS_FILE)
+        except Exception as e:
+            log.warning("Failed to save custom tools: %s", e)
 
     def set_call_context(self, call_id: str, room_name: str, participant_identity: str) -> None:
         """Sets the active call context so tools know the target room and caller participant identity."""
@@ -205,11 +293,12 @@ class ToolRegistry:
         except Exception:
             return (self._call_id or "default-room", self._room_name or "default-room", self._participant_identity or "caller")
 
-    def register(self, tool: ToolDefinition, persist: bool = True) -> None:
+    def register(self, tool: ToolDefinition, persist: bool = False) -> None:
         """Registers a tool definition and its filler phrases."""
         self._tools[tool.name] = tool
         if persist:
             ToolRegistry._custom_tools[tool.name] = tool
+            self._save_custom_tools()
         if tool.filler_phrases:
             self.filler_engine.register_tool_fillers(tool.name, tool.filler_phrases)
         log.info("Registered function tool: '%s'", tool.name)
