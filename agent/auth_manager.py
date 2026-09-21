@@ -41,13 +41,15 @@ JWT_SECRET = os.getenv("AUTH_JWT_SECRET", "voice-agent-jwt-secret-key-prod-2026"
 # ---------------------------------------------------------------------------
 
 class UserRole(str, Enum):
+    """The platform has exactly three roles. Member Admin is the lowest: it covers day-to-day work
+    (overview, calls, softphone, agents, profile) and member management inside its workspace."""
     SUPER_ADMIN  = "super_admin"   # Overall Admin: manages all orgs and can create product/member admins
-    ADMIN        = "admin"         # Product Admin: manages single workspace; can create member admins & users
-    MEMBER_ADMIN = "member_admin"  # Member Admin: manages members within single workspace
-    USER         = "user"          # Standard User: overview, calls, softphone, personal profile
+    ADMIN        = "admin"         # Product Admin: manages single workspace; can create member admins
+    MEMBER_ADMIN = "member_admin"  # Member Admin: works in and manages members of a single workspace
 
 
-# Aliases from earlier builds and system variations
+# Aliases from earlier builds and system variations. The retired "Standard User" role and its
+# synonyms map to Member Admin so old records and API clients keep working.
 ROLE_ALIASES = {
     "super_admin": UserRole.SUPER_ADMIN.value,
     "superadmin": UserRole.SUPER_ADMIN.value,
@@ -58,26 +60,27 @@ ROLE_ALIASES = {
     "product_admin": UserRole.ADMIN.value,
     "member_admin": UserRole.MEMBER_ADMIN.value,
     "team_admin": UserRole.MEMBER_ADMIN.value,
-    "operator": UserRole.USER.value,
-    "analyst": UserRole.USER.value,
-    "member": UserRole.USER.value,
-    "user": UserRole.USER.value,
+    "operator": UserRole.MEMBER_ADMIN.value,
+    "analyst": UserRole.MEMBER_ADMIN.value,
+    "member": UserRole.MEMBER_ADMIN.value,
+    "user": UserRole.MEMBER_ADMIN.value,
 }
 
 
 def normalize_role(role: Optional[str]) -> str:
+    """Every role string, old or new, resolves to one of the three UserRole values."""
     r = (role or "").strip().lower()
-    return ROLE_ALIASES.get(r, r or UserRole.USER.value)
+    r = ROLE_ALIASES.get(r, r)
+    return r if r in {x.value for x in UserRole} else UserRole.MEMBER_ADMIN.value
 
 
 def can_create_role(creator_role: str, creator_ws_id: str, target_role: str, target_ws_id: str) -> Tuple[bool, str]:
     """Validates if creator has permission to create target_role in target_ws_id.
 
     Rules:
-    - Super Admin can create any role (super_admin, admin/product_admin, member_admin, user) in ANY organization.
-    - Product Admin (admin) can ONLY create member_admin and user in their OWN organization.
-    - Member Admin (member_admin) can ONLY create user in their OWN organization.
-    - Regular User cannot create any accounts.
+    - Super Admin can create any role (super_admin, admin/product_admin, member_admin) in ANY organization.
+    - Product Admin (admin) can ONLY create member_admin in their OWN organization.
+    - Member Admin (member_admin) can ONLY invite other member_admin in their OWN organization.
     """
     c_role = normalize_role(creator_role)
     t_role = normalize_role(target_role)
@@ -89,19 +92,19 @@ def can_create_role(creator_role: str, creator_ws_id: str, target_role: str, tar
         if creator_ws_id != target_ws_id:
             return False, "Product Admins can only create users in their own organization"
         if t_role in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value):
-            return False, "Product Admins can only create Member Admins and Users"
-        if t_role in (UserRole.MEMBER_ADMIN.value, UserRole.USER.value):
+            return False, "Product Admins can only create Member Admins"
+        if t_role == UserRole.MEMBER_ADMIN.value:
             return True, "ok"
         return False, f"Invalid role '{target_role}'"
 
     if c_role == UserRole.MEMBER_ADMIN.value:
         if creator_ws_id != target_ws_id:
-            return False, "Member Admins can only create users in their own organization"
-        if t_role == UserRole.USER.value:
+            return False, "Member Admins can only invite members in their own organization"
+        if t_role == UserRole.MEMBER_ADMIN.value:
             return True, "ok"
-        return False, "Member Admins can only invite standard Users"
+        return False, "Member Admins can only invite other Member Admins"
 
-    return False, "Standard Users cannot create or invite members"
+    return False, f"Unknown role '{creator_role}' cannot create or invite members"
 
 
 class ApiScope(str, Enum):
@@ -121,14 +124,9 @@ class ApiScope(str, Enum):
 ROLE_SCOPES: Dict[UserRole, Set[str]] = {
     UserRole.SUPER_ADMIN: {s.value for s in ApiScope},
     UserRole.ADMIN: {s.value for s in ApiScope},
+    # Member Admin absorbed the retired Standard User role, so it carries that role's working scopes
+    # too; only workspace administration stays with the two admin tiers.
     UserRole.MEMBER_ADMIN: {
-        ApiScope.CALLS_READ.value,
-        ApiScope.CALLS_WRITE.value,
-        ApiScope.AGENTS_READ.value,
-        ApiScope.ANALYTICS_READ.value,
-        ApiScope.TELEPHONY_DIAL.value,
-    },
-    UserRole.USER: {
         ApiScope.CALLS_READ.value,
         ApiScope.CALLS_WRITE.value,
         ApiScope.CALLS_DISPATCH.value,
@@ -280,6 +278,51 @@ class AuthManager:
         self.rate_limiter = SlidingWindowRateLimiter(default_limit=120, window_seconds=60)
         self._init_defaults()
         self._load_store()
+        self._fold_retired_roles()
+        self._ensure_env_super_admins()
+
+    def _fold_retired_roles(self) -> None:
+        """Accounts still carrying a retired role (e.g. the old Standard User) become Member Admins,
+        once, so every stored role is one of the three the platform has."""
+        changed = [u for u in self._users.values() if u.role != normalize_role(u.role)]
+        for u in changed:
+            log.info("Role '%s' on %s folded into %s", u.role, u.email, normalize_role(u.role))
+            u.role = normalize_role(u.role)
+        if changed:
+            self._save_store()
+
+    def _ensure_env_super_admins(self) -> None:
+        """SUPER_ADMIN_EMAIL (comma-separated) names accounts that must exist as active Super Admins:
+        promoted if present, created in the default workspace otherwise. SUPER_ADMIN_PASSWORD, when set,
+        gives a created account (or one with no password yet) its first password. Lets a deployment
+        (Railway) get its owner account from a variable instead of a database edit."""
+        emails = [e.strip().lower() for e in os.getenv("SUPER_ADMIN_EMAIL", "").split(",") if e.strip()]
+        if not emails:
+            return
+        password = os.getenv("SUPER_ADMIN_PASSWORD", "")
+        changed = False
+        for email in emails:
+            user = self._find_user_by_email(email) or next(
+                (u for u in self._users.values() if u.email.lower() == email), None)
+            if user:
+                if user.role != UserRole.SUPER_ADMIN.value or not user.active:
+                    user.role = UserRole.SUPER_ADMIN.value
+                    user.active = True
+                    changed = True
+                    log.info("SUPER_ADMIN_EMAIL: promoted %s to super_admin", email)
+            else:
+                user = AuthUser(user_id=f"usr-{secrets.token_hex(4)}", workspace_id="ws-default",
+                                email=email, role=UserRole.SUPER_ADMIN.value, name=email.split("@")[0])
+                self._users[user.user_id] = user
+                changed = True
+                log.info("SUPER_ADMIN_EMAIL: created super_admin %s", email)
+            if password and not user.password_hash and len(password) >= 8:
+                salt = secrets.token_hex(16)
+                user.password_salt = salt
+                user.password_hash = self._hash_password(password, salt)
+                changed = True
+        if changed:
+            self._save_store()
 
     def _init_defaults(self):
         """Initializes default workspace, admin user, and seed API keys."""
@@ -492,7 +535,7 @@ class AuthManager:
     def get_user(self, user_id: str) -> Optional[AuthUser]:
         return self._users.get(user_id)
 
-    def add_member(self, workspace_id: str, email: str, password: str, role: str = "user",
+    def add_member(self, workspace_id: str, email: str, password: str, role: str = "member_admin",
                    name: str = "", phone: str = "") -> AuthUser:
         """Admin creates a teammate who can sign in (password, optional phone for the SMS step)."""
         email = (email or "").strip()
@@ -805,7 +848,6 @@ class AuthManager:
             super_admins = sum(1 for u in ws_users if normalize_role(u.role) == UserRole.SUPER_ADMIN.value)
             admins = sum(1 for u in ws_users if normalize_role(u.role) == UserRole.ADMIN.value)
             member_admins = sum(1 for u in ws_users if normalize_role(u.role) == UserRole.MEMBER_ADMIN.value)
-            users = sum(1 for u in ws_users if normalize_role(u.role) == UserRole.USER.value)
             active_keys = sum(1 for k in self._api_keys.values() if k.workspace_id == ws.workspace_id and not k.revoked)
 
             result.append({
@@ -819,7 +861,6 @@ class AuthManager:
                 "super_admin_count": super_admins,
                 "admin_count": admins,
                 "member_admin_count": member_admins,
-                "user_count": users,
                 "active_api_keys": active_keys,
             })
         return result
@@ -1001,7 +1042,7 @@ class AuthManager:
         self,
         workspace_id: str,
         subject: str,
-        role: str = "user",
+        role: str = "member_admin",
         scopes: Optional[List[str]] = None,
         ttl_seconds: int = 3600,
     ) -> str:
@@ -1070,7 +1111,7 @@ class AuthManager:
 
             ws_id = payload.get("ws", "ws-default")
             scopes = payload.get("scopes", [])
-            role = normalize_role(payload.get("role", "user"))
+            role = normalize_role(payload.get("role", "member_admin"))
 
             # Check Rate Limit
             rate_res = self.rate_limiter.check(f"user:{payload['sub']}")
@@ -1131,7 +1172,7 @@ class AuthManager:
                 "workspace_id": ws.workspace_id,
                 "auth_type": "workspace_header",
                 "identity": f"anon-{ws.workspace_id}",
-                "role": UserRole.USER.value,
+                "role": UserRole.MEMBER_ADMIN.value,
                 "scopes": [ApiScope.ALL.value],
             }
             return True, ctx, None

@@ -81,7 +81,7 @@ def main():
     check("Role Enum Contains super_admin", UserRole.SUPER_ADMIN.value in roles)
     check("Role Enum Contains admin", UserRole.ADMIN.value in roles)
     check("Role Enum Contains member_admin", UserRole.MEMBER_ADMIN.value in roles)
-    check("Role Enum Contains user", UserRole.USER.value in roles)
+    check("Role Enum has exactly three roles", set(roles) == {"super_admin", "admin", "member_admin"})
     
     check("Alias 'overall_admin' maps to super_admin", normalize_role("overall_admin") == "super_admin")
     check("Alias 'superadmin' maps to super_admin", normalize_role("superadmin") == "super_admin")

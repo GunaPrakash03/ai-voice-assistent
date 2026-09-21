@@ -469,7 +469,6 @@ class Handler(SimpleHTTPRequestHandler):
             super_count = sum(1 for u in users if u["role"] == "super_admin")
             admin_count = sum(1 for u in users if u["role"] == "admin")
             member_admin_count = sum(1 for u in users if u["role"] == "member_admin")
-            user_count = sum(1 for u in users if u["role"] == "user")
             active_orgs = sum(1 for o in orgs if o.get("active"))
             self._send_json({
                 "status": "ok",
@@ -479,7 +478,6 @@ class Handler(SimpleHTTPRequestHandler):
                 "super_admins": super_count,
                 "product_admins": admin_count,
                 "member_admins": member_admin_count,
-                "standard_users": user_count,
             })
             return
 
@@ -815,6 +813,11 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.write(audio_bytes)
             return
         elif parsed.path in ("/switch-role", "/api/v1/auth/switch-role"):
+            # Dev-only role switcher: it hands out a session for any role with no password, so it is
+            # refused from anywhere but this machine (same trust boundary as /api/v1/auth/dev-session).
+            if not (self._is_loopback() and os.getenv("AUTH_TRUST_LOOPBACK", "1") != "0"):
+                self._send_json({"status": "error", "error": "Role switcher is only available from localhost"}, 403)
+                return
             q = parse_qs(parsed.query)
             target_role = (q.get("role") or ["super_admin"])[0].lower()
             from agent.auth_manager import UserRole, normalize_role
@@ -1178,7 +1181,7 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 if action == "create":
                     target_ws = str(payload.get("workspace_id") or "ws-default")
-                    target_role = str(payload.get("role") or "user")
+                    target_role = str(payload.get("role") or "member_admin")
                     user = auth_manager.add_member(
                         workspace_id=target_ws,
                         email=str(payload.get("email") or ""),
@@ -1202,7 +1205,7 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 elif action == "role":
                     user_id = str(payload.get("user_id") or "")
-                    new_role = str(payload.get("role") or "user")
+                    new_role = str(payload.get("role") or "member_admin")
                     user = auth_manager.update_user_global(user_id, {"role": new_role})
                     self._send_json({"status": "ok", "user": user})
                     return
@@ -1228,7 +1231,7 @@ class Handler(SimpleHTTPRequestHandler):
                     self._send_json({"status": "ok" if ok else "error", "removed": ok}, 200 if ok else 404)
                     return
 
-                target_role = str(payload.get("role") or "user")
+                target_role = str(payload.get("role") or "member_admin")
                 target_ws = str(payload.get("workspace_id") or (v["user"].workspace_id if v["user"] else (auth_manager.get_profile().get("workspace_id") or "ws-default")))
                 creator_role = v["role"]
                 creator_ws = v["user"].workspace_id if v["user"] else target_ws
@@ -2348,7 +2351,7 @@ class Handler(SimpleHTTPRequestHandler):
             # Issues signed JWT Bearer token
             subject = payload.get("username", payload.get("email", payload.get("subject", "user")))
             ws_id = payload.get("workspace_id", "ws-default")
-            role = payload.get("role", "user")
+            role = payload.get("role", "member_admin")
             ttl = int(payload.get("ttl_seconds", 3600))
             token = auth_manager.issue_token(workspace_id=ws_id, subject=subject, role=role, ttl_seconds=ttl)
             self._send_json({"status": "ok", "token": token, "token_type": "Bearer", "expires_in": ttl, "workspace_id": ws_id})
@@ -2401,7 +2404,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
                 return
             email = payload.get("email", "").strip()
-            role = payload.get("role", "user").strip()
+            role = payload.get("role", "member_admin").strip()
             ws_id = payload.get("workspace_id", ctx["workspace_id"])
             try:
                 user = auth_manager.create_user(workspace_id=ws_id, email=email, role=role)

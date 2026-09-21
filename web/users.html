@@ -204,11 +204,6 @@
           <div class="kpi-val" id="kpiMemberAdmins" style="color:#2563EB">--</div>
           <div class="kpi-sub">Team coordinators</div>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Standard Users</div>
-          <div class="kpi-val" id="kpiStandardUsers">--</div>
-          <div class="kpi-sub">Staff &amp; operators</div>
-        </div>
       </div>
 
       <!-- Filter Controls Bar -->
@@ -222,7 +217,6 @@
           <option value="super_admin">Super Admin</option>
           <option value="admin">Product Admin</option>
           <option value="member_admin">Member Admin</option>
-          <option value="user">Standard User</option>
         </select>
         <select class="filter-select" id="orgFilter">
           <option value="all">All Organizations</option>
@@ -281,7 +275,6 @@
         <div class="form-group">
           <label for="userRoleSelect">Assigned Role *</label>
           <select id="userRoleSelect" required>
-            <option value="user">Standard User (Operator)</option>
             <option value="member_admin">Member Admin (Team Coordinator)</option>
             <option value="admin">Product Admin (Workspace Manager)</option>
             <option value="super_admin">Super Admin (Overall Platform Admin)</option>
@@ -315,7 +308,6 @@
         <div class="form-group">
           <label for="crTargetRole">Select New Role</label>
           <select id="crTargetRole" required>
-            <option value="user">Standard User</option>
             <option value="member_admin">Member Admin</option>
             <option value="admin">Product Admin</option>
             <option value="super_admin">Super Admin</option>
@@ -402,7 +394,6 @@ async function loadData() {
     document.getElementById('kpiSuperAdmins').textContent = stats.super_admins || 0;
     document.getElementById('kpiProductAdmins').textContent = stats.product_admins || 0;
     document.getElementById('kpiMemberAdmins').textContent = stats.member_admins || 0;
-    document.getElementById('kpiStandardUsers').textContent = stats.standard_users || 0;
 
     document.getElementById('navOrgCount').textContent = stats.total_organizations || 0;
     document.getElementById('navUserCount').textContent = stats.total_users || 0;
@@ -445,11 +436,10 @@ function populateOrgDropdowns() {
 }
 
 function getRoleBadge(role) {
-  const r = (role || 'user').toLowerCase();
+  const r = (role || 'member_admin').toLowerCase();
   if (r === 'super_admin') return `<span class="badge badge-super">👑 Super Admin</span>`;
   if (r === 'admin' || r === 'product_admin') return `<span class="badge badge-prod">🛡️ Product Admin</span>`;
-  if (r === 'member_admin') return `<span class="badge badge-member">👥 Member Admin</span>`;
-  return `<span class="badge badge-user">👤 User</span>`;
+  return `<span class="badge badge-member">👥 Member Admin</span>`;
 }
 
 function renderUsers() {

@@ -17,15 +17,17 @@ def run_tests():
     assert "super_admin" in roles, "super_admin missing from UserRole"
     assert "admin" in roles, "admin missing from UserRole"
     assert "member_admin" in roles, "member_admin missing from UserRole"
-    assert "user" in roles, "user missing from UserRole"
-    print(" -> PASSED: All 4 roles correctly configured.")
+    assert "user" not in roles, "the Standard User role was retired; only three roles exist"
+    assert len(roles) == 3, f"expected exactly three roles, got {roles}"
+    print(" -> PASSED: Exactly 3 roles configured.")
 
     # 2. Verify Role Aliases
     assert normalize_role("super_admin") == "super_admin"
     assert normalize_role("overall_admin") == "super_admin"
     assert normalize_role("product_admin") == "admin"
     assert normalize_role("member_admin") == "member_admin"
-    assert normalize_role("operator") == "user"
+    assert normalize_role("operator") == "member_admin"   # retired synonyms fold into Member Admin
+    assert normalize_role("user") == "member_admin"
     print(" -> PASSED: Role alias normalization verified.")
 
     # 3. Verify Super Admin check
@@ -41,17 +43,17 @@ def run_tests():
     ws_b = "ws-beta"
 
     # 4a. Super Admin can create ANY role in ANY workspace
-    for target in ("super_admin", "admin", "member_admin", "user"):
+    for target in ("super_admin", "admin", "member_admin"):
         ok, reason = can_create_role("super_admin", ws_a, target, ws_b)
         assert ok is True, f"Super Admin should be able to create {target} in any org"
     print(" -> PASSED: Super Admin global delegation verified.")
 
     # 4b. Product Admin:
-    # - can create member_admin and user in own workspace
+    # - can create member_admin in own workspace ("user" is an alias of member_admin now)
     ok, _ = can_create_role("admin", ws_a, "member_admin", ws_a)
     assert ok is True, "Product Admin should be able to create member_admin in own org"
     ok, _ = can_create_role("admin", ws_a, "user", ws_a)
-    assert ok is True, "Product Admin should be able to create user in own org"
+    assert ok is True, "Legacy 'user' requests resolve to member_admin"
     # - CANNOT create admin or super_admin
     ok, reason = can_create_role("admin", ws_a, "admin", ws_a)
     assert ok is False, "Product Admin cannot create Product Admin"
@@ -63,21 +65,16 @@ def run_tests():
     print(" -> PASSED: Product Admin workspace-scoped delegation verified.")
 
     # 4c. Member Admin:
-    # - can ONLY create user in own workspace
-    ok, _ = can_create_role("member_admin", ws_a, "user", ws_a)
-    assert ok is True, "Member Admin should be able to create user in own org"
-    ok, reason = can_create_role("member_admin", ws_a, "member_admin", ws_a)
-    assert ok is False, "Member Admin cannot create Member Admin"
+    # - can ONLY invite other member_admin in own workspace
+    ok, _ = can_create_role("member_admin", ws_a, "member_admin", ws_a)
+    assert ok is True, "Member Admin should be able to invite member_admin in own org"
     ok, reason = can_create_role("member_admin", ws_a, "admin", ws_a)
     assert ok is False, "Member Admin cannot create Product Admin"
-    ok, reason = can_create_role("member_admin", ws_a, "user", ws_b)
-    assert ok is False, "Member Admin cannot create user in other org"
+    ok, reason = can_create_role("member_admin", ws_a, "super_admin", ws_a)
+    assert ok is False, "Member Admin cannot create Super Admin"
+    ok, reason = can_create_role("member_admin", ws_a, "member_admin", ws_b)
+    assert ok is False, "Member Admin cannot invite into another org"
     print(" -> PASSED: Member Admin workspace-scoped delegation verified.")
-
-    # 4d. Standard User cannot create any accounts
-    ok, reason = can_create_role("user", ws_a, "user", ws_a)
-    assert ok is False, "Regular User cannot create accounts"
-    print(" -> PASSED: Standard User restrictions verified.")
 
     # 5. Multi-Tenant Organization & User Querying
     orgs = auth_manager.list_all_organizations()

@@ -115,7 +115,7 @@ check("revoked key fails validation",    mgr.validate_api_key(raw_secret) is Non
 # ─── Check 3: RBAC & User Management ────────────────────────────────────────
 print("\n- Check 3: Role-Based Access Control (RBAC) -")
 u_admin = mgr.create_user(ws1.workspace_id, "admin@acme.com", UserRole.ADMIN.value)
-u_user = mgr.create_user(ws1.workspace_id, "user@acme.com", UserRole.USER.value)
+u_user = mgr.create_user(ws1.workspace_id, "user@acme.com", UserRole.MEMBER_ADMIN.value)
 u_legacy = mgr.create_user(ws1.workspace_id, "legacy@acme.com", "operator")
 
 check("admin user created",              u_admin.role == "admin")

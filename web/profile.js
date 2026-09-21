@@ -20,7 +20,6 @@
     "#railProfile .rp-role{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:9px;font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:rgba(194,86,15,.25);color:#F3B27A}" +
     "#railProfile .rp-role.sa{background:rgba(124,58,237,.3);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)}" +
     "#railProfile .rp-role.ma{background:rgba(2,132,199,.25);color:#7dd3fc;border:1px solid rgba(56,189,248,.3)}" +
-    "#railProfile .rp-role.user{background:rgba(100,116,139,.25);color:#cbd5e1;border:1px solid rgba(148,163,184,.3)}" +
     "#railProfile .rp-open{font-size:10px;color:var(--rail-ink,#aaa);margin-top:6px}" +
     ".sa-link:hover{background:rgba(124,58,237,.22) !important;color:#fff !important}";
   document.head.appendChild(css);
@@ -45,7 +44,6 @@
         '<a href="/switch-role?role=super_admin" class="rp-switch-btn sa" style="font-size:10.5px;padding:2px 7px;border-radius:4px;text-decoration:none;background:rgba(124,58,237,.25);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)">👑 Super</a>' +
         '<a href="/switch-role?role=admin" class="rp-switch-btn pa" style="font-size:10.5px;padding:2px 7px;border-radius:4px;text-decoration:none;background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.25)">🛡️ Prod</a>' +
         '<a href="/switch-role?role=member_admin" class="rp-switch-btn ma" style="font-size:10.5px;padding:2px 7px;border-radius:4px;text-decoration:none;background:rgba(2,132,199,.15);color:#7dd3fc;border:1px solid rgba(56,189,248,.25)">👥 Member</a>' +
-        '<a href="/switch-role?role=user" class="rp-switch-btn usr" style="font-size:10.5px;padding:2px 7px;border-radius:4px;text-decoration:none;background:rgba(100,116,139,.15);color:#cbd5e1;border:1px solid rgba(148,163,184,.25)">👤 User</a>' +
       '</div>' +
     '</div>';
   foot.insertBefore(card, foot.firstChild);
@@ -76,14 +74,12 @@
     var ROLE_LABEL = {
       super_admin: "👑 Super Admin",
       admin: "🛡️ Product Admin",
-      member_admin: "👥 Member Admin",
-      user: "👤 User"
+      member_admin: "👥 Member Admin"
     };
     role.textContent = ROLE_LABEL[profile.role] || profile.role || "";
     role.className = "rp-role " + (
       (profile.role === "super_admin" || profile.is_super_admin) ? "sa" :
-      profile.role === "member_admin" ? "ma" :
-      profile.role === "user" ? "user" : ""
+      profile.role === "member_admin" ? "ma" : ""
     );
     role.hidden = !profile.role;
   }
@@ -139,7 +135,7 @@
     return fetch("/api/v1/auth/profile").then(function (r) { return r.json(); }).then(function (d) {
       if (d.status === "ok") {
         profile = d.profile;
-        window.currentRole = profile.role || (profile.is_super_admin ? "super_admin" : (profile.is_admin ? "admin" : "user"));
+        window.currentRole = profile.role || (profile.is_super_admin ? "super_admin" : (profile.is_admin ? "admin" : "member_admin"));
         render();
         window.applyRoleVisibility();
       } else {

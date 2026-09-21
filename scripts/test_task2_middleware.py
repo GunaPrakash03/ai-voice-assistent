@@ -13,7 +13,7 @@ sys.path.insert(0, ROOT_DIR)
 
 from agent.auth_manager import auth_manager, UserRole
 
-BASE_URL = "http://localhost:8091"
+BASE_URL = f"http://localhost:{os.getenv('PORT', '8091')}"
 
 def make_req(path, method="GET", body=None, token=None):
     headers = {}
@@ -76,17 +76,17 @@ def run_tests():
     _, _, d_ma = make_req("/api/v1/auth/dev-session", method="POST", body={"email": "memberadmin@test.local"})
     member_token = d_ma["token"]
 
-    # 1d. Standard User in ws-default
+    # 1d. A second Member Admin in ws-default (the Standard User role was folded into Member Admin)
     reg_u = auth_manager._find_user_by_email("regular@test.local")
     if not reg_u:
-        reg_u = auth_manager.create_user("ws-default", "regular@test.local", UserRole.USER.value)
+        reg_u = auth_manager.create_user("ws-default", "regular@test.local", UserRole.MEMBER_ADMIN.value)
         auth_manager.set_password(reg_u.user_id, "Password123!")
-    reg_u.role = UserRole.USER.value
+    reg_u.role = UserRole.MEMBER_ADMIN.value
     auth_manager._save_store()
     _, _, d_u = make_req("/api/v1/auth/dev-session", method="POST", body={"email": "regular@test.local"})
     user_token = d_u["token"]
 
-    print(" -> Obtained server session tokens for all 4 roles.")
+    print(" -> Obtained server session tokens for all roles.")
 
 
     # -----------------------------------------------------------------------
@@ -177,8 +177,8 @@ def run_tests():
         "role": "user",
         "name": "New Team Member"
     }, token=prod_token)
-    assert status == 200 and data.get("status") == "ok", f"Product Admin should create standard user (got {status} {data})"
-    print(" -> PASSED: Product Admin successfully created standard User in own workspace.")
+    assert status == 200 and data.get("status") == "ok", f"Product Admin should create member (legacy role name) (got {status} {data})"
+    print(" -> PASSED: Product Admin created member via legacy role name in own workspace.")
 
     # 3c. Product Admin attempting to create Product Admin -> 403 Forbidden
     status, _, data = make_req("/api/v1/auth/users", method="POST", body={
@@ -214,24 +214,24 @@ def run_tests():
     print(f" -> PASSED: Product Admin blocked from cross-org user creation (403: {data.get('error')}).")
 
     # -----------------------------------------------------------------------
-    # TEST 4: Member Admin & Standard User Restrictions
+    # TEST 4: Member Admin Restrictions
     # -----------------------------------------------------------------------
-    print("\n--- Testing Member Admin & Standard User Restrictions ---")
+    print("\n--- Testing Member Admin Restrictions ---")
 
     # Member Admin accessing /organizations -> Blocked
     status, hdrs, _ = make_req("/organizations", token=member_token)
     assert status == 302 and "denied=super_admin" in hdrs.get("Location", "")
     print(" -> PASSED: Member Admin redirected away from /organizations.")
 
-    # Standard User accessing /organizations -> Blocked
+    # Second Member Admin accessing /organizations -> Blocked
     status, hdrs, _ = make_req("/organizations", token=user_token)
     assert status == 302 and "denied=super_admin" in hdrs.get("Location", "")
-    print(" -> PASSED: Standard User redirected away from /organizations.")
+    print(" -> PASSED: Second Member Admin redirected away from /organizations.")
 
-    # Standard User attempting to call /api/v1/auth/users -> 403 Forbidden
+    # Member Admin attempting to call /api/v1/auth/users -> 403 Forbidden
     status, _, data = make_req("/api/v1/auth/users", method="POST", body={"action": "create", "email": "fail@test.com"}, token=user_token)
-    assert status == 403, f"Standard User cannot create accounts (got {status})"
-    print(" -> PASSED: Standard User blocked from user creation endpoint (403 Forbidden).")
+    assert status == 403, f"Member Admin cannot create accounts (got {status})"
+    print(" -> PASSED: Member Admin blocked from user creation endpoint (403 Forbidden).")
 
     print("\n=== ALL TESTS PASSED FOR TASK 2 ===")
 
