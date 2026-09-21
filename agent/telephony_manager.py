@@ -1579,6 +1579,11 @@ class TelephonyManager:
         if record.answered_at:
             record.duration_seconds = round(record.ended_at - record.answered_at, 2)
         log.info("Call ended: %s (duration=%.2fs)", call_id, record.duration_seconds)
+        try:
+            from agent.dtmf_manager import dtmf_manager
+            dtmf_manager.end_call(call_id)
+        except Exception as e:
+            log.warning("Failed to evict DTMF state on call end %s: %s", call_id, e)
         return record
 
 

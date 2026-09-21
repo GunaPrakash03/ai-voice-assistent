@@ -12,6 +12,7 @@ Components:
 import asyncio
 import logging
 import math
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
@@ -106,7 +107,8 @@ class GoertzelDetector:
         Analyzes audio buffer and returns the detected DTMF character if low and high
         tone frequencies both exceed threshold.
         """
-        if not samples or len(samples) < 160:
+        min_samples = max(160, int(sample_rate * 0.02))
+        if not samples or len(samples) < min_samples:
             return None
 
         # Find peak low frequency
@@ -198,6 +200,7 @@ class DTMFManager:
     """
 
     def __init__(self):
+        self._lock = threading.RLock()
         self._menus: Dict[str, IVRMenuNode] = {}
         self._active_nodes: Dict[str, str] = {}  # call_id -> current node_id
         self._buffers: Dict[str, DTMFDigitBuffer] = {}  # call_id -> digit buffer
@@ -284,26 +287,99 @@ class DTMFManager:
         }
         self.register_menu(sales_menu)
 
+        # 3. Operator Node (fallback & direct transfer)
+        operator_menu = IVRMenuNode(
+            node_id="operator",
+            name="Operator Assistance",
+            prompt="Transferring you to customer support. Please stay on the line.",
+            timeout_seconds=6.0,
+            fallback_node_id="main",
+            options={
+                "0": IVRMenuOption(
+                    digit="0",
+                    label="Main Menu",
+                    action_type=DTMFActionType.NAVIGATE,
+                    target_node_id="main",
+                ),
+                "9": IVRMenuOption(
+                    digit="9",
+                    label="Customer Support Transfer",
+                    action_type=DTMFActionType.TRANSFER,
+                    target_department="customer support",
+                    transfer_number="+18005550100",
+                ),
+            },
+        )
+        self.register_menu(operator_menu)
+
     def register_menu(self, node: IVRMenuNode) -> None:
-        self._menus[node.node_id] = node
-        log.info("Registered IVR menu node: %s (%s options)", node.node_id, len(node.options))
+        with self._lock:
+            self._menus[node.node_id] = node
+            log.info("Registered IVR menu node: %s (%s options)", node.node_id, len(node.options))
 
     def get_or_create_buffer(self, call_id: str) -> DTMFDigitBuffer:
-        if call_id not in self._buffers:
-            self._buffers[call_id] = DTMFDigitBuffer()
-        return self._buffers[call_id]
+        with self._lock:
+            if call_id not in self._buffers:
+                self._buffers[call_id] = DTMFDigitBuffer()
+            return self._buffers[call_id]
 
     def get_active_node(self, call_id: str) -> IVRMenuNode:
-        node_id = self._active_nodes.get(call_id, "main")
-        return self._menus.get(node_id) or self._menus["main"]
+        with self._lock:
+            node_id = self._active_nodes.get(call_id, "main")
+            return self._menus.get(node_id) or self._menus.get("main")
 
     def reset_call(self, call_id: str) -> None:
-        self._active_nodes[call_id] = "main"
-        self._retry_counts[call_id] = 0
-        if call_id in self._buffers:
-            self._buffers[call_id].clear()
-        self._history[call_id] = []
-        log.info("Reset IVR session for call: %s", call_id)
+        with self._lock:
+            self._active_nodes[call_id] = "main"
+            self._retry_counts[call_id] = 0
+            if call_id in self._buffers:
+                self._buffers[call_id].clear()
+            self._history[call_id] = []
+            log.info("Reset IVR session for call: %s", call_id)
+
+    def end_call(self, call_id: str) -> None:
+        """Evicts per-call IVR state when call terminates to prevent memory leaks."""
+        with self._lock:
+            self._active_nodes.pop(call_id, None)
+            self._buffers.pop(call_id, None)
+            self._retry_counts.pop(call_id, None)
+            self._history.pop(call_id, None)
+            log.info("Evicted IVR state for call: %s", call_id)
+
+    def handle_timeout(self, call_id: str) -> dict:
+        """
+        Called when caller input times out on the active IVR menu.
+        Increments retry count and either triggers fallback node or prompts to retry.
+        """
+        with self._lock:
+            node = self.get_active_node(call_id)
+            buf = self._buffers.get(call_id)
+            buffered_digits = buf.get_value() if buf else ""
+            retries = self._retry_counts.get(call_id, 0) + 1
+            self._retry_counts[call_id] = retries
+            log.warning("IVR timeout on node '%s' for call '%s' (retry %d/%d)", node.node_id, call_id, retries, node.max_retries)
+
+            if retries >= node.max_retries and node.fallback_node_id:
+                fallback = self._menus.get(node.fallback_node_id) or self._menus.get("main", node)
+                self._active_nodes[call_id] = fallback.node_id
+                self._retry_counts[call_id] = 0
+                if buf:
+                    buf.clear()
+                return {
+                    "status": "timeout_fallback",
+                    "action": "fallback",
+                    "node_id": fallback.node_id,
+                    "prompt": f"We did not receive any input. {fallback.prompt}",
+                    "buffered_digits": buffered_digits,
+                }
+
+            return {
+                "status": "timeout_retry",
+                "action": "retry",
+                "node_id": node.node_id,
+                "prompt": f"Are you still there? {node.prompt}",
+                "buffered_digits": buffered_digits,
+            }
 
     def process_dtmf_digit(
         self,
@@ -326,129 +402,163 @@ class DTMFManager:
                 "error": f"Invalid DTMF digit '{digit}'",
             }
 
-        # 1. Record event
-        evt = DTMFEvent(
-            digit=clean_digit,
-            duration_ms=duration_ms,
-            source_participant=source_participant,
-        )
-        if call_id not in self._history:
-            self._history[call_id] = []
-        self._history[call_id].append(evt)
+        with self._lock:
+            # 1. Record event
+            evt = DTMFEvent(
+                digit=clean_digit,
+                duration_ms=duration_ms,
+                source_participant=source_participant,
+            )
+            if call_id not in self._history:
+                self._history[call_id] = []
+            self._history[call_id].append(evt)
 
-        # 2. Add to buffer
-        buf = self.get_or_create_buffer(call_id)
-        is_terminated = buf.push(clean_digit)
-        buffered_digits = buf.get_value()
+            # 2. Add to buffer
+            buf = self.get_or_create_buffer(call_id)
+            is_terminated = buf.push(clean_digit)
+            buffered_digits = buf.get_value()
 
-        # 3. Evaluate IVR menu option
-        node = self.get_active_node(call_id)
-        option = node.options.get(clean_digit)
+            # 3. Evaluate IVR menu option
+            node = self.get_active_node(call_id)
+            option = node.options.get(clean_digit)
 
-        if option:
-            self._retry_counts[call_id] = 0
-            log.info("IVR matched option: '%s' -> %s (%s)", clean_digit, option.label, option.action_type.value)
+            if option:
+                self._retry_counts[call_id] = 0
+                log.info("IVR matched option: '%s' -> %s (%s)", clean_digit, option.label, option.action_type.value)
 
-            if option.action_type == DTMFActionType.NAVIGATE:
-                target_node = self._menus.get(option.target_node_id or "main")
-                if target_node:
-                    self._active_nodes[call_id] = target_node.node_id
+                if option.action_type == DTMFActionType.NAVIGATE:
+                    target_node_id = option.target_node_id or "main"
+                    target_node = self._menus.get(target_node_id)
+                    if target_node:
+                        self._active_nodes[call_id] = target_node.node_id
+                        buf.clear()
+                        return {
+                            "status": "navigated",
+                            "digit": clean_digit,
+                            "action": "navigate",
+                            "node_id": target_node.node_id,
+                            "node_name": target_node.name,
+                            "prompt": target_node.prompt,
+                            "buffered_digits": buffered_digits,
+                        }
+                    else:
+                        log.error("IVR target node '%s' does not exist in registered menus", target_node_id)
+                        return {
+                            "status": "error_dangling_node",
+                            "digit": clean_digit,
+                            "error": f"Target node '{target_node_id}' is not registered",
+                            "action": "retry",
+                            "node_id": node.node_id,
+                            "prompt": node.prompt,
+                            "buffered_digits": buffered_digits,
+                        }
+
+                elif option.action_type == DTMFActionType.TRANSFER:
+                    buf.clear()
                     return {
-                        "status": "navigated",
+                        "status": "transfer_triggered",
                         "digit": clean_digit,
-                        "action": "navigate",
-                        "node_id": target_node.node_id,
-                        "node_name": target_node.name,
-                        "prompt": target_node.prompt,
+                        "action": "transfer",
+                        "department": option.target_department,
+                        "transfer_number": option.transfer_number,
+                        "prompt": f"Connecting you to {option.target_department or 'our specialist'} now, please hold.",
                         "buffered_digits": buffered_digits,
                     }
 
-            elif option.action_type == DTMFActionType.TRANSFER:
+                elif option.action_type == DTMFActionType.REPEAT:
+                    return {
+                        "status": "repeat",
+                        "digit": clean_digit,
+                        "action": "repeat",
+                        "node_id": node.node_id,
+                        "prompt": node.prompt,
+                        "buffered_digits": buffered_digits,
+                    }
+
+                elif option.action_type == DTMFActionType.HANGUP:
+                    buf.clear()
+                    return {
+                        "status": "hangup_triggered",
+                        "digit": clean_digit,
+                        "action": "hangup",
+                        "node_id": node.node_id,
+                        "prompt": "Thank you for calling. Goodbye.",
+                        "buffered_digits": buffered_digits,
+                    }
+
+                elif option.action_type == DTMFActionType.TOOL:
+                    return {
+                        "status": "tool_triggered",
+                        "digit": clean_digit,
+                        "action": "tool",
+                        "tool_name": option.tool_name,
+                        "tool_args": option.tool_args,
+                        "buffered_digits": buffered_digits,
+                    }
+
+            # Digit not in current menu options
+            retries = self._retry_counts.get(call_id, 0) + 1
+            self._retry_counts[call_id] = retries
+            log.warning("IVR unmatched digit: '%s' on node '%s' (retry %d/%d)", clean_digit, node.node_id, retries, node.max_retries)
+
+            if retries >= node.max_retries and node.fallback_node_id:
+                fallback = self._menus.get(node.fallback_node_id) or self._menus.get("main", node)
+                self._active_nodes[call_id] = fallback.node_id
+                self._retry_counts[call_id] = 0
+                buf.clear()
                 return {
-                    "status": "transfer_triggered",
+                    "status": "max_retries_fallback",
                     "digit": clean_digit,
-                    "action": "transfer",
-                    "department": option.target_department,
-                    "transfer_number": option.transfer_number,
-                    "prompt": f"Connecting you to {option.target_department or 'our specialist'} now, please hold.",
+                    "action": "fallback",
+                    "node_id": fallback.node_id,
+                    "prompt": f"Sorry, I did not recognize that option. {fallback.prompt}",
                     "buffered_digits": buffered_digits,
                 }
 
-            elif option.action_type == DTMFActionType.REPEAT:
-                return {
-                    "status": "repeat",
-                    "digit": clean_digit,
-                    "action": "repeat",
-                    "node_id": node.node_id,
-                    "prompt": node.prompt,
-                    "buffered_digits": buffered_digits,
-                }
+            if is_terminated:
+                # Terminator '#' consumed; clear buffer for next sequence
+                buf.clear()
 
-            elif option.action_type == DTMFActionType.TOOL:
-                return {
-                    "status": "tool_triggered",
-                    "digit": clean_digit,
-                    "action": "tool",
-                    "tool_name": option.tool_name,
-                    "tool_args": option.tool_args,
-                    "buffered_digits": buffered_digits,
-                }
-
-        # Digit not in current menu options
-        retries = self._retry_counts.get(call_id, 0) + 1
-        self._retry_counts[call_id] = retries
-        log.warning("IVR unmatched digit: '%s' on node '%s' (retry %d/%d)", clean_digit, node.node_id, retries, node.max_retries)
-
-        if retries >= node.max_retries and node.fallback_node_id:
-            fallback = self._menus.get(node.fallback_node_id) or self._menus["main"]
-            self._active_nodes[call_id] = fallback.node_id
-            self._retry_counts[call_id] = 0
             return {
-                "status": "max_retries_fallback",
+                "status": "unmatched_digit",
                 "digit": clean_digit,
-                "action": "fallback",
-                "node_id": fallback.node_id,
-                "prompt": f"Sorry, I did not recognize that option. {fallback.prompt}",
+                "action": "retry",
+                "node_id": node.node_id,
+                "prompt": f"Invalid option '{clean_digit}'. {node.prompt}",
                 "buffered_digits": buffered_digits,
+                "is_terminated": is_terminated,
             }
-
-        return {
-            "status": "unmatched_digit",
-            "digit": clean_digit,
-            "action": "retry",
-            "node_id": node.node_id,
-            "prompt": f"Invalid option '{clean_digit}'. {node.prompt}",
-            "buffered_digits": buffered_digits,
-            "is_terminated": is_terminated,
-        }
 
     def get_call_state(self, call_id: str) -> dict:
-        node = self.get_active_node(call_id)
-        buf = self.get_or_create_buffer(call_id)
-        history = self._history.get(call_id, [])
-        return {
-            "call_id": call_id,
-            "active_node": {
-                "node_id": node.node_id,
-                "name": node.name,
-                "prompt": node.prompt,
-                "options": {k: asdict(v) for k, v in node.options.items()},
-            },
-            "buffered_digits": buf.get_value(),
-            "history_count": len(history),
-            "last_digits": [asdict(e) for e in history[-8:]],
-        }
+        with self._lock:
+            node = self.get_active_node(call_id)
+            buf = self._buffers.get(call_id)
+            buffered_digits = buf.get_value() if buf else ""
+            history = self._history.get(call_id, [])
+            return {
+                "call_id": call_id,
+                "active_node": {
+                    "node_id": node.node_id,
+                    "name": node.name,
+                    "prompt": node.prompt,
+                    "options": {k: asdict(v) for k, v in node.options.items()},
+                },
+                "buffered_digits": buffered_digits,
+                "history_count": len(history),
+                "last_digits": [asdict(e) for e in history[-8:]],
+            }
 
     def list_menus(self) -> List[dict]:
-        return [
-            {
-                "node_id": m.node_id,
-                "name": m.name,
-                "prompt": m.prompt,
-                "options": {k: asdict(v) for k, v in m.options.items()},
-            }
-            for m in self._menus.values()
-        ]
+        with self._lock:
+            return [
+                {
+                    "node_id": m.node_id,
+                    "name": m.name,
+                    "prompt": m.prompt,
+                    "options": {k: asdict(v) for k, v in m.options.items()},
+                }
+                for m in self._menus.values()
+            ]
 
 
 # Global singleton instance
