@@ -56,6 +56,13 @@ KNOWN_PROVIDERS = {
         "docs_url": "https://aistudio.google.com/app/apikey",
         "description": "Next-gen Gemini 2.0 Flash, Flash Lite, Nano, and 1.5 Pro multimodal intelligence.",
     },
+    "gemini": {
+        "name": "Google Gemini",
+        "category": "llm",
+        "env_keys": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        "docs_url": "https://aistudio.google.com/app/apikey",
+        "description": "Next-gen Gemini 2.0 Flash, Flash Lite, Nano, and 1.5 Pro multimodal intelligence.",
+    },
     "openai": {
         "name": "OpenAI (GPT-4o & Whisper)",
         "category": "llm",
@@ -73,7 +80,7 @@ KNOWN_PROVIDERS = {
     "azure": {
         "name": "Microsoft Azure & Copilot",
         "category": "llm",
-        "env_keys": ["AZURE_OPENAI_API_KEY", "COPILOT_API_KEY"],
+        "env_keys": ["AZURE_OPENAI_API_KEY", "AZURE_SPEECH_KEY", "COPILOT_API_KEY"],
         "docs_url": "https://portal.azure.com",
         "description": "Enterprise Azure OpenAI endpoints and Microsoft Copilot conversational integration.",
     },
@@ -147,7 +154,8 @@ class ProviderManager:
                             k = k.strip()
                             v = v.strip().strip("'\"")
                             env_dict[k] = v
-                            os.environ[k] = v
+                            if k not in os.environ:
+                                os.environ[k] = v
             except Exception as ex:
                 log.warning("Failed to load .env: %s", ex)
         return env_dict
@@ -596,6 +604,53 @@ class ProviderManager:
                     "provider": "telnyx",
                     "connected": False,
                     "error": f"Failed to connect to Telnyx: {str(ex)}",
+                }
+
+        # 9. Microsoft Azure Cognitive / OpenAI
+        elif provider_id == "azure":
+            region = os.getenv("AZURE_SPEECH_REGION", "eastus").strip()
+            endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
+            try:
+                if endpoint:
+                    url = f"{endpoint.rstrip('/')}/openai/models?api-version=2023-05-15"
+                    req = urllib.request.Request(
+                        url,
+                        headers={"api-key": key, "User-Agent": "VoiceAgentService/1.0"}
+                    )
+                else:
+                    url = f"https://{region}.api.cognitive.microsoft.com/sts/v1.0/issueToken"
+                    req = urllib.request.Request(
+                        url,
+                        data=b"",
+                        headers={
+                            "Ocp-Apim-Subscription-Key": key,
+                            "User-Agent": "VoiceAgentService/1.0"
+                        },
+                        method="POST"
+                    )
+                with urllib.request.urlopen(req, timeout=6.0) as resp:
+                    elapsed_ms = int((time.perf_counter() - start) * 1000)
+                    return {
+                        "status": "ok",
+                        "provider": "azure",
+                        "connected": True,
+                        "latency_ms": elapsed_ms,
+                        "details": f"Authenticated successfully with Azure! Connected to {'OpenAI' if endpoint else 'Cognitive Services'}.",
+                    }
+            except urllib.error.HTTPError as he:
+                return {
+                    "status": "error",
+                    "provider": "azure",
+                    "connected": False,
+                    "code": he.code,
+                    "error": f"Azure API returned HTTP {he.code}: {he.reason}",
+                }
+            except Exception as ex:
+                return {
+                    "status": "error",
+                    "provider": "azure",
+                    "connected": False,
+                    "error": f"Failed to connect to Azure: {str(ex)}",
                 }
 
         return {
