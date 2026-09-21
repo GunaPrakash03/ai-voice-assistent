@@ -468,11 +468,20 @@ class AgentBuilder:
         self._agents: Dict[str, AgentConfig] = {}
         self._revisions: Dict[str, List[AgentRevision]] = {}
         self._suppress_sync = False
-        self._load_state()
-        if not self._agents:
-            # A missing/empty config/agents.json (e.g. an image built without config/ baked in)
-            # must never push a single default agent to PostgreSQL and clobber a real shared set —
-            # only an explicit save from user action should sync. See _save_state().
+        self._load_failed = False
+        if os.path.isfile(STATE_FILE):
+            self._load_state()
+            if self._load_failed:
+                log.error("Failed to load existing agent configs from %s; preserving state to avoid clobbering", STATE_FILE)
+            elif not self._agents:
+                # File existed but had empty agents list
+                self._suppress_sync = True
+                try:
+                    self._seed_default_agent()
+                finally:
+                    self._suppress_sync = False
+        else:
+            # First boot with no state file
             self._suppress_sync = True
             try:
                 self._seed_default_agent()
@@ -489,15 +498,25 @@ class AgentBuilder:
             import dataclasses
             valid_fields = {f.name for f in dataclasses.fields(AgentConfig)}
             for item in data.get("agents", []):
-                filtered = {k: v for k, v in item.items() if k in valid_fields}
-                cfg = AgentConfig(**filtered)
-                self._agents[cfg.agent_id] = cfg
+                try:
+                    filtered = {k: v for k, v in item.items() if k in valid_fields}
+                    cfg = AgentConfig(**filtered)
+                    self._agents[cfg.agent_id] = cfg
+                except Exception as e:
+                    log.warning("Skipping malformed agent entry: %s", e)
             for agent_id, revs in data.get("revisions", {}).items():
-                self._revisions[agent_id] = [AgentRevision(**r) for r in revs]
+                try:
+                    self._revisions[agent_id] = [AgentRevision(**r) for r in revs]
+                except Exception as e:
+                    log.warning("Skipping malformed revision entry for %s: %s", agent_id, e)
         except Exception as e:
+            self._load_failed = True
             log.warning("Failed to load agent configs: %s", e)
 
     def _save_state(self):
+        if getattr(self, "_load_failed", False):
+            log.warning("Refusing to save state because agent loading previously failed, preserving existing file")
+            return
         try:
             os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
             with open(STATE_FILE, "w", encoding="utf-8") as f:
@@ -554,7 +573,7 @@ class AgentBuilder:
         if not key:
             return []
         cache = self.__class__._xi_cache
-        if not refresh and cache["voices"] and _time.time() - cache["at"] < 600:
+        if not refresh and (_time.time() - cache["at"] < 600):
             return cache["voices"]
         out: List[VoiceOption] = []
         try:
@@ -576,7 +595,13 @@ class AgentBuilder:
             cache.update(at=_time.time(), voices=out)
         except Exception as ex:
             log.warning("ElevenLabs account voice list unavailable: %s", ex)
+            # Cache negative result for 60s so misses don't block 6s on every request
+            cache["at"] = _time.time() - 540
         return out or cache["voices"]
+
+    async def list_voices_async(self, refresh: bool = False) -> List[Dict[str, Any]]:
+        import asyncio
+        return await asyncio.to_thread(self.list_voices, refresh)
 
     def get_voice(self, voice_id: str) -> Optional[VoiceOption]:
         exact = next((v for v in VOICE_CATALOG if v.voice_id == voice_id), None)
@@ -677,7 +702,7 @@ class AgentBuilder:
         return "Hi, I'm an AI assistant from the intake team. How can I help you today?"
 
     # ── Validation & linting ─────────────────────────────────────────────────
-    def validate(self, cfg: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    def validate(self, cfg: Dict[str, Any], allow_historical_voice: bool = False) -> Tuple[bool, List[str]]:
         """Hard validation — these block a save."""
         errors: List[str] = []
         name = (cfg.get("name") or "").strip()
@@ -700,8 +725,12 @@ class AgentBuilder:
         if not isinstance(temperature, (int, float)) or not 0.0 <= float(temperature) <= 2.0:
             errors.append("temperature must be between 0.0 and 2.0")
 
-        if cfg.get("voice_id") and not self.get_voice(cfg["voice_id"]):
-            errors.append(f"unknown voice_id '{cfg['voice_id']}'")
+        if cfg.get("voice_id"):
+            vid = str(cfg["voice_id"])
+            if not self.get_voice(vid):
+                # Historical voices (e.g. retell-*, legacy cloned voices) preserved on rollback
+                if not (allow_historical_voice or vid.startswith("retell-")):
+                    errors.append(f"unknown voice_id '{vid}'")
 
         model = cfg.get("llm_model")
         if model and model not in {m["model"] for m in LLM_MODELS}:
@@ -746,7 +775,13 @@ class AgentBuilder:
         if not ok:
             raise ValueError("; ".join(errors))
 
-        agent_id = payload.pop("agent_id", None) or self._mint_id(name)
+        supplied_id = payload.pop("agent_id", None)
+        if supplied_id:
+            if supplied_id in self._agents:
+                raise ValueError(f"Agent '{supplied_id}' already exists. Cannot overwrite existing agent on create.")
+            agent_id = supplied_id
+        else:
+            agent_id = self._mint_id(name)
         activate = bool(payload.pop("active", False))
         cfg = AgentConfig(agent_id=agent_id, **payload)
         self._agents[agent_id] = cfg
@@ -792,7 +827,7 @@ class AgentBuilder:
     def get_active_agent(self) -> Optional[AgentConfig]:
         return next((a for a in self._agents.values() if a.active), None)
 
-    def update_agent(self, agent_id: str, changes: Dict[str, Any], note: str = "") -> AgentConfig:
+    def update_agent(self, agent_id: str, changes: Dict[str, Any], note: str = "", allow_historical_voice: bool = False) -> AgentConfig:
         cfg = self._agents.get(agent_id)
         if not cfg:
             raise KeyError(f"Unknown agent '{agent_id}'")
@@ -808,7 +843,7 @@ class AgentBuilder:
 
         proposed.update(editable)
 
-        ok, errors = self.validate(proposed)
+        ok, errors = self.validate(proposed, allow_historical_voice=allow_historical_voice)
         if not ok:
             raise ValueError("; ".join(errors))
 
@@ -888,7 +923,7 @@ class AgentBuilder:
         snapshot = dict(revs[revision].config)
         for key in ("agent_id", "revision", "created_at", "updated_at", "active"):
             snapshot.pop(key, None)
-        return self.update_agent(agent_id, snapshot, note=f"Rollback to revision {revision}")
+        return self.update_agent(agent_id, snapshot, note=f"Rollback to revision {revision}", allow_historical_voice=True)
 
     # ── Sandbox ──────────────────────────────────────────────────────────────
     def test_run(self, agent_id: str, utterances: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -1068,12 +1103,13 @@ class AgentBuilder:
         """Composes intelligent, multi-turn conversational replies grounded in the agent's system prompt & tools."""
         from agent.voice_synthesizer import clean_spoken_speech_text
 
-        # Check if live Gemini or OpenAI API key is available
+        # Check if live Gemini, OpenAI, or Anthropic API key is available
         gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         openai_key = os.getenv("OPENAI_API_KEY")
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
 
         self.last_reply_backend = "script"
-        if gemini_key and cfg.llm_model.startswith("gemini"):
+        if gemini_key and (cfg.llm_model.startswith("gemini") or "gemini" in cfg.llm_model):
             gemini_error = ""
             for attempt in range(2):
                 try:
@@ -1114,8 +1150,6 @@ class AgentBuilder:
                     }
                     payload = json.dumps(payload_dict).encode("utf-8")
                     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json", "x-goog-api-key": gemini_key})
-                    # A 51k-character intake prompt takes longer than the old 3 s budget; a timeout here
-                    # used to fall back to the rule script without telling anyone.
                     with urllib.request.urlopen(req, timeout=20.0) as resp:
                         data = json.loads(resp.read().decode("utf-8"))
                         cand = (data.get("candidates") or [{}])[0]
@@ -1132,7 +1166,7 @@ class AgentBuilder:
                 except Exception as e:
                     detail = ""
                     try:
-                        detail = e.read().decode("utf-8", "replace")[:300]  # urllib HTTPError carries the body
+                        detail = e.read().decode("utf-8", "replace")[:300]
                     except Exception:
                         pass
                     gemini_error = f"{e}{' ' + detail if detail else ''}"
@@ -1148,10 +1182,106 @@ class AgentBuilder:
                         continue
                     log.warning("Gemini sandbox completion failed: %s", gemini_error[:200])
                     break
-            # A model is configured but unavailable right now (rate limit, outage). Do NOT hand the
-            # turn to the rule script: its own question order collided with the model's and callers
-            # got the same question twice. Hold the turn instead.
             self.last_reply_backend = f"gemini-unavailable ({gemini_error[:160]})"
+            return "I'm sorry, I'm having a little trouble on my end. Could you say that once more?"
+
+        elif openai_key and (cfg.llm_model.startswith("gpt-") or cfg.llm_model.startswith("o1") or cfg.llm_model.startswith("o3") or "openai" in cfg.llm_model):
+            openai_error = ""
+            for attempt in range(2):
+                try:
+                    import urllib.request
+                    url = "https://api.openai.com/v1/chat/completions"
+                    messages = [{"role": "system", "content": (
+                        f"{cfg.system_prompt}\n\n"
+                        f"Guidelines: Speak concisely in 1-2 natural conversational sentences suitable for a phone call. "
+                        f"Never output XML, markdown, or thought tags. "
+                        f"The conversation transcript below already contains your opening greeting as your first turn; "
+                        f"it has been spoken, so never repeat it. Continue from where the transcript ends."
+                    )}]
+                    if history:
+                        for t in history:
+                            role = "user" if t.get("speaker") == "caller" else "assistant"
+                            messages.append({"role": role, "content": t.get("text", "")})
+                    else:
+                        messages.append({"role": "user", "content": utterance})
+
+                    payload = json.dumps({
+                        "model": cfg.llm_model,
+                        "messages": messages,
+                        "temperature": cfg.temperature,
+                        "max_tokens": 300,
+                    }).encode("utf-8")
+                    req = urllib.request.Request(url, data=payload, headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {openai_key}",
+                    })
+                    with urllib.request.urlopen(req, timeout=20.0) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        text = (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+                        if text:
+                            clean = clean_spoken_speech_text(text)
+                            if clean:
+                                self.last_reply_backend = f"openai:{cfg.llm_model}"
+                                return clean
+                        openai_error = "empty reply"
+                except Exception as e:
+                    openai_error = str(e)
+                    log.warning("OpenAI sandbox completion failed: %s", openai_error[:200])
+                    break
+            self.last_reply_backend = f"openai-unavailable ({openai_error[:160]})"
+            return "I'm sorry, I'm having a little trouble on my end. Could you say that once more?"
+
+        elif anthropic_key and (cfg.llm_model.startswith("claude-") or "claude" in cfg.llm_model or "anthropic" in cfg.llm_model):
+            anthropic_error = ""
+            for attempt in range(2):
+                try:
+                    import urllib.request
+                    url = "https://api.anthropic.com/v1/messages"
+                    messages = []
+                    if history:
+                        for t in history:
+                            role = "user" if t.get("speaker") == "caller" else "assistant"
+                            if messages and messages[-1]["role"] == role:
+                                messages[-1]["content"] += "\n" + t.get("text", "")
+                            else:
+                                messages.append({"role": role, "content": t.get("text", "")})
+                    else:
+                        messages.append({"role": "user", "content": utterance})
+                    if not messages or messages[0]["role"] != "user":
+                        messages.insert(0, {"role": "user", "content": "(call connected)"})
+
+                    payload = json.dumps({
+                        "model": cfg.llm_model,
+                        "system": (
+                            f"{cfg.system_prompt}\n\n"
+                            f"Guidelines: Speak concisely in 1-2 natural conversational sentences suitable for a phone call. "
+                            f"Never output XML, markdown, or thought tags. "
+                            f"The conversation transcript below already contains your opening greeting as your first turn; "
+                            f"it has been spoken, so never repeat it. Continue from where the transcript ends."
+                        ),
+                        "messages": messages,
+                        "max_tokens": 300,
+                        "temperature": cfg.temperature,
+                    }).encode("utf-8")
+                    req = urllib.request.Request(url, data=payload, headers={
+                        "Content-Type": "application/json",
+                        "x-api-key": anthropic_key,
+                        "anthropic-version": "2023-06-01",
+                    })
+                    with urllib.request.urlopen(req, timeout=20.0) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        text = "".join(c.get("text", "") for c in data.get("content", []) if c.get("type") == "text").strip()
+                        if text:
+                            clean = clean_spoken_speech_text(text)
+                            if clean:
+                                self.last_reply_backend = f"anthropic:{cfg.llm_model}"
+                                return clean
+                        anthropic_error = "empty reply"
+                except Exception as e:
+                    anthropic_error = str(e)
+                    log.warning("Anthropic sandbox completion failed: %s", anthropic_error[:200])
+                    break
+            self.last_reply_backend = f"anthropic-unavailable ({anthropic_error[:160]})"
             return "I'm sorry, I'm having a little trouble on my end. Could you say that once more?"
 
         # ── Tool matches ────────────────────────────────────────────────────────
@@ -1171,6 +1301,14 @@ class AgentBuilder:
         u_lower = utterance.strip().lower()
         prompt_lower = cfg.system_prompt.lower()
 
+        # Dynamic organization / firm resolution from agent prompt
+        firm_match = re.search(r"(?:law firm|firm|answering calls for|answering for|representing|attorneys at)\s+([A-Z][A-Za-z0-9&',. -]+?)(?:,|\.|\n|$)", cfg.system_prompt)
+        firm_display = firm_match.group(1).strip() if firm_match else ""
+        firm_for = f" for {firm_display}" if firm_display else ""
+        firm_about = firm_display if firm_display else "our firm"
+        firm_attorneys = f"the attorneys at {firm_display}" if firm_display else "our attorneys"
+        firm_attorney_from = f"from {firm_display}" if firm_display else "from our firm"
+
         # ── Global Interruptions / Standard Queries ────────────────────────────
         if re.search(r"\b(911|medical emergency|dying|bleeding|ambulance|hospital)\b", u_lower):
             return "If you are experiencing an immediate medical emergency, please hang up and dial 911 immediately."
@@ -1181,24 +1319,26 @@ class AgentBuilder:
 
         if re.search(r"\b(are you (an )?ai|are you (a )?robot|are you real|who are you)\b", u_lower):
             name_str = cfg.name or "Maya"
-            if "bottini" in prompt_lower or "legal" in prompt_lower or "law" in prompt_lower:
-                return f"Yes, I am {name_str}, an AI intake specialist for Bottini & Bottini. I am here to gather your information for attorney review."
+            if "legal" in prompt_lower or "law" in prompt_lower or "intake" in prompt_lower:
+                return f"Yes, I am {name_str}, an AI intake specialist{firm_for}. I am here to gather your information for attorney review."
             return f"Yes, I am {name_str}, an AI voice assistant. How can I help you today?"
 
         # ── Multi-turn State History Analysis ──────────────────────────────────
         prior_agent_turns = [t.get("text", "") for t in (history or []) if t.get("speaker") == "agent"]
         prior_agent_text = " ".join(prior_agent_turns).lower()
 
-        # ── Legal / Bottini & Bottini Intake Dialogue Flow (Prompt Grounded) ──
-        if "law" in prompt_lower or "legal" in prompt_lower or "attorney" in prompt_lower or "bottini" in prompt_lower or "intake" in prompt_lower:
-            # Check for fee/cost inquiry (handled per sanctioned line in Step 5 / Rules)
+        # ── Legal / Firm Intake Dialogue Flow (Prompt Grounded) ──
+        if "law" in prompt_lower or "legal" in prompt_lower or "attorney" in prompt_lower or "intake" in prompt_lower:
+            # Check for fee/cost inquiry (handled per prompt guidelines)
             if any(w in u_lower for w in ["cost", "price", "fee", "how much", "charge", "percentage", "contingency"]):
-                return "Our firm handles class action and representative matters on a contingency basis with no upfront legal fees. Let's continue with your intake details for attorney review."
+                if "contingency" in prompt_lower or "no upfront" in prompt_lower:
+                    return "Our firm handles matters on a contingency basis with no upfront legal fees. Let's continue with your intake details for attorney review."
+                return "Our fees and billing arrangements can be discussed directly with an attorney during consultation. Let's continue with your intake details for review."
 
-            # Check for out-of-scope legal matters explicitly listed in prompt (divorce, DUI, personal injury car accident, immigration)
+            # Check for out-of-scope legal matters explicitly listed in prompt
             if re.search(r"\b(personal injury|car accident|car crash|traffic accident|auto accident|divorce|child custody|dui|dwi|drunk driving|immigration|visa|green card|criminal defense)\b", u_lower) \
-                    and ("shareholder" in prompt_lower or "whistleblower" in prompt_lower or "consumer" in prompt_lower):
-                return "That's outside what our firm handles, we focus on shareholder, whistleblower, and consumer cases. I'd suggest contacting your state or local bar association's referral service. I'm sorry we're not the right place for this one. Take care."
+                    and ("focus" in prompt_lower or "handle" in prompt_lower or "special" in prompt_lower):
+                return "That's outside what our firm handles. I'd suggest contacting your state or local bar association's referral service. I'm sorry we're not the right place for this one. Take care."
 
             # Opening response / Step 1: find out what kind of matter this is
             is_opening_confirmation = any(u_lower.startswith(g) for g in ["yes", "yeah", "yep", "sure", "ok", "okay", "fine", "go ahead", "hello", "hi", "hey", "can you help", "need help"]) and len(u_lower.split()) <= 5
@@ -1207,11 +1347,6 @@ class AgentBuilder:
 
             last_agent_text = (prior_agent_turns[-1] if prior_agent_turns else "").lower()
 
-            # ── Answer checks: re-ask or confirm once instead of accepting a non-answer ──────────
-            # Each question below gets one retry. If the last turn was already a retry, accept
-            # whatever came back so the call never loops.
-            # Only the question that *ended* the previous turn is being answered now
-            # ("…we can skip email. And what's your mailing address?" is asking for the address).
             _qs = [q.strip() for q in re.split(r"(?<=[.!?])\s+", last_agent_text) if q.strip()]
             asked = next((q for q in reversed(_qs) if q.endswith("?")), _qs[-1] if _qs else "")
             already_retried = ("just to confirm" in last_agent_text or "didn't catch" in last_agent_text
@@ -1248,14 +1383,14 @@ class AgentBuilder:
                         return f"Sorry, just to confirm, yes or no: {short}?"
 
                 if "how did you hear" in asked and (len(u_lower.split()) < 2 and re.match(filler_re, u_lower)):
-                    return "Sorry, I didn't catch that. How did you hear about Bottini & Bottini, for example a friend, a news article, or a web search?"
+                    return f"Sorry, I didn't catch that. How did you hear about {firm_about}, for example a friend, a news article, or a web search?"
 
             # Confirm the retention-agreement decision so the caller knows what will happen next.
             if "retention agreement" in asked:
                 if re.match(yes_re, u_lower):
-                    return "Great, I'll note that you're happy to receive the retention agreement by email if the attorney thinks we can help. Thank you for sharing those details. I've recorded all of this information for the attorneys at Bottini & Bottini, and a member of our legal team will review your file and follow up with you. Take care."
+                    return f"Great, I'll note that you're happy to receive the retention agreement by email if the attorney thinks we can help. Thank you for sharing those details. I've recorded all of this information for {firm_attorneys}, and a member of our legal team will review your file and follow up with you. Take care."
                 if re.match(no_re, u_lower):
-                    return "No problem, nothing will be sent unless you ask for it. Thank you for sharing those details. I've recorded all of this information for the attorneys at Bottini & Bottini, and a member of our legal team will review your file and follow up with you. Take care."
+                    return f"No problem, nothing will be sent unless you ask for it. Thank you for sharing those details. I've recorded all of this information for {firm_attorneys}, and a member of our legal team will review your file and follow up with you. Take care."
 
             # Step 2: Core fields (ask these regardless of category)
             if "first and last name" not in prior_agent_text and "full name" not in prior_agent_text and "your name" not in prior_agent_text and "spell your" not in prior_agent_text:
@@ -1313,7 +1448,7 @@ class AgentBuilder:
                 return "Have you already been contacted by, or given a statement to, the company, its lawyers, an investigator, or a government agency about this?"
 
             if "how did you hear" not in prior_agent_text and "referral" not in prior_agent_text:
-                return "How did you hear about Bottini & Bottini?"
+                return f"How did you hear about {firm_about}?"
 
             if "employee, officer, or director" not in prior_agent_text and "affiliated" not in prior_agent_text:
                 return "Last quick one before we get into details. Are you currently an employee, officer, or director of the company involved?"
@@ -1323,10 +1458,10 @@ class AgentBuilder:
                 return "One last thing. If the attorney reviews this and thinks we can help, can I send you the digital version of the retention agreement to sign? That's the document that would formally make us your attorneys. It comes to your email, there's no obligation, and nothing is in place until you've read it and signed it."
 
             if any(w in u_lower for w in ["thank", "thanks", "that's all", "thats all", "no that", "nothing else", "bye", "goodbye"]):
-                return "You're very welcome! An intake attorney from Bottini & Bottini will review your file and reach out to you shortly. Have a wonderful day!"
+                return f"You're very welcome! An intake attorney {firm_attorney_from} will review your file and reach out to you shortly. Have a wonderful day!"
 
             if "logged" not in prior_agent_text and "review your file" not in prior_agent_text and "intake file" not in prior_agent_text:
-                return "Thank you for sharing those details. I've recorded all of this information for the attorneys at Bottini & Bottini. A member of our legal team will review your file and follow up with you. Take care."
+                return f"Thank you for sharing those details. I've recorded all of this information for {firm_attorneys}. A member of our legal team will review your file and follow up with you. Take care."
 
             return "Your case details have been safely recorded and queued for attorney review. Is there any additional information you'd like to include?"
 
