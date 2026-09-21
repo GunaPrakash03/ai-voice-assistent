@@ -42,6 +42,10 @@ class ComplianceMode(str, Enum):
     TWO_PARTY = "two_party"
 
 
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_RECORDINGS_DIR = os.path.join(ROOT_DIR, "recordings")
+
+
 class RecordingConfig(BaseModel):
     """Configuration for call recording session."""
     channels: int = 2  # 2 = Stereo (Left: Caller, Right: Agent)
@@ -53,7 +57,7 @@ class RecordingConfig(BaseModel):
     )
     beep_on_start: bool = True
     periodic_beep_interval_s: float = 15.0
-    storage_dir: str = "recordings"
+    storage_dir: str = Field(default_factory=lambda: DEFAULT_RECORDINGS_DIR)
     redact_on_pause: bool = True  # Insert silence during pause for PCI compliance
 
 
@@ -91,6 +95,9 @@ class StereoAudioMixer:
         Left Channel  (0): Caller
         Right Channel (1): Agent
         """
+        if not caller_pcm and not agent_pcm:
+            return b""
+
         caller_samples = []
         if caller_pcm and len(caller_pcm) >= 2:
             count = len(caller_pcm) // 2
@@ -151,6 +158,10 @@ class RecordingSession:
     def __init__(self, call_id: str, config: Optional[RecordingConfig] = None):
         self.call_id = call_id
         self.config = config or RecordingConfig()
+        if self.config.channels != 2 or self.config.sample_width != 2:
+            log.warning("RecordingConfig channels=%d width=%d overridden to stereo 16-bit (2, 2)", self.config.channels, self.config.sample_width)
+            self.config.channels = 2
+            self.config.sample_width = 2
         clean_call_id = re.sub(r"[^a-zA-Z0-9_-]", "_", call_id)
         self.recording_id = f"rec-{clean_call_id}-{int(time.time() * 1000)}"
         self.created_at = time.time()
@@ -172,10 +183,38 @@ class RecordingSession:
         self.pause_count: int = 0
         self.pause_reason: Optional[str] = None
         self.compliance_played: bool = False
+        self._last_periodic_beep: Optional[float] = None
 
     def mark_compliance_played(self):
         """Records that regulatory compliance recording disclosure has been delivered to the caller."""
         self.compliance_played = True
+
+    def get_start_beep_pcm(self) -> bytes:
+        """Returns the start compliance beep audio PCM to emit out to the call participant."""
+        if self.config.beep_on_start and self.config.compliance_mode in (
+            ComplianceMode.BEEP_ONLY,
+            ComplianceMode.TWO_PARTY,
+        ):
+            return generate_compliance_beep(
+                frequency=1400.0, duration_ms=200.0, sample_rate=self.config.sample_rate
+            )
+        return b""
+
+    def should_emit_periodic_beep(self, current_time: Optional[float] = None) -> bool:
+        """Returns True if a periodic compliance beep is due."""
+        if self.status != RecordingStatus.RECORDING:
+            return False
+        if self.config.compliance_mode not in (ComplianceMode.BEEP_ONLY, ComplianceMode.TWO_PARTY):
+            return False
+        interval = self.config.periodic_beep_interval_s
+        if interval <= 0:
+            return False
+        now = current_time or time.time()
+        last = self._last_periodic_beep or self.started_at or now
+        if now - last >= interval:
+            self._last_periodic_beep = now
+            return True
+        return False
 
     def start(self) -> RecordingMetadata:
         """Opens WAV container and initializes stereo stream."""
@@ -185,6 +224,7 @@ class RecordingSession:
         self._wav_file.setframerate(self.config.sample_rate)
 
         self.started_at = time.time()
+        self._last_periodic_beep = self.started_at
         self.status = RecordingStatus.RECORDING
 
         # If compliance beep enabled, write initial start beep on agent channel
@@ -207,6 +247,9 @@ class RecordingSession:
         self, caller_pcm: Optional[bytes] = None, agent_pcm: Optional[bytes] = None
     ):
         """Processes and writes incoming mono chunks into the dual-channel stereo WAV."""
+        if not caller_pcm and not agent_pcm:
+            return
+
         if self.status == RecordingStatus.PAUSED:
             if self.config.redact_on_pause:
                 # Insert silence frames to preserve timeline without recording PII
@@ -262,8 +305,11 @@ class RecordingSession:
             if self._wav_file:
                 try:
                     self._wav_file.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.error("Failed to close WAV file %s: %s", self.file_path, e)
+                    self.status = RecordingStatus.FAILED
+                    self._wav_file = None
+                    return self.to_metadata()
                 self._wav_file = None
 
             self.stopped_at = time.time()
@@ -356,12 +402,16 @@ class RecordingManager:
             )
         meta = session.stop()
         self._history.append(meta)
-        try:
-            from agent import storage
-            if getattr(meta, "file_path", None):
-                storage.save_recording(meta.file_path, call_id)
-        except Exception as e:
-            log.debug("recording not stored in PostgreSQL: %s", e)
+        if meta.status == RecordingStatus.STOPPED:
+            if meta.duration_s >= 0.5 and meta.file_size_bytes > 1000:
+                try:
+                    from agent import storage
+                    if getattr(meta, "file_path", None):
+                        storage.save_recording(meta.file_path, call_id)
+                except Exception as e:
+                    log.debug("recording not stored in PostgreSQL: %s", e)
+            else:
+                log.debug("Skipping DB storage for stub recording %s (duration=%.2fs)", meta.recording_id, meta.duration_s)
         return meta
 
     def append_audio(
