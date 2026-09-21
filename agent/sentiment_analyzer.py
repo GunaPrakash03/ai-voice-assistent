@@ -55,7 +55,7 @@ FRUSTRATION_PATTERNS = [
     r"\b(speak to a manager|talk to a human|representative|human being|operator now)\b",
     r"\b(waste of time|wasting my time|ridiculous|unacceptable)\b",
     r"\b(how hard is it|cannot believe|already told you|repeat myself)\b",
-    r"\b(lawyer|attorney|sue|court|legal action)\b",
+    r"\b(sue you|going to sue|take legal action|contact my lawyer)\b",
     r"\b(why hasn'?t this been fixed|still not working|still broken)\b",
     r"\b(overcharged|charged twice|unauthorized charge)\b",
 ]
@@ -122,10 +122,26 @@ class SentimentAnalyzer:
     def __init__(self):
         pass
 
-    def analyze_turn(self, text: str, speaker: str = "caller", turn_index: int = 1) -> TurnSentiment:
+    def analyze_turn(
+        self,
+        text: Optional[str],
+        speaker: Optional[str] = "caller",
+        turn_index: int = 1,
+        is_caller: Optional[bool] = None,
+    ) -> TurnSentiment:
         """Analyzes sentiment for a single conversational speech turn."""
-        clean_text = text.lower()
+        text_str = str(text if text is not None else "")
+        speaker_str = str(speaker if speaker is not None else "caller")
+        clean_text = text_str.lower()
         words = re.findall(r"\b\w+\b", clean_text)
+
+        if is_caller is None:
+            spk_lower = speaker_str.strip().lower()
+            is_caller = spk_lower in ("caller", "user", "customer") or not (
+                spk_lower in ("agent", "assistant", "system", "bot", "ai agent")
+                or spk_lower.endswith("bot")
+                or spk_lower.endswith("agent")
+            )
 
         matched_pos = []
         matched_neg = []
@@ -145,15 +161,16 @@ class SentimentAnalyzer:
         token_count = max(1, len(words))
         norm_score = max(-1.0, min(1.0, raw_score / (math_factor := max(2.5, token_count * 0.4))))
 
-        # Frustration detection
+        # Frustration detection (only scored for caller turns)
         is_frustrated = False
-        if norm_score < -0.3:
-            is_frustrated = True
-        for pattern in FRUSTRATION_PATTERNS:
-            if re.search(pattern, clean_text):
+        if is_caller:
+            if norm_score < -0.3:
                 is_frustrated = True
-                norm_score = min(norm_score, -0.6)
-                break
+            for pattern in FRUSTRATION_PATTERNS:
+                if re.search(pattern, clean_text):
+                    is_frustrated = True
+                    norm_score = min(norm_score, -0.6)
+                    break
 
         if norm_score > 0.15:
             polarity = SentimentPolarity.POSITIVE.value
@@ -165,8 +182,8 @@ class SentimentAnalyzer:
         keywords = matched_pos + matched_neg
         return TurnSentiment(
             turn_index=turn_index,
-            speaker=speaker,
-            text=text,
+            speaker=speaker_str,
+            text=text_str,
             polarity=polarity,
             score=round(norm_score, 3),
             is_frustrated=is_frustrated,
@@ -197,17 +214,34 @@ class SentimentAnalyzer:
             )
 
         turn_results: List[TurnSentiment] = []
+        caller_turns: List[TurnSentiment] = []
         caller_scores = []
         agent_scores = []
         frustration_reasons = []
 
         for idx, turn in enumerate(transcript_turns):
-            text = turn.get("text", turn.get("content", ""))
-            speaker = turn.get("speaker", turn.get("role", "caller"))
-            res = self.analyze_turn(text=text, speaker=speaker, turn_index=idx + 1)
+            text = str(turn.get("text") if turn.get("text") is not None else turn.get("content", ""))
+            raw_role = str(turn.get("role") or "").strip().lower()
+            raw_speaker = str(turn.get("speaker") or "").strip().lower()
+
+            # Classify by role/speaker id, not a name substring
+            if raw_role in ("caller", "user", "customer"):
+                is_caller = True
+            elif raw_role in ("agent", "assistant", "system"):
+                is_caller = False
+            elif raw_speaker in ("caller", "user", "customer"):
+                is_caller = True
+            elif raw_speaker in ("agent", "assistant", "system", "ai agent") or raw_speaker.endswith("bot") or raw_speaker.endswith("agent"):
+                is_caller = False
+            else:
+                is_caller = True
+
+            speaker_label = turn.get("speaker") or turn.get("role") or ("caller" if is_caller else "agent")
+            res = self.analyze_turn(text=text, speaker=speaker_label, turn_index=idx + 1, is_caller=is_caller)
             turn_results.append(res)
 
-            if "caller" in speaker.lower() or "customer" in speaker.lower() or "user" in speaker.lower():
+            if is_caller:
+                caller_turns.append(res)
                 caller_scores.append(res.score)
                 if res.is_frustrated:
                     frustration_reasons.append(f"Turn {idx+1}: '{text[:60]}...'")
@@ -231,15 +265,16 @@ class SentimentAnalyzer:
         frustration_detected = len(frustration_reasons) > 0
         frustration_score = min(1.0, round(len(frustration_reasons) / max(1, len(caller_scores)) * 2.0, 2))
 
-        # Trajectory (start -> mid -> end)
-        n = len(turn_results)
+        # Trajectory (start -> mid -> end) over caller turns
+        eval_turns = caller_turns if caller_turns else turn_results
+        n = len(eval_turns)
         if n >= 3:
-            s1 = turn_results[0].polarity
-            s2 = turn_results[n // 2].polarity
-            s3 = turn_results[-1].polarity
+            s1 = eval_turns[0].polarity
+            s2 = eval_turns[n // 2].polarity
+            s3 = eval_turns[-1].polarity
             trajectory = [s1, s2, s3]
-            start_num = turn_results[0].score
-            end_num = turn_results[-1].score
+            start_num = eval_turns[0].score
+            end_num = eval_turns[-1].score
             if end_num - start_num > 0.2:
                 trend = "improving"
             elif start_num - end_num > 0.2:
@@ -247,16 +282,19 @@ class SentimentAnalyzer:
             else:
                 trend = "stable"
         elif n == 2:
-            trajectory = [turn_results[0].polarity, turn_results[1].polarity]
-            diff = turn_results[1].score - turn_results[0].score
+            trajectory = [eval_turns[0].polarity, eval_turns[1].polarity]
+            diff = eval_turns[1].score - eval_turns[0].score
             trend = "improving" if diff > 0.15 else ("declining" if diff < -0.15 else "stable")
+        elif n == 1:
+            trajectory = [eval_turns[0].polarity]
+            trend = "stable"
         else:
-            trajectory = [turn_results[0].polarity]
+            trajectory = ["neutral"]
             trend = "stable"
 
         pos_count = sum(1 for t in turn_results if t.polarity == SentimentPolarity.POSITIVE.value)
         neg_count = sum(1 for t in turn_results if t.polarity == SentimentPolarity.NEGATIVE.value)
-        neu_count = n - (pos_count + neg_count)
+        neu_count = len(turn_results) - (pos_count + neg_count)
 
         return CallSentimentAnalysis(
             overall_polarity=overall_polarity,
@@ -292,12 +330,12 @@ class SentimentAnalyzer:
                 topics=[],
             )
 
-        full_text = " ".join(t.get("text", "") for t in transcript_turns).lower()
+        full_text = " ".join(str(t.get("text") if t.get("text") is not None else t.get("content", "")) for t in transcript_turns).lower()
 
-        # Identify Topics
+        # Identify Topics using word boundaries (avoids 'update' triggering 'date')
         detected_topics = []
         for topic, kws in TOPIC_KEYWORDS.items():
-            if any(kw in full_text for kw in kws):
+            if any(re.search(r"\b" + re.escape(kw) + r"\b", full_text) for kw in kws):
                 detected_topics.append(topic)
         if not detected_topics:
             detected_topics = ["general_inquiry"]
@@ -305,9 +343,10 @@ class SentimentAnalyzer:
         # Determine Primary Intent
         first_caller_turn = ""
         for t in transcript_turns:
-            role = str(t.get("role", t.get("speaker", ""))).lower()
-            if "caller" in role or "user" in role or "customer" in role:
-                first_caller_turn = t.get("text", "")
+            raw_role = str(t.get("role") or "").strip().lower()
+            raw_speaker = str(t.get("speaker") or "").strip().lower()
+            if raw_role in ("caller", "user", "customer") or raw_speaker in ("caller", "user", "customer"):
+                first_caller_turn = str(t.get("text") if t.get("text") is not None else t.get("content", ""))
                 break
 
         if "billing" in detected_topics:
@@ -323,10 +362,11 @@ class SentimentAnalyzer:
         else:
             key_intent = "Customer voice inquiry"
 
-        # Determine Resolution Status
-        has_transfer = any("transfer" in t.get("text", "").lower() for t in transcript_turns)
-        has_resolution = any(w in full_text for w in ["confirmed", "cleared", "resolved", "rescheduled", "booked", "all set"])
-        has_followup = any(w in full_text for w in ["email you", "follow up", "send you", "call you back", "looking into"])
+        # Determine Resolution Status using word boundaries
+        has_transfer = any(re.search(r"\btransfer\b", str(t.get("text") if t.get("text") is not None else t.get("content", "")).lower()) for t in transcript_turns)
+        has_unresolved = bool(re.search(r"\b(unresolved|not resolved|still not fixed|unsolved)\b", full_text))
+        has_resolution = not has_unresolved and any(re.search(r"\b" + re.escape(w) + r"\b", full_text) for w in ["confirmed", "cleared", "resolved", "rescheduled", "booked", "all set"])
+        has_followup = any(re.search(r"\b" + re.escape(w) + r"\b", full_text) for w in ["email you", "follow up", "send you", "call you back", "looking into"])
 
         if has_transfer:
             resolution = ResolutionStatus.ESCALATED.value
