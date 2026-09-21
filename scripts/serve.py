@@ -386,9 +386,10 @@ class Handler(SimpleHTTPRequestHandler):
             from agent.twilio_stream import media_stream_token
             base = self._public_base_url()
             ws_url = "ws" + base[len("http"):] + "/api/telephony/media-stream"
+            # The shared secret rides as a custom parameter: Twilio drops any query string from the
+            # <Stream> url, so it is checked on the "start" event, not at the HTTP upgrade.
             token = media_stream_token()
-            if token:
-                ws_url += f"?token={token}"
+            token_param = f'      <Parameter name="token" value="{xml_escape(token)}" />\n' if token else ""
 
             twiml = (
                 '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -397,6 +398,7 @@ class Handler(SimpleHTTPRequestHandler):
                 f'    <Stream url="{xml_escape(ws_url)}">\n'
                 f'      <Parameter name="called" value="{xml_escape(dialed)}" />\n'
                 f'      <Parameter name="caller" value="{xml_escape(caller)}" />\n'
+                f'{token_param}'
                 '    </Stream>\n'
                 '  </Connect>\n'
                 '</Response>'
@@ -1126,10 +1128,13 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": "Password reset email is not set up on this server yet. "
                                  "Ask your administrator to reset your password."}, 503)
                 return
+            # Throttled and send-failure cases answer with the same generic message: a different
+            # status for them would reveal which addresses have accounts. The real reason is logged.
             try:
                 issued = auth_manager.create_password_reset(email)
             except ValueError as e:
-                self._send_json({"status": "error", "error": str(e)}, 429)
+                log.info("Password reset for %s throttled: %s", email, e)
+                self._send_json(generic)
                 return
             if not issued:
                 self._send_json(generic)
@@ -1150,8 +1155,6 @@ class Handler(SimpleHTTPRequestHandler):
             result = mailer.send_email(user.email, "Reset your Voice Agent password", text, html)
             if not result.get("ok"):
                 log.error("Reset email to %s failed: %s", user.email, result.get("error"))
-                self._send_json({"status": "error", "error": "The reset email could not be sent. Try again in a minute or contact your administrator."}, 502)
-                return
             self._send_json(generic)
             return
 

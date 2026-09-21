@@ -57,8 +57,8 @@ def test_inbound_twiml(base_url: str) -> str:
         return body
 
 
-def test_websocket_stream(host: str, port: int, ws_path: str = "/api/telephony/media-stream") -> None:
-    print(f"--> 2. Testing WebSocket Handshake to ws://{host}:{port}{ws_path}")
+def test_websocket_stream(host: str, port: int, ws_path: str = "/api/telephony/media-stream", token: str = "", expect_reject: bool = False) -> None:
+    print(f"--> 2. Testing WebSocket Handshake to ws://{host}:{port}{ws_path}" + (" (bad token, expecting rejection)" if expect_reject else ""))
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(10)
     s.connect((host, port))
@@ -102,9 +102,12 @@ def test_websocket_stream(host: str, port: int, ws_path: str = "/api/telephony/m
             "accountSid": "AC_mock_acc_123",
             "callSid": "CA_mock_call_123",
             "tracks": ["inbound"],
+            # Twilio strips query strings from the <Stream> url, so the server's token travels as a
+            # custom parameter and is checked on this "start" event.
             "customParameters": {
                 "called": "+19517177889",
                 "caller": "+15551234567",
+                "token": "bad-token" if expect_reject else token,
             },
             "mediaFormat": {
                 "encoding": "audio/x-mulaw",
@@ -120,11 +123,13 @@ def test_websocket_stream(host: str, port: int, ws_path: str = "/api/telephony/m
     media_count = 0
     start_wait = time.time()
     print("--> 5. Waiting for Agent's initial greeting audio packets ('media' events)...")
-    while time.time() - start_wait < 15.0:
+    while time.time() - start_wait < (4.0 if expect_reject else 15.0):
         r, _, _ = select.select([s], [], [], 1.0)
         if not r:
             continue
         opcode, payload = read_ws_frame(rfile)
+        if opcode == 0x8:
+            break
         if opcode == 0x1:
             evt = json.loads(payload.decode("utf-8", "replace"))
             evt_type = evt.get("event")
@@ -136,6 +141,11 @@ def test_websocket_stream(host: str, port: int, ws_path: str = "/api/telephony/m
                 if media_count >= 10:
                     break
 
+    if expect_reject:
+        assert media_count == 0, "Server streamed audio despite a bad token"
+        print("   [OK] Stream with a bad token got no audio (rejected on 'start').\n")
+        s.close()
+        return
     print(f"   [OK] Received {media_count} audio packets from Agent!")
     assert media_count > 0, "No audio packets received from Agent greeting"
 
@@ -155,6 +165,9 @@ if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8091
     host = "127.0.0.1"
     twiml = test_inbound_twiml(f"http://{host}:{port}")
-    # The stream URL carries the per-deployment token the WebSocket handler requires.
-    m = re.search(r'<Stream url="[^"]*?(/api/telephony/media-stream[^"]*)"', twiml)
-    test_websocket_stream(host, port, m.group(1) if m else "/api/telephony/media-stream")
+    # The TwiML carries the per-deployment token as a <Parameter>; the stream must present it on "start".
+    m = re.search(r'<Parameter name="token" value="([^"]*)"', twiml)
+    token = m.group(1) if m else ""
+    if token:
+        test_websocket_stream(host, port, token="", expect_reject=True)
+    test_websocket_stream(host, port, token=token)

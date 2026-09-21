@@ -87,7 +87,8 @@ def main():
     check("Alias 'superadmin' maps to super_admin", normalize_role("superadmin") == "super_admin")
     check("Alias 'product_admin' maps to admin", normalize_role("product_admin") == "admin")
     check("Alias 'member_admin' maps to member_admin", normalize_role("member_admin") == "member_admin")
-    check("Alias 'operator' maps to user", normalize_role("operator") == "user")
+    check("Alias 'operator' folds into member_admin", normalize_role("operator") == "member_admin")
+    check("Retired 'user' role folds into member_admin", normalize_role("user") == "member_admin")
     check("is_super_admin(super_admin) == True", auth_manager.is_super_admin("super_admin") is True)
     check("is_super_admin(admin) == False", auth_manager.is_super_admin("admin") is False)
 
@@ -99,7 +100,7 @@ def main():
     ws2 = "ws-beta"
 
     # Super Admin can create any role in any org
-    for r in ("super_admin", "admin", "member_admin", "user"):
+    for r in ("super_admin", "admin", "member_admin"):
         ok, _ = can_create_role("super_admin", ws1, r, ws2)
         check(f"Super Admin can create '{r}' in foreign org", ok is True)
 
@@ -107,27 +108,23 @@ def main():
     ok, _ = can_create_role("admin", ws1, "member_admin", ws1)
     check("Product Admin CAN create member_admin in own org", ok is True)
     ok, _ = can_create_role("admin", ws1, "user", ws1)
-    check("Product Admin CAN create user in own org", ok is True)
+    check("Product Admin CAN create via legacy 'user' name (→ member_admin)", ok is True)
     ok, _ = can_create_role("admin", ws1, "admin", ws1)
     check("Product Admin CANNOT create Product Admin", ok is False)
     ok, _ = can_create_role("admin", ws1, "super_admin", ws1)
     check("Product Admin CANNOT create Super Admin", ok is False)
-    ok, _ = can_create_role("admin", ws1, "user", ws2)
-    check("Product Admin CANNOT create user in foreign org", ok is False)
+    ok, _ = can_create_role("admin", ws1, "member_admin", ws2)
+    check("Product Admin CANNOT create member in foreign org", ok is False)
 
-    # Member Admin rights
-    ok, _ = can_create_role("member_admin", ws1, "user", ws1)
-    check("Member Admin CAN create user in own org", ok is True)
+    # Member Admin rights (lowest role; may only invite peers in its own org)
     ok, _ = can_create_role("member_admin", ws1, "member_admin", ws1)
-    check("Member Admin CANNOT create Member Admin", ok is False)
+    check("Member Admin CAN invite Member Admin in own org", ok is True)
     ok, _ = can_create_role("member_admin", ws1, "admin", ws1)
     check("Member Admin CANNOT create Product Admin", ok is False)
-    ok, _ = can_create_role("member_admin", ws1, "user", ws2)
-    check("Member Admin CANNOT create user in foreign org", ok is False)
-
-    # Standard User rights
-    ok, _ = can_create_role("user", ws1, "user", ws1)
-    check("Standard User CANNOT create any accounts", ok is False)
+    ok, _ = can_create_role("member_admin", ws1, "super_admin", ws1)
+    check("Member Admin CANNOT create Super Admin", ok is False)
+    ok, _ = can_create_role("member_admin", ws1, "member_admin", ws2)
+    check("Member Admin CANNOT invite into foreign org", ok is False)
 
     # -----------------------------------------------------------------------
     # SECTION 3: Server Middleware Gating & Live Endpoints
@@ -184,11 +181,11 @@ def main():
     st, hdrs, _ = make_req("/users", token=member_token)
     check("Member Admin blocked from /users (302)", st == 302 and "denied=super_admin" in hdrs.get("Location", ""))
 
-    # 3f. Standard User Blocked
+    # 3f. Second Member Admin (created via the legacy "user" name) blocked
     st, hdrs, _ = make_req("/organizations", token=user_token)
-    check("Standard User blocked from /organizations (302)", st == 302 and "denied=super_admin" in hdrs.get("Location", ""))
+    check("Member Admin (legacy user) blocked from /organizations (302)", st == 302 and "denied=super_admin" in hdrs.get("Location", ""))
     st, hdrs, _ = make_req("/users", token=user_token)
-    check("Standard User blocked from /users (302)", st == 302 and "denied=super_admin" in hdrs.get("Location", ""))
+    check("Member Admin (legacy user) blocked from /users (302)", st == 302 and "denied=super_admin" in hdrs.get("Location", ""))
 
     # -----------------------------------------------------------------------
     # SECTION 4: Role-Based Creation API Enforcement (/api/v1/auth/users)

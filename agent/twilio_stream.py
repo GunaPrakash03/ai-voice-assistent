@@ -78,11 +78,20 @@ class TwilioMediaStreamSession:
         self._playing_text: str = ""
         self._playing_progress: float = 0.0
 
-    async def on_start(self, start_data: dict) -> None:
-        """Called when Twilio emits the 'start' event with call metadata."""
+    async def on_start(self, start_data: dict) -> bool:
+        """Called when Twilio emits the 'start' event with call metadata. Returns False (and ends the
+        session) when the stream does not carry our token: only sockets opened from our own TwiML may
+        feed audio into the STT/LLM budget. The token is a custom parameter because Twilio strips any
+        query string from the <Stream> url."""
         self.stream_sid = start_data.get("streamSid", "")
         self.call_sid = start_data.get("callSid", "")
-        custom = start_data.get("customParameters", {})
+        custom = start_data.get("customParameters", {}) or {}
+        expected = media_stream_token()
+        if expected and not hmac.compare_digest(str(custom.get("token", "")), expected):
+            log.warning("Rejected media stream %s (call %s): bad/missing token", self.stream_sid, self.call_sid)
+            self.is_active = False
+            self._stopped = True          # nothing to file: the call never reached the agent
+            return False
         self.called_number = custom.get("called") or custom.get("To") or start_data.get("called", "")
         self.caller_number = custom.get("caller") or custom.get("From") or start_data.get("caller", "")
 
@@ -120,6 +129,7 @@ class TwilioMediaStreamSession:
         greeting = getattr(self.agent_cfg, "first_message", None) or "Hello, thank you for calling. How can I help you today?"
         self._add_history("agent", greeting)
         self._current_speech_task = asyncio.create_task(self._speak_agent_text(greeting))
+        return True
 
     def _add_history(self, speaker: str, text: str) -> None:
         self.history.append({"speaker": speaker, "text": text, "timestamp": time.time()})
@@ -235,8 +245,10 @@ class TwilioMediaStreamSession:
         if self.is_active:
             log.error("Deepgram STT could not be re-established for call %s", self.call_sid)
             apology = "I'm sorry, I'm having trouble hearing you right now. Please call back in a moment."
+            if self._current_speech_task and not self._current_speech_task.done():
+                self._current_speech_task.cancel()
             self._add_history("agent", apology)
-            await self._speak_agent_text(apology)
+            self._current_speech_task = asyncio.create_task(self._speak_agent_text(apology))
 
     async def on_media(self, payload_b64: str) -> None:
         """Incoming audio packet from Twilio (8kHz mu-law)."""
@@ -373,11 +385,9 @@ class TwilioMediaStreamSession:
                 done_len += len(sentence)
             self._playing_progress = 1.0
             self._playing_text = ""
-        except asyncio.CancelledError:
-            if next_synth is not None and not next_synth.done():
-                next_synth.cancel()
-            raise
         finally:
+            if next_synth is not None and not next_synth.done():
+                next_synth.cancel()       # a barge-in or hang-up must not leave a paid TTS call running
             self.is_agent_speaking = False
 
     async def _synthesize_to_mulaw(self, text: str) -> bytes:
@@ -668,16 +678,6 @@ def handle_twilio_media_stream(handler, request_path: str) -> None:
     if not sec_key:
         handler.send_error(400, "Missing Sec-WebSocket-Key")
         return
-    # Only Twilio, carrying the token we put in the <Stream> URL, may open a media stream; anyone
-    # else could otherwise stream audio into our STT/LLM budget.
-    expected = media_stream_token()
-    if expected:
-        from urllib.parse import parse_qs, urlparse
-        presented = (parse_qs(urlparse(handler.path).query).get("token") or [""])[0]
-        if not hmac.compare_digest(presented, expected):
-            log.warning("Rejected media-stream WebSocket with bad/missing token from %s", handler.client_address)
-            handler.send_error(403, "Forbidden")
-            return
 
     # 1. Complete RFC 6455 Handshake
     accept_val = compute_ws_accept(sec_key)
@@ -729,7 +729,8 @@ def handle_twilio_media_stream(handler, request_path: str) -> None:
 
                     evt_type = event.get("event")
                     if evt_type == "start":
-                        await session.on_start(event.get("start", {}))
+                        if not await session.on_start(event.get("start", {})):
+                            break
                     elif evt_type == "media":
                         media_data = event.get("media", {})
                         await session.on_media(media_data.get("payload", ""))

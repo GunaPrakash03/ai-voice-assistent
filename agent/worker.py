@@ -272,7 +272,7 @@ def call_direction(room_name: str) -> str:
     name = room_name or ""
     if name.startswith("test-"):
         return "sandbox"
-    if name.startswith(("outbound-", "softphone-", "dial-")):
+    if name.startswith(("outbound-", "softphone-", "dial-", "dispatch-")):
         return "outbound"
     return "inbound"
 

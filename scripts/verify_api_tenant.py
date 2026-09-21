@@ -119,8 +119,8 @@ u_user = mgr.create_user(ws1.workspace_id, "user@acme.com", UserRole.MEMBER_ADMI
 u_legacy = mgr.create_user(ws1.workspace_id, "legacy@acme.com", "operator")
 
 check("admin user created",              u_admin.role == "admin")
-check("user created",                    u_user.role == "user")
-check("legacy operator folded to user",  u_legacy.role == "user")
+check("member admin created",            u_user.role == "member_admin")
+check("legacy operator folded to member_admin", u_legacy.role == "member_admin")
 
 # RBAC Permissions
 check("admin has calls:dispatch",        mgr.role_has_permission(u_admin.role, ApiScope.CALLS_DISPATCH.value))
@@ -166,7 +166,7 @@ payload = mgr.verify_token(token)
 check("token verifies cleanly",          payload is not None)
 check("payload sub matches",             payload.get("sub") == "usr-1234")
 check("payload workspace matches",       payload.get("ws") == ws1.workspace_id)
-check("payload role matches",            payload.get("role") == "user")
+check("payload role folded to member_admin", payload.get("role") == "member_admin")
 
 # Tamper Detection
 tampered = token[:-4] + "ABCD"
@@ -222,7 +222,7 @@ check("calls workspace_id returned",     data.get("workspace_id") == new_ws_id)
 # 8. POST /api/v1/users
 code, data, _ = http_req("/api/v1/users", method="POST", data={"workspace_id": new_ws_id, "email": "user1@clinic.com", "role": "user"}, headers={"Authorization": f"Bearer {jwt_token}"})
 check("POST /api/v1/users -> 201",       code == 201)
-check("user role is user",               data.get("user", {}).get("role") == "user")
+check("legacy 'user' role stored as member_admin", data.get("user", {}).get("role") == "member_admin")
 
 # 9. POST /api/v1/api-keys/revoke
 code, data, _ = http_req("/api/v1/api-keys/revoke", method="POST", data={"key_id": created_key_id}, headers={"Authorization": f"Bearer {jwt_token}"})
