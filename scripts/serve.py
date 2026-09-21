@@ -1783,9 +1783,12 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         elif parsed.path == "/api/telephony/amd/simulate":
-            call_id = payload.get("call_id", "").strip() or "active-call"
+            call_id = payload.get("call_id", "").strip() or f"call-{int(time.time()*1000)}"
             ev_type = payload.get("event_type", "machine_greeting")
             session = amd_manager.get_or_create_session(call_id)
+            if session.state in (AMDState.VOICEMAIL_DROPPING, AMDState.VOICEMAIL_COMPLETED, AMDState.HANGUP):
+                session = AMDSession(call_id, session.config)
+                amd_manager._sessions[call_id] = session
             if ev_type == "human_greeting":
                 session.state = AMDState.HUMAN
                 session.confidence = 0.92
@@ -1810,7 +1813,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         elif parsed.path == "/api/telephony/voicemail-drop":
-            call_id = payload.get("call_id", "").strip() or "active-call"
+            call_id = payload.get("call_id", "").strip() or f"call-{int(time.time()*1000)}"
             message = payload.get("message")
             res = amd_manager.trigger_voicemail_drop(call_id, custom_message=message)
             self._send_json({"status": "ok", "drop": res})

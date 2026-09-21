@@ -12,6 +12,7 @@ answering machine/voicemail system, using:
    and gracefully hangs up.
 """
 
+import logging
 import math
 import re
 import struct
@@ -19,6 +20,8 @@ import time
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from pydantic import BaseModel, Field
+
+log = logging.getLogger("amd-manager")
 
 
 class AMDState(str, Enum):
@@ -273,32 +276,57 @@ class AMDManager:
     def get_session(self, call_id: str) -> Optional[AMDSession]:
         return self._sessions.get(call_id)
 
+    def end_call(self, call_id: str) -> None:
+        """Evicts AMD session for completed call to free memory and prevent state pollution."""
+        self._sessions.pop(call_id, None)
+
+    def reset_session(self, call_id: str) -> None:
+        self._sessions.pop(call_id, None)
+
     def process_vad_event(self, call_id: str, is_speech: bool, timestamp: Optional[float] = None) -> AMDResult:
         """Process Silero VAD speech/silence transition and update cadence analysis."""
         session = self.get_or_create_session(call_id)
+        if not session.config.enabled:
+            return session.to_result()
+
         if session.state in (AMDState.VOICEMAIL_DROPPING, AMDState.VOICEMAIL_COMPLETED, AMDState.HANGUP):
             return session.to_result()
 
-        now = timestamp or time.time()
+        now = time.time() if timestamp is None else float(timestamp)
+
+        # Timeout check for initial greeting
+        if session.state == AMDState.DETECTING and (now - session.created_at) > session.config.max_greeting_duration_s:
+            session.state = AMDState.HUMAN
+            session.confidence = 0.60
+            session.reason = f"Max greeting duration exceeded ({session.config.max_greeting_duration_s}s) without detecting machine"
+            return session.to_result()
 
         if is_speech and not session.is_currently_speaking:
             # Transitioned: Silence -> Speech
             session.is_currently_speaking = True
             session.speech_start_time = now
-            if session.speech_end_time:
+            if session.speech_end_time is not None:
                 session.total_silence_duration += (now - session.speech_end_time)
 
         elif not is_speech and session.is_currently_speaking:
             # Transitioned: Speech -> Silence
             session.is_currently_speaking = False
             session.speech_end_time = now
-            if session.speech_start_time:
+            if session.speech_start_time is not None:
                 dur = now - session.speech_start_time
                 session.total_speech_duration += dur
 
-                # Cadence decision rule:
-                # 1. Short speech (<2.4s) followed by silence -> likely Human
+                # Cadence decision rule on speech end:
+                # 1. Long speech (>= 3.2s) followed by silence -> Machine greeting ended
                 if (
+                    dur >= session.config.min_machine_speech_duration_s
+                    and session.state not in (AMDState.MACHINE_GREETING, AMDState.VOICEMAIL_BEEP)
+                ):
+                    session.state = AMDState.MACHINE_GREETING
+                    session.confidence = 0.90
+                    session.reason = f"Long greeting cadence ({dur:.1f}s) followed by pause"
+                # 2. Short speech (< 2.4s) followed by silence -> likely Human
+                elif (
                     dur <= session.config.max_human_speech_duration_s
                     and session.state == AMDState.DETECTING
                 ):
@@ -307,12 +335,11 @@ class AMDManager:
                     session.reason = f"Short human greeting cadence ({dur:.1f}s) followed by pause"
 
         # Continuous speech rule (still speaking):
-        if session.is_currently_speaking and session.speech_start_time:
+        if session.is_currently_speaking and session.speech_start_time is not None:
             current_speech_dur = (now - session.speech_start_time)
             if (
                 current_speech_dur >= session.config.min_machine_speech_duration_s
-                and session.state != AMDState.MACHINE_GREETING
-                and session.state != AMDState.VOICEMAIL_BEEP
+                and session.state not in (AMDState.MACHINE_GREETING, AMDState.VOICEMAIL_BEEP)
             ):
                 session.state = AMDState.MACHINE_GREETING
                 session.confidence = 0.90
@@ -323,10 +350,31 @@ class AMDManager:
     def process_transcript(self, call_id: str, text: str) -> AMDResult:
         """Process STT transcription for voicemail/human semantic keywords."""
         session = self.get_or_create_session(call_id)
+        if not session.config.enabled:
+            return session.to_result()
+
         if session.state in (AMDState.VOICEMAIL_DROPPING, AMDState.VOICEMAIL_COMPLETED, AMDState.HANGUP):
             return session.to_result()
 
-        session.transcript_accumulator += f" {text}".strip()
+        cleaned = text.strip()
+        if not cleaned:
+            return session.to_result()
+
+        # Join chunks with preserved whitespace separator
+        if session.transcript_accumulator:
+            session.transcript_accumulator = f"{session.transcript_accumulator} {cleaned}"
+        else:
+            session.transcript_accumulator = cleaned
+
+        # Bound transcript accumulator to prevent unbounded memory growth
+        words = session.transcript_accumulator.split()
+        if len(words) > 50:
+            session.transcript_accumulator = " ".join(words[-50:])
+
+        # Do not flip confirmed human calls back to machine
+        if session.state == AMDState.HUMAN:
+            return session.to_result()
+
         classification, conf, match = session.keyword_detector.classify_transcript(session.transcript_accumulator)
 
         if classification == "machine":
@@ -345,7 +393,7 @@ class AMDManager:
     ) -> Tuple[AMDResult, bool]:
         """Analyze incoming audio frame for voicemail beep prompt."""
         session = self.get_or_create_session(call_id)
-        if not session.config.beep_detection_enabled:
+        if not session.config.enabled or not session.config.beep_detection_enabled:
             return session.to_result(), False
 
         if session.state in (AMDState.VOICEMAIL_DROPPING, AMDState.VOICEMAIL_COMPLETED, AMDState.HANGUP):
@@ -366,7 +414,8 @@ class AMDManager:
         self,
         call_id: str,
         custom_message: Optional[str] = None,
-        tts_func: Optional[Callable[[str], bytes]] = None,
+        tts_func: Optional[Callable[[str], Any]] = None,
+        audio_player: Optional[Callable[[bytes], Any]] = None,
     ) -> Dict[str, Any]:
         """Executes voicemail drop: returns synthesized audio payload, updates state."""
         session = self.get_or_create_session(call_id)
@@ -379,13 +428,56 @@ class AMDManager:
 
         # Generate voicemail audio
         pcm_audio: Optional[bytes] = None
+        sample_rate = 24000
+        error_msg: Optional[str] = None
+
         if tts_func:
             try:
-                pcm_audio = tts_func(message_to_speak)
+                res = tts_func(message_to_speak)
+                if isinstance(res, tuple):
+                    pcm_audio, sample_rate = res
+                else:
+                    pcm_audio = res
+                if not pcm_audio:
+                    error_msg = "TTS synthesis returned empty audio"
             except Exception as e:
-                pcm_audio = self._generate_simulated_voicemail_audio(message_to_speak)
+                log.error("TTS synthesis failed for voicemail drop: %s", e)
+                error_msg = f"TTS synthesis failed: {e}"
         else:
             pcm_audio = self._generate_simulated_voicemail_audio(message_to_speak)
+
+        if error_msg:
+            session.state = AMDState.UNKNOWN
+            session.reason = error_msg
+            return {
+                "status": "error",
+                "call_id": call_id,
+                "error": error_msg,
+                "state": session.state.value,
+                "message": message_to_speak,
+                "audio_bytes_length": 0,
+                "audio_duration_s": 0.0,
+                "auto_hangup": False,
+            }
+
+        # Stream/play audio to caller if audio_player is provided
+        if audio_player and pcm_audio:
+            try:
+                audio_player(pcm_audio)
+            except Exception as e:
+                log.error("Failed to stream voicemail drop audio to call: %s", e)
+                session.state = AMDState.UNKNOWN
+                session.reason = f"Audio playback failed: {e}"
+                return {
+                    "status": "error",
+                    "call_id": call_id,
+                    "error": f"Audio playback failed: {e}",
+                    "state": session.state.value,
+                    "message": message_to_speak,
+                    "audio_bytes_length": len(pcm_audio),
+                    "audio_duration_s": round((len(pcm_audio) / 2) / sample_rate, 2),
+                    "auto_hangup": False,
+                }
 
         # Mark completed
         session.state = AMDState.VOICEMAIL_COMPLETED
@@ -395,13 +487,15 @@ class AMDManager:
         if session.config.auto_hangup_after_drop:
             session.state = AMDState.HANGUP
 
+        audio_duration_s = round((len(pcm_audio) / 2) / sample_rate, 2) if pcm_audio else 0.0
+
         return {
             "status": "ok",
             "call_id": call_id,
             "state": session.state.value,
             "message": message_to_speak,
             "audio_bytes_length": len(pcm_audio) if pcm_audio else 0,
-            "audio_duration_s": round((len(pcm_audio) / 2) / 24000, 2) if pcm_audio else 0.0,
+            "audio_duration_s": audio_duration_s,
             "auto_hangup": session.config.auto_hangup_after_drop,
         }
 

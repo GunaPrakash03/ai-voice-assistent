@@ -806,6 +806,51 @@ async def entrypoint(ctx: agents.JobContext):
                 }, topic="interruption", reliable=True)
         handle.add_done_callback(on_speech_done)
 
+    @ctx.room.on("track_subscribed")
+    def on_track_subscribed(track: rtc.Track, publication: rtc.TrackPublication, participant: rtc.RemoteParticipant):
+        if track.kind == rtc.TrackKind.KIND_AUDIO:
+            async def feed_amd_audio():
+                try:
+                    audio_stream = rtc.AudioStream(track)
+                    async for frame_event in audio_stream:
+                        frame = frame_event.frame
+                        pcm_bytes = frame.data.tobytes() if hasattr(frame.data, "tobytes") else bytes(frame.data)
+                        amd_res, beep_detected = amd_manager.process_audio_chunk(
+                            ctx.room.name, pcm_bytes, sample_rate=frame.sample_rate
+                        )
+                        if beep_detected:
+                            publish({
+                                "type": "amd_event",
+                                "call_id": ctx.room.name,
+                                "state": amd_res.state.value,
+                                "confidence": amd_res.confidence,
+                                "reason": amd_res.reason,
+                                "action": amd_res.action.value,
+                                "timestamp": time.time(),
+                            }, topic="amd_event", reliable=True)
+                            if amd_res.action == AMDAction.DROP_VOICEMAIL:
+                                drop_res = amd_manager.trigger_voicemail_drop(ctx.room.name)
+                                msg = drop_res.get("message")
+                                if msg:
+                                    try:
+                                        speech_handle = session.say(msg, allow_interruptions=False)
+                                        await speech_handle.wait_for_playout()
+                                    except Exception as e:
+                                        log.error("Failed to stream voicemail drop audio: %s", e)
+                                if drop_res.get("auto_hangup"):
+                                    try:
+                                        from livekit import api as lk_api
+                                        await ctx.api.room.delete_room(lk_api.DeleteRoomRequest(room=ctx.room.name))
+                                    except Exception as e:
+                                        log.warning("Failed to auto-hangup after voicemail drop: %s", e)
+                                break
+                except Exception as e:
+                    log.debug("AMD audio stream ended: %s", e)
+
+            task = asyncio.create_task(feed_amd_audio())
+            pending.add(task)
+            task.add_done_callback(pending.discard)
+
     @ctx.room.on("data_received")
     def on_room_data(packet):
         try:
@@ -1152,6 +1197,24 @@ async def entrypoint(ctx: agents.JobContext):
                 "auto_hangup": drop_res.get("auto_hangup"),
                 "timestamp": time.time(),
             }, topic="amd_event", reliable=True)
+
+            msg_to_play = drop_res.get("message")
+            if msg_to_play and session:
+                async def play_drop():
+                    try:
+                        speech_handle = session.say(msg_to_play, allow_interruptions=False)
+                        await speech_handle.wait_for_playout()
+                    except Exception as e:
+                        log.error("Failed to stream voicemail drop audio: %s", e)
+                    if drop_res.get("auto_hangup"):
+                        try:
+                            from livekit import api as lk_api
+                            await ctx.api.room.delete_room(lk_api.DeleteRoomRequest(room=ctx.room.name))
+                        except Exception as e:
+                            log.warning("Failed to auto-hangup after voicemail drop: %s", e)
+                task = asyncio.create_task(play_drop())
+                pending.add(task)
+                task.add_done_callback(pending.discard)
 
         elif action == "simulate_amd":
             ev_type = data.get("event_type", "machine_greeting")
@@ -1589,6 +1652,12 @@ async def entrypoint(ctx: agents.JobContext):
             log.info("Call %s filed in Call History (%d turns, audio=%s)", ctx.room.name, len(turns), bool(audio_path))
         except Exception as e:
             log.error("Could not file call %s: %s", ctx.room.name, e)
+        finally:
+            try:
+                amd_manager.end_call(ctx.room.name)
+                dtmf_manager.end_call(ctx.room.name)
+            except Exception:
+                pass
 
     @ctx.room.on("participant_disconnected")
     def on_participant_left(participant):

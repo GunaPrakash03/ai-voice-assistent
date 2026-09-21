@@ -1584,6 +1584,11 @@ class TelephonyManager:
             dtmf_manager.end_call(call_id)
         except Exception as e:
             log.warning("Failed to evict DTMF state on call end %s: %s", call_id, e)
+        try:
+            from agent.amd_manager import amd_manager
+            amd_manager.end_call(call_id)
+        except Exception as e:
+            log.warning("Failed to evict AMD state on call end %s: %s", call_id, e)
         return record
 
 
