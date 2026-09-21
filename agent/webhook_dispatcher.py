@@ -18,12 +18,14 @@ import logging
 import os
 import random
 import secrets
+import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 log = logging.getLogger("voice-agent.webhooks")
 if not log.handlers:
@@ -98,7 +100,7 @@ class WebhookEndpoint:
             "call.started": ["call_started"],
             "call_ended": ["call.completed"],
             "call.completed": ["call_ended"],
-            "call_analyzed": ["call.analyzed", "call.completed"],
+            "call_analyzed": ["call.analyzed"],
             "call.analyzed": ["call_analyzed"],
         }
         for alias in aliases.get(event, []):
@@ -109,7 +111,8 @@ class WebhookEndpoint:
     def to_dict(self, redact_secret: bool = True) -> Dict[str, Any]:
         data = asdict(self)
         if redact_secret:
-            data["secret"] = f"{self.secret[:6]}...{self.secret[-4:]}" if len(self.secret) > 12 else "***"
+            prefix = "whsec_" if self.secret.startswith("whsec_") else ""
+            data["secret"] = f"{prefix}***" + self.secret[-4:] if len(self.secret) > 8 else "***"
         return data
 
 
@@ -141,6 +144,7 @@ class WebhookDelivery:
     signature: str = ""
     timestamp: int = 0
     last_error: Optional[str] = None
+    payload: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def attempt_count(self) -> int:
@@ -176,9 +180,23 @@ def format_retell_payload(
     call_data = data.get("call") if isinstance(data.get("call"), dict) else {}
     cid = call_id or call_data.get("call_id") or data.get("call_id") or f"call_{secrets.token_hex(8)}"
 
-    started_at = call_data.get("started_at") or data.get("started_at") or time.time()
+    started_at_raw = call_data.get("started_at") or data.get("started_at")
+    try:
+        if started_at_raw is None:
+            started_at = time.time()
+        elif isinstance(started_at_raw, (int, float)):
+            started_at = float(started_at_raw)
+        else:
+            started_at = float(str(started_at_raw).strip())
+    except (ValueError, TypeError):
+        started_at = time.time()
+
     start_ts_ms = int(started_at * 1000) if started_at < 1e11 else int(started_at)
-    dur_s = call_data.get("duration_seconds") or data.get("duration_seconds") or 0
+    dur_raw = call_data.get("duration_seconds") or data.get("duration_seconds") or 0
+    try:
+        dur_s = float(dur_raw)
+    except (ValueError, TypeError):
+        dur_s = 0.0
     duration_ms = int(dur_s * 1000)
     end_ts_ms = start_ts_ms + duration_ms if retell_event != "call_started" else None
 
@@ -295,17 +313,23 @@ def verify_signature(
         return False, "timestamp_in_future"
 
     expected = sign_payload(secret, body, ts)
-    sig_str = signature or ""
-    if sig_str.startswith("v=1,"):
-        sig_str = sig_str.split("v=1,", 1)[1]
-    if not sig_str.startswith("sha256=") and not expected.endswith(sig_str):
-        expected_raw = expected.split("sha256=")[-1]
-        if hmac.compare_digest(expected_raw, sig_str):
-            return True, "ok"
+    expected_raw = expected.split("sha256=")[-1]
 
-    if not hmac.compare_digest(expected, sig_str):
-        return False, "signature_mismatch"
-    return True, "ok"
+    sig_str = (signature or "").strip()
+    if sig_str.startswith("v=1,"):
+        sig_str = sig_str.split("v=1,", 1)[1].strip()
+
+    if sig_str.startswith("sha256="):
+        sig_raw = sig_str.split("sha256=", 1)[1].strip()
+    else:
+        sig_raw = sig_str
+
+    if hmac.compare_digest(expected_raw, sig_raw):
+        return True, "ok"
+    if hmac.compare_digest(expected, sig_str):
+        return True, "ok"
+
+    return False, "signature_mismatch"
 
 
 def backoff_delay(attempt: int, jitter: bool = True) -> float:
@@ -316,6 +340,13 @@ def backoff_delay(attempt: int, jitter: bool = True) -> float:
     return round(delay, 3)
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(
+            req.full_url, code, f"Redirect to {newurl} not permitted for webhook POST", headers, fp
+        )
+
+
 class WebhookDispatcher:
     """Registry, signer, retrying sender and audit log for outbound webhooks."""
 
@@ -324,9 +355,32 @@ class WebhookDispatcher:
         self._deliveries: List[WebhookDelivery] = []
         self._seen_deliveries: Dict[str, float] = {}
         self._dead_letters: List[Dict[str, Any]] = []
+        self._pending_tasks: Set[asyncio.Task] = set()
+        self._lock = threading.Lock()
+        self._last_state_mtime: float = 0.0
         self._load_state()
 
     # ── Persistence ──────────────────────────────────────────────────────────
+    def _refresh_endpoints_from_disk(self):
+        """Re-read endpoints from disk if updated by peer process (serve.py or worker.py)."""
+        if not os.path.isfile(STATE_FILE):
+            return
+        try:
+            mtime = os.path.getmtime(STATE_FILE)
+            if self._last_state_mtime >= mtime:
+                return
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for item in data.get("endpoints", []):
+                try:
+                    ep = WebhookEndpoint(**item)
+                    self._endpoints[ep.endpoint_id] = ep
+                except Exception:
+                    pass
+            self._last_state_mtime = mtime
+        except Exception:
+            pass
+
     def _load_state(self):
         if not os.path.isfile(STATE_FILE):
             return
@@ -334,26 +388,64 @@ class WebhookDispatcher:
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
             for item in data.get("endpoints", []):
-                ep = WebhookEndpoint(**item)
-                self._endpoints[ep.endpoint_id] = ep
+                try:
+                    ep = WebhookEndpoint(**item)
+                    self._endpoints[ep.endpoint_id] = ep
+                except Exception as ex:
+                    log.warning("Skipping malformed webhook endpoint: %s", ex)
             for item in data.get("deliveries", []):
-                self._deliveries.append(WebhookDelivery(**item))
+                try:
+                    self._deliveries.append(WebhookDelivery(**item))
+                except Exception as ex:
+                    log.warning("Skipping malformed webhook delivery: %s", ex)
             self._dead_letters = data.get("dead_letters", [])
+            self._last_state_mtime = os.path.getmtime(STATE_FILE)
         except Exception as e:
             log.warning("Failed to load webhook state: %s", e)
 
     def _save_state(self):
-        try:
-            os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-            with open(STATE_FILE, "w", encoding="utf-8") as f:
-                json.dump({
-                    "endpoints": [asdict(e) for e in self._endpoints.values()],
-                    "deliveries": [asdict(d) for d in self._deliveries[-AUDIT_LOG_LIMIT:]],
-                    "dead_letters": self._dead_letters[-100:],
-                    "updated_at": time.time(),
-                }, f, indent=2)
-        except Exception as e:
-            log.warning("Failed to save webhook state: %s", e)
+        with self._lock:
+            try:
+                disk_endpoints = {}
+                disk_deliveries = []
+                disk_dlq = []
+                if os.path.isfile(STATE_FILE):
+                    try:
+                        with open(STATE_FILE, "r", encoding="utf-8") as f:
+                            disk_data = json.load(f)
+                        for item in disk_data.get("endpoints", []):
+                            disk_endpoints[item.get("endpoint_id")] = item
+                        disk_deliveries = disk_data.get("deliveries", [])
+                        disk_dlq = disk_data.get("dead_letters", [])
+                    except Exception:
+                        pass
+
+                for ep_id, ep in self._endpoints.items():
+                    disk_endpoints[ep_id] = asdict(ep)
+
+                merged_deliveries = {d.get("delivery_id"): d for d in disk_deliveries if d.get("delivery_id")}
+                for d in self._deliveries:
+                    merged_deliveries[d.delivery_id] = asdict(d)
+
+                merged_dlq = {d.get("delivery_id"): d for d in disk_dlq if d.get("delivery_id")}
+                for dl in self._dead_letters:
+                    if dl.get("delivery_id"):
+                        merged_dlq[dl.get("delivery_id")] = dl
+
+                dir_name = os.path.dirname(STATE_FILE)
+                os.makedirs(dir_name, exist_ok=True)
+                with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, encoding="utf-8") as tf:
+                    json.dump({
+                        "endpoints": list(disk_endpoints.values()),
+                        "deliveries": list(merged_deliveries.values())[-AUDIT_LOG_LIMIT:],
+                        "dead_letters": list(merged_dlq.values())[-100:],
+                        "updated_at": time.time(),
+                    }, tf, indent=2)
+                    temp_path = tf.name
+                os.replace(temp_path, STATE_FILE)
+                self._last_state_mtime = os.path.getmtime(STATE_FILE)
+            except Exception as e:
+                log.warning("Failed to save webhook state: %s", e)
 
     # ── Endpoint registry ────────────────────────────────────────────────────
     def register_endpoint(
@@ -453,10 +545,12 @@ class WebhookDispatcher:
         delivery_id: str,
         attempt: int = 1,
         timestamp: Optional[int] = None,
+        call_id: Optional[str] = None,
     ) -> Tuple[str, Dict[str, str], str]:
         """Returns (body, headers, signature) for one signed delivery attempt."""
         ts = int(time.time()) if timestamp is None else int(timestamp)
-        envelope = format_retell_payload(event, payload, delivery_id=delivery_id, call_id=call_id if 'call_id' in locals() else None)
+        effective_call_id = call_id or payload.get("call_id") or (payload.get("call", {}).get("call_id") if isinstance(payload.get("call"), dict) else None)
+        envelope = format_retell_payload(event, payload, delivery_id=delivery_id, call_id=effective_call_id)
         envelope["created_at"] = ts
 
         # For endpoints configured with format="retell", map dot-notation events to Retell standard names:
@@ -488,9 +582,18 @@ class WebhookDispatcher:
         headers.update(endpoint.headers or {})
         return body, headers, signature
 
+    _opener = None
+
+    @classmethod
+    def _get_opener(cls):
+        if cls._opener is None:
+            cls._opener = urllib.request.build_opener(_NoRedirectHandler())
+        return cls._opener
+
     def _post(self, url: str, body: str, headers: Dict[str, str], timeout: float) -> int:
         req = urllib.request.Request(url, data=body.encode("utf-8"), headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        opener = self._get_opener()
+        with opener.open(req, timeout=timeout) as resp:
             return resp.status
 
     async def deliver(
@@ -504,7 +607,7 @@ class WebhookDispatcher:
         """Sends one event to one endpoint, retrying with exponential backoff."""
         delivery_id = f"whd_{secrets.token_hex(8)}"
         timestamp = int(time.time())
-        body, headers, signature = self.build_request(endpoint, event, payload, delivery_id, 1, timestamp)
+        body, headers, signature = self.build_request(endpoint, event, payload, delivery_id, 1, timestamp, call_id=call_id)
 
         record = WebhookDelivery(
             delivery_id=delivery_id,
@@ -515,6 +618,7 @@ class WebhookDispatcher:
             payload_digest=hashlib.sha256(body.encode("utf-8")).hexdigest(),
             signature=signature,
             timestamp=timestamp,
+            payload=payload,
         )
         self._deliveries.append(record)
 
@@ -543,7 +647,7 @@ class WebhookDispatcher:
                 )
                 record.last_error = str(err)
                 log.warning("Webhook %s attempt %d failed (%s); retry in %ss",
-                            delivery_id, attempt, err, delay)
+                             delivery_id, attempt, err, delay)
                 if is_last:
                     record.status = DeliveryStatus.DEAD_LETTERED.value
                     record.completed_at = time.time()
@@ -573,6 +677,7 @@ class WebhookDispatcher:
         sleep: bool = True,
     ) -> List[WebhookDelivery]:
         """Fans one event out to every subscribed, active endpoint."""
+        self._refresh_endpoints_from_disk()
         targets = [e for e in self._endpoints.values() if e.subscribes_to(event)]
         if not targets:
             return []
@@ -580,7 +685,13 @@ class WebhookDispatcher:
             *[self.deliver(ep, event, payload, call_id, sleep) for ep in targets],
             return_exceptions=True,
         )
-        return [r for r in results if isinstance(r, WebhookDelivery)]
+        deliveries = []
+        for r in results:
+            if isinstance(r, WebhookDelivery):
+                deliveries.append(r)
+            elif isinstance(r, Exception):
+                log.error("Webhook delivery unexpected error for event '%s': %s", event, r, exc_info=r)
+        return deliveries
 
     def dispatch_soon(self, event: str, payload: Dict[str, Any], call_id: Optional[str] = None):
         """Fire-and-forget dispatch from sync code inside a running event loop."""
@@ -588,17 +699,39 @@ class WebhookDispatcher:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return None
-        return loop.create_task(self.dispatch(event, payload, call_id))
+        task = loop.create_task(self.dispatch(event, payload, call_id))
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        return task
+
+    async def wait_pending_dispatches(self, timeout: float = 5.0) -> None:
+        """Awaits any pending dispatch tasks before loop teardown."""
+        if not self._pending_tasks:
+            return
+        pending = [t for t in self._pending_tasks if not t.done()]
+        if pending:
+            try:
+                await asyncio.wait(pending, timeout=timeout)
+            except Exception:
+                pass
 
     async def replay_delivery(self, delivery_id: str) -> Optional[WebhookDelivery]:
         """Re-sends a dead-lettered or failed delivery as a fresh, newly signed request."""
+        self._refresh_endpoints_from_disk()
         original = next((d for d in self._deliveries if d.delivery_id == delivery_id), None)
         if not original:
             return None
         endpoint = self._endpoints.get(original.endpoint_id)
         if not endpoint:
             return None
-        payload = {"replay_of": delivery_id, "call_id": original.call_id}
+        # Preserve original payload so real call metrics/transcripts are sent instead of blanks
+        payload = dict(original.payload) if original.payload else {"replay_of": delivery_id, "call_id": original.call_id}
+        payload["is_replay"] = True
+
+        # Remove from dead letters on replay to prevent unbounded accumulation
+        self._dead_letters = [dl for dl in self._dead_letters if dl.get("delivery_id") != delivery_id]
+        self._save_state()
+
         return await self.deliver(endpoint, original.event, payload, original.call_id)
 
     # ── Audit log ────────────────────────────────────────────────────────────
@@ -720,7 +853,12 @@ class WebhookDispatcher:
                 agent_x = md.get("agent_extraction") or {}
                 payload["extracted"] = agent_x.get("values") or {}
                 payload["extraction"] = {"agent_fields": agent_x, "schemas": md.get("crm_payloads") or {}}
-                if event_name in (WebhookEvent.CALL_COMPLETED.value, WebhookEvent.CALL_EXTRACTED.value):
+                if event_name in (
+                    WebhookEvent.CALL_COMPLETED.value,
+                    WebhookEvent.CALL_EXTRACTED.value,
+                    WebhookEvent.CALL_TRANSCRIBED.value,
+                    WebhookEvent.CALL_ANALYZED.value,
+                ):
                     payload["transcript"] = [{"speaker": t.get("speaker"), "role": t.get("role"), "text": t.get("text")}
                                              for t in (job.transcript_turns or [])]
             return self.dispatch_soon(event_name, payload, call_id=evt.get("call_id"))

@@ -15,6 +15,7 @@ Implements:
 import logging
 import math
 import os
+import re
 import struct
 import time
 import wave
@@ -150,12 +151,17 @@ class RecordingSession:
     def __init__(self, call_id: str, config: Optional[RecordingConfig] = None):
         self.call_id = call_id
         self.config = config or RecordingConfig()
-        self.recording_id = f"rec-{call_id}-{int(time.time() * 1000)}"
+        clean_call_id = re.sub(r"[^a-zA-Z0-9_-]", "_", call_id)
+        self.recording_id = f"rec-{clean_call_id}-{int(time.time() * 1000)}"
         self.created_at = time.time()
         self.status = RecordingStatus.IDLE
 
         os.makedirs(self.config.storage_dir, exist_ok=True)
-        self.file_path = os.path.join(self.config.storage_dir, f"{self.recording_id}.wav")
+        base_dir = os.path.abspath(self.config.storage_dir)
+        target_path = os.path.abspath(os.path.join(base_dir, f"{self.recording_id}.wav"))
+        if not target_path.startswith(base_dir + os.sep) and target_path != base_dir:
+            target_path = os.path.join(base_dir, f"rec-sanitized-{int(time.time() * 1000)}.wav")
+        self.file_path = target_path
 
         self._wav_file: Optional[wave.Wave_write] = None
         self.total_frames_written: int = 0
@@ -166,6 +172,10 @@ class RecordingSession:
         self.pause_count: int = 0
         self.pause_reason: Optional[str] = None
         self.compliance_played: bool = False
+
+    def mark_compliance_played(self):
+        """Records that regulatory compliance recording disclosure has been delivered to the caller."""
+        self.compliance_played = True
 
     def start(self) -> RecordingMetadata:
         """Opens WAV container and initializes stereo stream."""
@@ -190,12 +200,6 @@ class RecordingSession:
                 caller_pcm=None, agent_pcm=beep_mono
             )
             self.write_stereo_raw(stereo_beep)
-
-        if self.config.compliance_mode in (
-            ComplianceMode.DISCLOSURE_ONLY,
-            ComplianceMode.TWO_PARTY,
-        ):
-            self.compliance_played = True
 
         return self.to_metadata()
 
@@ -319,31 +323,31 @@ class RecordingManager:
                 return existing.to_metadata()
 
         session = RecordingSession(call_id, config or self.default_config)
-        self._sessions[call_id] = session
-        meta = session.start()
-        return meta
+        try:
+            meta = session.start()
+            self._sessions[call_id] = session
+            return meta
+        except Exception as e:
+            session.status = RecordingStatus.FAILED
+            log.error("Failed to start recording session for call %s: %s", call_id, e)
+            raise
 
     def pause_recording(
         self, call_id: str, reason: str = "pci_compliance"
     ) -> RecordingMetadata:
         session = self._sessions.get(call_id)
-        if not session:
-            # Auto-create if not existing
-            session = RecordingSession(call_id, self.default_config)
-            self._sessions[call_id] = session
-            session.start()
+        if not session or session.status not in (RecordingStatus.RECORDING, RecordingStatus.PAUSED):
+            raise KeyError(f"No active recording session found for call '{call_id}'")
         return session.pause(reason=reason)
 
     def resume_recording(self, call_id: str) -> RecordingMetadata:
         session = self._sessions.get(call_id)
-        if not session:
-            session = RecordingSession(call_id, self.default_config)
-            self._sessions[call_id] = session
-            session.start()
+        if not session or session.status not in (RecordingStatus.RECORDING, RecordingStatus.PAUSED):
+            raise KeyError(f"No active recording session found for call '{call_id}'")
         return session.resume()
 
     def stop_recording(self, call_id: str) -> RecordingMetadata:
-        session = self._sessions.get(call_id)
+        session = self._sessions.pop(call_id, None)
         if not session:
             return RecordingMetadata(
                 recording_id=f"rec-{call_id}",
@@ -375,9 +379,13 @@ class RecordingManager:
             session.write_chunk(caller_pcm=caller_pcm, agent_pcm=agent_pcm)
 
     def list_recordings(self) -> List[Dict[str, Any]]:
+        if len(self._history) > 200:
+            self._history = self._history[-100:]
         results = []
         for s in self._sessions.values():
             results.append(s.to_metadata().dict())
+        for h in self._history:
+            results.append(h.dict())
         return results
 
 

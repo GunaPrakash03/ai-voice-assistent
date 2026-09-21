@@ -72,6 +72,8 @@ class CallRecord:
     archive_url: Optional[str] = None
     extracted_fields: Dict[str, Any] = field(default_factory=dict)
     status: str = "completed"
+    workspace_id: str = "ws-default"
+
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -191,6 +193,7 @@ class CallHistoryStore:
             archive_url=job.get("archive_url"),
             extracted_fields=self._first_crm_payload(metadata),
             status=job.get("status", "completed"),
+            workspace_id=str(metadata.get("workspace_id") or job.get("workspace_id") or tel.get("workspace_id") or "ws-default"),
         )
 
     @staticmethod
@@ -218,8 +221,13 @@ class CallHistoryStore:
         sort: str = "started_at",
         order: str = "desc",
         visible_agents: Optional[Set[str]] = None,
+        workspace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         rows = self._visible_rows(visible_agents)
+
+        if workspace_id:
+            rows = [r for r in rows if r.workspace_id == workspace_id]
+
 
         if sentiment:
             rows = [r for r in rows if r.sentiment == sentiment]

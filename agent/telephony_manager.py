@@ -416,18 +416,19 @@ class TelephonyManager:
             if tid != keep_trunk_id and norm in trunk.numbers:
                 trunk.numbers.remove(norm)
                 changed = True
-        # 2. Any OTHER dispatch rule that routes this exact number's trunk is a duplicate of the
-        #    canonical per-number rule — drop it so one number never resolves to two agents.
+        # 2. Any duplicate dispatch rule specifically for this exact number should be removed.
+        #    Rules for other numbers sharing this trunk must be preserved.
         canonical = self._number_rule_id(norm)
+        digits = re.sub(r"[^\d]", "", norm)
         for rid in list(self._dispatch_rules.keys()):
             if rid == canonical:
                 continue
             r = self._dispatch_rules[rid]
-            if keep_trunk_id in (r.trunk_ids or []) and len(r.trunk_ids or []) == 1:
+            is_number_rule = rid.endswith(digits) or (norm in (r.name or ""))
+            if is_number_rule and keep_trunk_id in (r.trunk_ids or []):
                 del self._dispatch_rules[rid]
                 changed = True
-                log.info("Removed duplicate dispatch rule %s (trunk %s already governed by %s)",
-                         rid, keep_trunk_id, canonical)
+                log.info("Removed duplicate dispatch rule %s for %s", rid, norm)
         return changed
 
     def _ensure_number_rule(self, rec: "PhoneNumberRecord") -> SIPDispatchRule:
@@ -670,12 +671,20 @@ class TelephonyManager:
         now = time.time()
         for record in self._calls.values():
             if record.status in (CallStatus.ACTIVE, CallStatus.RINGING, CallStatus.INITIATED):
-                # Stale test / simulated calls older than 120s without live session auto-complete
-                if now - record.created_at > 120:
+                is_sim = (
+                    record.metadata.get("is_simulation")
+                    or record.metadata.get("connection_type") == "simulation"
+                    or record.call_id.startswith(("test-", "mock-", "sandbox-"))
+                )
+                # Only expire stale simulations or abandoned un-answered calls
+                if is_sim and (now - record.created_at > 300):
                     record.status = CallStatus.COMPLETED
                     record.ended_at = now
                     if record.answered_at:
                         record.duration_seconds = round(record.ended_at - record.answered_at, 2)
+                elif not is_sim and record.status == CallStatus.INITIATED and (now - record.created_at > 3600):
+                    record.status = CallStatus.FAILED
+                    record.ended_at = now
         return [asdict(c) for c in self._calls.values()]
 
     def end_all_calls(self) -> List[TelephonyCallRecord]:
@@ -1106,8 +1115,26 @@ class TelephonyManager:
         existing = self._owned_numbers.get(norm)
         if existing and existing.status == "active":
             raise ValueError(f"{norm} is already provisioned and assigned to {existing.assigned_agent}. Use re-route instead.")
-        if assigned_trunk_id not in self._inbound_trunks:
-            raise ValueError(f"Unknown inbound trunk '{assigned_trunk_id}'. Create the trunk first.")
+        valid_inbound = assigned_trunk_id in self._inbound_trunks or (
+            assigned_trunk_id in self._trunks and getattr(self._trunks[assigned_trunk_id], "direction", "both") in ("inbound", "both")
+        )
+        if not valid_inbound:
+            if assigned_trunk_id in ("trunk-inbound-primary", "trunk-primary"):
+                if "trunk-primary" in self._trunks:
+                    assigned_trunk_id = "trunk-primary"
+                elif self._inbound_trunks:
+                    assigned_trunk_id = next(iter(self._inbound_trunks.keys()))
+                else:
+                    auto_trunk = SIPInboundTrunk(
+                        trunk_id="trunk-inbound-primary",
+                        name="Primary Inbound SIP Trunk",
+                        numbers=[],
+                        allowed_addresses=["0.0.0.0/0"],
+                    )
+                    self.register_inbound_trunk(auto_trunk, persist=True)
+                    assigned_trunk_id = "trunk-inbound-primary"
+            else:
+                raise ValueError(f"Unknown inbound trunk '{assigned_trunk_id}'. Create the trunk first.")
 
         catalog_entry = next((item for item in AVAILABLE_NUMBERS_CATALOG if item["phone_number"] == norm), None)
         country = catalog_entry["country"] if catalog_entry else "US"
@@ -1212,7 +1239,7 @@ class TelephonyManager:
         self._owned_numbers[norm] = record
 
         # Bind to trunk
-        trunk = self._inbound_trunks.get(assigned_trunk_id)
+        trunk = self._trunks.get(assigned_trunk_id) or self._inbound_trunks.get(assigned_trunk_id)
         if trunk and norm not in trunk.numbers:
             trunk.numbers.append(norm)
 
@@ -1237,7 +1264,7 @@ class TelephonyManager:
 
         rec.status = "released"
         # Unbind from trunk and drop its dispatch rule
-        trunk = self._inbound_trunks.get(rec.assigned_trunk_id)
+        trunk = self._trunks.get(rec.assigned_trunk_id) or self._inbound_trunks.get(rec.assigned_trunk_id)
         if trunk and norm in trunk.numbers:
             trunk.numbers.remove(norm)
         self._dispatch_rules.pop(self._number_rule_id(norm), None)
@@ -1290,16 +1317,20 @@ class TelephonyManager:
             return None
         if not agent_name or not agent_name.strip():
             raise ValueError("agent_name is required")
-        if trunk_id and trunk_id not in self._inbound_trunks:
+        valid_inbound = (
+            trunk_id in self._inbound_trunks
+            or (trunk_id in self._trunks and getattr(self._trunks[trunk_id], "direction", "both") in ("inbound", "both"))
+        )
+        if trunk_id and not valid_inbound:
             raise ValueError(f"Unknown inbound trunk '{trunk_id}'")
 
         rec.assigned_agent = agent_name.strip()
-        if trunk_id and trunk_id in self._inbound_trunks:
+        if trunk_id and valid_inbound:
             if trunk_id != rec.assigned_trunk_id:
-                old_trunk = self._inbound_trunks.get(rec.assigned_trunk_id)
+                old_trunk = self._trunks.get(rec.assigned_trunk_id) or self._inbound_trunks.get(rec.assigned_trunk_id)
                 if old_trunk and norm in old_trunk.numbers:
                     old_trunk.numbers.remove(norm)
-                new_trunk = self._inbound_trunks.get(trunk_id)
+                new_trunk = self._trunks.get(trunk_id) or self._inbound_trunks.get(trunk_id)
                 if new_trunk and norm not in new_trunk.numbers:
                     new_trunk.numbers.append(norm)
                 rec.assigned_trunk_id = trunk_id
@@ -1334,11 +1365,15 @@ class TelephonyManager:
                 rec.carrier = c_id
         if trunk_id is not None and trunk_id.strip():
             t_id = trunk_id.strip()
-            if t_id in self._inbound_trunks and t_id != rec.assigned_trunk_id:
-                old_trunk = self._inbound_trunks.get(rec.assigned_trunk_id)
+            valid_t = (
+                t_id in self._inbound_trunks
+                or (t_id in self._trunks and getattr(self._trunks[t_id], "direction", "both") in ("inbound", "both"))
+            )
+            if valid_t and t_id != rec.assigned_trunk_id:
+                old_trunk = self._trunks.get(rec.assigned_trunk_id) or self._inbound_trunks.get(rec.assigned_trunk_id)
                 if old_trunk and norm in old_trunk.numbers:
                     old_trunk.numbers.remove(norm)
-                new_trunk = self._inbound_trunks.get(t_id)
+                new_trunk = self._trunks.get(t_id) or self._inbound_trunks.get(t_id)
                 if new_trunk and norm not in new_trunk.numbers:
                     new_trunk.numbers.append(norm)
                 rec.assigned_trunk_id = t_id
@@ -1361,7 +1396,7 @@ class TelephonyManager:
             self._release_telnyx_number(rec)
 
         # Unbind from trunk and drop its dispatch rule
-        trunk = self._inbound_trunks.get(rec.assigned_trunk_id)
+        trunk = self._trunks.get(rec.assigned_trunk_id) or self._inbound_trunks.get(rec.assigned_trunk_id)
         if trunk and norm in trunk.numbers:
             trunk.numbers.remove(norm)
         self._dispatch_rules.pop(self._number_rule_id(norm), None)
@@ -1381,7 +1416,7 @@ class TelephonyManager:
         norm_caller = normalize_phone_number(caller_number)
 
         matched_trunk = None
-        for trunk in self._inbound_trunks.values():
+        for trunk in list(self._trunks.values()) + list(self._inbound_trunks.values()):
             if trunk.matches_number(norm_dialed):
                 matched_trunk = trunk
                 break

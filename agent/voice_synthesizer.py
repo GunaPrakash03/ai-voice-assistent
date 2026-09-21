@@ -395,7 +395,7 @@ def _fetch_elevenlabs_cdn(voice_id: str) -> Optional[bytes]:
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         xi_key = os.getenv("ELEVEN_API_KEY") or os.getenv("ELEVENLABS_API_KEY") or os.getenv("XI_API_KEY")
-        if xi_key:
+        if xi_key and "api.elevenlabs.io" in cdn_url:
             headers["xi-api-key"] = xi_key
         req = urllib.request.Request(cdn_url, headers=headers)
         with urllib.request.urlopen(req, timeout=5.0) as resp:
@@ -543,17 +543,20 @@ def clean_spoken_speech_text(text: str) -> str:
     if t.lower() in ("undefined", "null", "none"):
         return ""
 
-    # If the text is a prompt instruction with an explicit quoted opening, extract the opening
-    # e.g., 'Say this, and nothing else, as your first turn:\n\n"Thanks for calling Bottini and Bottini..."'
-    quoted_match = re.search(r'(?:say this|opening|greeting)[^"\']*?["“]([^"”]{10,250})["”]', t, re.I | re.S)
-    if quoted_match:
-        t = quoted_match.group(1).strip()
-    elif t.lower().startswith("identity") or "you are " in t.lower()[:60]:
-        # Handle prompt text inadvertently passed as speech
-        from agent.agent_builder import agent_builder
-        derived = agent_builder.derive_first_message(t, "Maya")
-        if derived:
-            t = derived
+    # Only if the text is explicitly a full raw system prompt or directive, extract first turn
+    is_raw_prompt = (
+        t.lower().startswith(("### system", "identity:", "system prompt:"))
+        or (t.lower().startswith("you are ") and "\n" in t and len(t) > 120)
+    )
+    if is_raw_prompt:
+        quoted_match = re.search(r'(?:say this|first turn)[:\s\n]*["“]([^"”]{10,250})["”]', t, re.I | re.S)
+        if quoted_match:
+            t = quoted_match.group(1).strip()
+        else:
+            from agent.agent_builder import agent_builder
+            derived = agent_builder.derive_first_message(t, "Maya")
+            if derived:
+                t = derived
     
     # 1. Remove XML/HTML/SSML tags and thought blocks: <thought>...</thought>, <speak>...</speak>, <mstts:...>, etc.
     t = re.sub(r"<\?xml[\s\S]*?\?>", " ", t, flags=re.I)

@@ -11,6 +11,8 @@ import json
 import logging
 import os
 import re
+import tempfile
+import threading
 import time
 import urllib.request
 import urllib.error
@@ -20,6 +22,8 @@ log = logging.getLogger("provider-manager")
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE = os.path.join(ROOT_DIR, ".env")
+_env_lock = threading.Lock()
+
 
 # Provider definitions
 KNOWN_PROVIDERS = {
@@ -90,14 +94,35 @@ KNOWN_PROVIDERS = {
 }
 
 
+# Permitted configuration keys that can be updated via Provider Manager API
+ALLOWED_CONFIG_KEYS = {
+    # Voice / TTS & STT
+    "ELEVEN_API_KEY", "ELEVENLABS_API_KEY", "XI_API_KEY",
+    "CARTESIA_API_KEY", "DEEPGRAM_API_KEY",
+    # LLM
+    "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY", "COPILOT_API_KEY",
+    # Telephony
+    "TELNYX_API_KEY", "TWILIO_AUTH_TOKEN", "TWILIO_ACCOUNT_SID",
+    "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET",
+    "LIVEKIT_SIP_DOMAIN", "LIVEKIT_SIP_USERNAME", "LIVEKIT_SIP_PASSWORD",
+    "SIP_OUTBOUND_TRUNK_ID", "TWILIO_CONNECTION_MODE", "TWILIO_VALIDATE_SIGNATURE",
+    "PUBLIC_BASE_URL", "STT_PROVIDER", "TTS_PROVIDER", "LLM_PROVIDER",
+    "DEFAULT_AGENT_ID", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "MAIL_FROM",
+}
+
+DISALLOWED_KEY_PATTERNS = ("SUPER_ADMIN", "AUTH_", "POSTGRES", "DATABASE", "SECRET", "JWT", "ROOT", "COOKIE")
+
+
 def mask_key(val: Optional[str]) -> str:
     """Masks secret key keeping only prefix and suffix for secure UI preview."""
     if not val:
         return ""
     val = val.strip()
-    if len(val) <= 8:
+    if len(val) <= 12:
         return "••••••••"
-    return f"{val[:6]}••••••••{val[-4:]}"
+    return f"{val[:4]}••••••••{val[-4:]}"
+
 
 
 class ProviderManager:
@@ -165,42 +190,76 @@ class ProviderManager:
     def save_keys(self, key_updates: Dict[str, str]) -> Dict[str, Any]:
         """
         Updates keys in .env file and active process runtime os.environ.
-        Preserves existing lines and comments in .env.
+        Preserves existing lines and comments in .env. Enforces key allowlist,
+        prohibits control characters, and performs atomic locked writes.
         """
-        existing_lines = []
-        if os.path.exists(self.env_path):
+        if not key_updates:
+            return {"status": "ok", "updated": []}
+
+        sanitized: Dict[str, str] = {}
+        for raw_k, raw_v in key_updates.items():
+            k = str(raw_k).strip()
+            v = str(raw_v).strip()
+            if not k:
+                raise ValueError("Environment variable name cannot be empty")
+            if not re.match(r"^[A-Z0-9_]{2,64}$", k):
+                raise ValueError(f"Invalid environment variable format: '{k}'")
+            upper_k = k.upper()
+            if any(p in upper_k for p in DISALLOWED_KEY_PATTERNS):
+                raise ValueError(f"Modifying system variable '{k}' is forbidden")
+            if upper_k not in ALLOWED_CONFIG_KEYS:
+                raise ValueError(f"Unauthorized or unknown configuration key: '{k}'")
+            if "\n" in v or "\r" in v:
+                raise ValueError(f"Newlines or carriage returns are not allowed in value for '{k}'")
+            sanitized[upper_k] = v
+
+        with _env_lock:
+            existing_lines = []
+            if os.path.exists(self.env_path):
+                try:
+                    with open(self.env_path, "r", encoding="utf-8") as f:
+                        existing_lines = f.readlines()
+                except Exception as e:
+                    log.warning("Could not read .env: %s", e)
+
+            # Ensure the last line ends with a newline before any appending
+            if existing_lines and not existing_lines[-1].endswith("\n"):
+                existing_lines[-1] = existing_lines[-1] + "\n"
+
+            # Parse existing keys
+            line_map = {}
+            for i, line in enumerate(existing_lines):
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#") and "=" in stripped:
+                    k = stripped.split("=", 1)[0].strip()
+                    line_map[k] = i
+
+            for k, v in sanitized.items():
+                os.environ[k] = v
+                if k in line_map:
+                    existing_lines[line_map[k]] = f"{k}={v}\n"
+                else:
+                    existing_lines.append(f"{k}={v}\n")
+
             try:
-                with open(self.env_path, "r", encoding="utf-8") as f:
-                    existing_lines = f.readlines()
-            except Exception as e:
-                log.warning("Could not read .env: %s", e)
+                env_dir = os.path.dirname(os.path.abspath(self.env_path))
+                os.makedirs(env_dir, exist_ok=True)
+                with tempfile.NamedTemporaryFile("w", dir=env_dir, delete=False, encoding="utf-8") as tf:
+                    tf.writelines(existing_lines)
+                    temp_path = tf.name
+                os.replace(temp_path, self.env_path)
+                log.info("Saved %d updated keys to %s", len(sanitized), self.env_path)
+            except Exception as ex:
+                log.error("Failed to write .env: %s", ex)
+                if "temp_path" in locals() and os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        pass
+                raise RuntimeError(f"Failed to write to .env: {ex}")
 
-        # Parse existing keys
-        line_map = {}
-        for i, line in enumerate(existing_lines):
-            stripped = line.strip()
-            if stripped and not stripped.startswith("#") and "=" in stripped:
-                k = stripped.split("=", 1)[0].strip()
-                line_map[k] = i
+        return {"status": "ok", "updated": list(sanitized.keys())}
 
-        for k, v in key_updates.items():
-            k = k.strip()
-            v = v.strip()
-            os.environ[k] = v
-            if k in line_map:
-                existing_lines[line_map[k]] = f"{k}={v}\n"
-            else:
-                existing_lines.append(f"{k}={v}\n")
-
-        try:
-            with open(self.env_path, "w", encoding="utf-8") as f:
-                f.writelines(existing_lines)
-            log.info("Saved %d updated keys to %s", len(key_updates), self.env_path)
-        except Exception as ex:
-            log.error("Failed to write .env: %s", ex)
-            raise RuntimeError(f"Failed to write to .env: {ex}")
-
-        return {"status": "ok", "updated": list(key_updates.keys())}
 
     def test_provider_connection(self, provider_id: str, api_key: Optional[str] = None) -> Dict[str, Any]:
         """

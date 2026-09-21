@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import secrets
+import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
@@ -27,6 +28,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 log = logging.getLogger("voice-agent.auth")
 if not log.handlers:
     logging.basicConfig(level=logging.INFO)
+
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_DIR = os.path.join(ROOT_DIR, "config")
@@ -244,7 +246,8 @@ class SlidingWindowRateLimiter:
                 reset_seconds=reset_secs,
             )
         else:
-            oldest = self._history[key][0]
+            history = self._history.get(key) or []
+            oldest = history[0] if history else now
             retry_after = max(1, int(oldest + self.window_seconds - now))
             return RateLimitResult(
                 allowed=False,
@@ -270,6 +273,7 @@ class AuthManager:
 
     def __init__(self, store_path: str = AUTH_STORE_PATH):
         self.store_path = store_path
+        self._db_load_failed: bool = False
         self._workspaces: Dict[str, Workspace] = {}
         self._api_keys: Dict[str, ApiKey] = {}         # key_id -> ApiKey
         self._key_hash_index: Dict[str, str] = {}      # key_hash -> key_id
@@ -280,6 +284,7 @@ class AuthManager:
         self._load_store()
         self._fold_retired_roles()
         self._ensure_env_super_admins()
+
 
     def _fold_retired_roles(self) -> None:
         """Accounts still carrying a retired role (e.g. the old Standard User) become Member Admins,
@@ -378,10 +383,18 @@ class AuthManager:
         if self._db_backed():
             from agent import storage
             self._absorb({name: storage.load_collection(name) for name, _ in self.COLLECTIONS})
+            self._db_load_failed = False
             self._migrate_file_to_db()
             return
         if os.getenv("DATABASE_URL"):
-            log.error("DATABASE_URL is set but PostgreSQL is unreachable; auth store starts with defaults only")
+            self._db_load_failed = True
+            log.error("DATABASE_URL is set but PostgreSQL is unreachable; auth store starts in protected fallback mode")
+            if os.path.isfile(self.store_path):
+                try:
+                    with open(self.store_path, "r", encoding="utf-8") as f:
+                        self._absorb(json.load(f))
+                except Exception as e:
+                    log.warning("Failed fallback load from %s: %s", self.store_path, e)
             return
         if os.path.isfile(self.store_path):
             try:
@@ -414,30 +427,51 @@ class AuthManager:
         }
 
     def _save_store(self):
+        if self._db_load_failed:
+            if self._db_backed():
+                log.info("PostgreSQL reconnected; loading database state before saving")
+                from agent import storage
+                self._absorb({name: storage.load_collection(name) for name, _ in self.COLLECTIONS})
+                self._db_load_failed = False
+            else:
+                log.error("Auth store not saved: PostgreSQL was unreachable at startup and is still down (refusing to overwrite)")
+                return False
         snap = self._snapshot()
         if os.getenv("DATABASE_URL"):
             from agent import storage
             ok = all(storage.save_collection(name, snap[name], id_field, snap["updated_at"]) for name, id_field in self.COLLECTIONS)
             if not ok:
                 log.error("Auth store not saved: PostgreSQL write failed")
-            return
+                return False
+            return True
         try:
-            os.makedirs(os.path.dirname(self.store_path), exist_ok=True)
-            with open(self.store_path, "w", encoding="utf-8") as f:
-                json.dump(snap, f, indent=2)
+            store_dir = os.path.dirname(os.path.abspath(self.store_path))
+            os.makedirs(store_dir, exist_ok=True)
+            with tempfile.NamedTemporaryFile("w", dir=store_dir, delete=False, encoding="utf-8") as tf:
+                json.dump(snap, tf, indent=2)
+                temp_path = tf.name
+            os.replace(temp_path, self.store_path)
+            return True
         except Exception as e:
             log.warning("Failed to save auth store: %s", e)
+            if "temp_path" in locals() and os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+            return False
 
     # ── Workspace Operations ────────────────────────────────────────────────
 
     def create_workspace(self, name: str, slug: Optional[str] = None, rate_limit_rpm: int = 120) -> Workspace:
+        rpm = max(1, int(rate_limit_rpm or 120))
         ws_id = f"ws-{secrets.token_hex(4)}"
         ws_slug = slug or re.sub(r"[^a-z0-9_-]", "-", name.lower()).strip("-")
         ws = Workspace(
             workspace_id=ws_id,
             name=name,
             slug=ws_slug,
-            rate_limit_rpm=rate_limit_rpm,
+            rate_limit_rpm=rpm,
         )
         self._workspaces[ws_id] = ws
         self._save_store()
@@ -503,6 +537,10 @@ class AuthManager:
         if key.expires_at and key.expires_at < time.time():
             return None
 
+        ws = self.get_workspace(key.workspace_id)
+        if not ws or not ws.active:
+            return None
+
         key.last_used_at = time.time()
         return key
 
@@ -561,9 +599,28 @@ class AuthManager:
             return False
         if acting_user_id and user_id == acting_user_id:
             raise ValueError("You cannot remove your own account")
+
+        if acting_user_id:
+            acting_user = self._users.get(acting_user_id)
+            if acting_user:
+                # Only super_admin can deactivate across workspaces or deactivate super_admins
+                if acting_user.role != UserRole.SUPER_ADMIN.value:
+                    if user.workspace_id != acting_user.workspace_id:
+                        raise PermissionError("Cannot deactivate users in another organization")
+                    if user.role == UserRole.SUPER_ADMIN.value:
+                        raise PermissionError("Only Super Admins can deactivate a Super Admin")
+                    if user.role == UserRole.ADMIN.value and acting_user.role != UserRole.ADMIN.value:
+                        raise PermissionError("Insufficient permissions to deactivate an administrator")
+
+        if user.role == UserRole.SUPER_ADMIN.value:
+            super_admins = [u for u in self._users.values() if u.active and u.role == UserRole.SUPER_ADMIN.value and u.user_id != user.user_id]
+            if not super_admins:
+                raise ValueError("The system needs at least one active Super Admin")
+
         admins = [u for u in self._users.values() if u.active and u.role == UserRole.ADMIN.value and u.workspace_id == user.workspace_id]
         if user.role == UserRole.ADMIN.value and len(admins) <= 1:
             raise ValueError("The workspace needs at least one admin")
+
         user.active = False
         for h in [h for h, sdoc in self._sessions.items() if sdoc.get("user_id") == user_id]:
             self._sessions.pop(h, None)
@@ -624,6 +681,9 @@ class AuthManager:
         candidate = self._hash_password(password or "", salt)
         if not user or not user.password_hash or not secrets.compare_digest(candidate, user.password_hash):
             raise ValueError("Incorrect email or password")
+        ws = self.get_workspace(user.workspace_id)
+        if ws and not ws.active:
+            raise ValueError("This organization has been suspended. Please contact your administrator.")
         return user
 
     def create_session(self, user: AuthUser, remember: bool = False, user_agent: str = "", method: str = "password") -> Tuple[str, Dict[str, Any]]:
@@ -652,7 +712,12 @@ class AuthManager:
         if not doc or float(doc.get("expires_at", 0)) < time.time() or doc.get("kind") == "password_reset":
             return None
         user = self._users.get(doc["user_id"])
-        return user if (user and user.active) else None
+        if not user or not user.active:
+            return None
+        ws = self.get_workspace(user.workspace_id)
+        if ws and not ws.active:
+            return None
+        return user
 
     # ── Forgotten password (email link) ─────────────────────────────────────
     # Reset tickets are stored beside sessions (same persisted collection, same expiry pruning) but
@@ -841,13 +906,13 @@ class AuthManager:
                  "is_me": bool(user and u.user_id == user.user_id)}
                 for u in sorted(self._users.values(), key=lambda x: x.created_at)
                 if u.active and ws and u.workspace_id == ws.workspace_id
-                and (user is None or user.role == UserRole.ADMIN.value or u.user_id == user.user_id)
+                and (user is None or user.role in (UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value) or u.user_id == user.user_id)
             ],
             "api_keys": [
                 {"key_id": k.key_id, "name": k.name, "prefix": k.key_prefix, "scopes": k.scopes, "is_test": k.is_test,
                  "created_at": k.created_at, "last_used_at": k.last_used_at, "revoked": k.revoked}
                 for k in sorted(self._api_keys.values(), key=lambda x: x.created_at, reverse=True)
-                if ws and k.workspace_id == ws.workspace_id and (user is None or user.role == UserRole.ADMIN.value)
+                if ws and k.workspace_id == ws.workspace_id and (user is None or user.role in (UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value))
             ][:10],
             "api_keys_active": sum(1 for k in self._api_keys.values() if ws and k.workspace_id == ws.workspace_id and not k.revoked),
         }
@@ -867,11 +932,15 @@ class AuthManager:
                 if key == "email":
                     if val and ("@" not in val or " " in val):
                         raise ValueError("Enter a valid email address")
-                    if val:
+                    if val and val.lower() != user.email.lower():
+                        if any(u.email.lower() == val.lower() and u.user_id != user.user_id for u in self._users.values()):
+                            raise ValueError("An account with this email address already exists")
                         user.email = val
                 else:
                     setattr(user, key, val[:120])
         if "workspace" in changes and changes["workspace"] is not None:
+            if user.role not in (UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value):
+                raise PermissionError("Only workspace administrators can rename the workspace")
             ws = self._workspaces.get(user.workspace_id)
             if ws:
                 ws.name = str(changes["workspace"]).strip()[:80] or ws.name
@@ -1030,6 +1099,10 @@ class AuthManager:
 
         if "role" in changes and changes["role"] is not None:
             new_role = normalize_role(str(changes["role"]))
+            if user.role == UserRole.SUPER_ADMIN.value and new_role != UserRole.SUPER_ADMIN.value:
+                super_admins = [u for u in self._users.values() if u.active and u.role == UserRole.SUPER_ADMIN.value and u.user_id != user.user_id]
+                if not super_admins:
+                    raise ValueError("Cannot demote the only active Super Admin")
             user.role = new_role
 
         if "workspace_id" in changes and changes["workspace_id"] is not None:
@@ -1039,7 +1112,12 @@ class AuthManager:
             user.workspace_id = new_ws_id
 
         if "active" in changes and changes["active"] is not None:
-            user.active = bool(changes["active"])
+            new_active = bool(changes["active"])
+            if user.role == UserRole.SUPER_ADMIN.value and not new_active:
+                super_admins = [u for u in self._users.values() if u.active and u.role == UserRole.SUPER_ADMIN.value and u.user_id != user.user_id]
+                if not super_admins:
+                    raise ValueError("Cannot deactivate the only active Super Admin")
+            user.active = new_active
 
         for key in ("name", "email", "phone", "title"):
             if key in changes and changes[key] is not None:
@@ -1047,7 +1125,9 @@ class AuthManager:
                 if key == "email":
                     if val and ("@" not in val or " " in val):
                         raise ValueError("Enter a valid email address")
-                    if val:
+                    if val and val.lower() != user.email.lower():
+                        if any(u.email.lower() == val.lower() and u.user_id != user.user_id for u in self._users.values()):
+                            raise ValueError("An account with this email address already exists")
                         user.email = val
                 else:
                     setattr(user, key, val[:120])
@@ -1133,6 +1213,10 @@ class AuthManager:
             payload = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
             if payload.get("exp", 0) < time.time():
                 return None  # Expired
+            ws_id = payload.get("ws", "ws-default")
+            ws = self.get_workspace(ws_id)
+            if not ws or not ws.active:
+                return None
             return payload
         except Exception:
             return None
@@ -1160,7 +1244,7 @@ class AuthManager:
             token = auth_hdr[7:].strip()
             payload = self.verify_token(token)
             if not payload:
-                return False, None, "Invalid or expired Bearer token"
+                return False, None, "Invalid, expired, or suspended Bearer token"
 
             ws_id = payload.get("ws", "ws-default")
             scopes = payload.get("scopes", [])
@@ -1211,7 +1295,7 @@ class AuthManager:
             }
             return True, ctx, None
 
-        # Case C: Workspace header fallback for open local endpoints
+        # Case C: Workspace header fallback for open endpoints
         if ws_hdr:
             ws = self.get_workspace(ws_hdr)
             if not ws or not ws.active:
@@ -1221,12 +1305,15 @@ class AuthManager:
             if not rate_res.allowed:
                 return False, None, f"Workspace rate limit exceeded. Retry in {rate_res.retry_after}s"
 
+            if required_scope:
+                return False, None, f"Authentication required for scope '{required_scope}'. Please provide an API Key or Bearer Token."
+
             ctx = {
                 "workspace_id": ws.workspace_id,
                 "auth_type": "workspace_header",
                 "identity": f"anon-{ws.workspace_id}",
-                "role": UserRole.MEMBER_ADMIN.value,
-                "scopes": [ApiScope.ALL.value],
+                "role": UserRole.USER.value,
+                "scopes": [],
             }
             return True, ctx, None
 
@@ -1234,13 +1321,13 @@ class AuthManager:
         if required_scope:
             return False, None, f"Missing authentication (Bearer token or X-API-Key required for '{required_scope}')"
 
-        # Default fallback for localhost internal requests
+        # Default fallback for internal unauthenticated requests
         ctx = {
             "workspace_id": "ws-default",
             "auth_type": "internal",
-            "identity": "internal-admin",
-            "role": UserRole.ADMIN.value,
-            "scopes": [ApiScope.ALL.value],
+            "identity": "internal-user",
+            "role": UserRole.USER.value,
+            "scopes": [],
         }
         return True, ctx, None
 

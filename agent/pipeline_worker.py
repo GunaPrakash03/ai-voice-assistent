@@ -599,8 +599,21 @@ class PostCallPipelineWorker:
             if job.retry_count < job.max_retries:
                 job.retry_count += 1
                 job.status = JobStatus.RETRYING.value
-                self._queue.put_nowait((job.priority, time.time(), job.job_id))
                 self._emit_event("job_retrying", job, {"retry_count": job.retry_count})
+                if self._running:
+                    self._queue.put_nowait((job.priority, time.time(), job.job_id))
+                else:
+                    delay = min(1.0 * (2 ** (job.retry_count - 1)), 30.0)
+                    async def _retry_delayed(jid: str, delay_s: float):
+                        await asyncio.sleep(delay_s)
+                        await self.execute_job(jid)
+                    try:
+                        asyncio.create_task(_retry_delayed(job.job_id, delay))
+                    except RuntimeError:
+                        job.status = JobStatus.FAILED.value
+                        job.completed_at = time.time()
+                        job.total_duration_ms = round((job.completed_at - job.started_at) * 1000, 2)
+                        self._emit_event("job_failed", job, {"error": str(err)})
             else:
                 job.status = JobStatus.FAILED.value
                 job.completed_at = time.time()

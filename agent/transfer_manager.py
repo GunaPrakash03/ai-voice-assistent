@@ -13,10 +13,11 @@ import asyncio
 import logging
 import os
 import re
+import secrets
 import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from agent.telephony_manager import normalize_phone_number, is_valid_phone_number
 
@@ -82,6 +83,12 @@ class TransferManager:
         self.api_secret = api_secret or os.getenv("LIVEKIT_API_SECRET", "secret")
         self._transfers: Dict[str, TransferRecord] = {}
         self._hold_states: Dict[str, CallHoldState] = {}
+        self._warm_tasks: Dict[str, asyncio.Task] = {}
+        self._call_contexts: Dict[str, Tuple[str, str]] = {}
+
+    def register_call_context(self, call_id: str, room_name: str, participant_identity: str):
+        """Records active LiveKit room and caller SIP participant identity for call transfer dispatch."""
+        self._call_contexts[call_id] = (room_name, participant_identity)
 
     # -------------------------------------------------------------------------
     # Hold / Resume Management
@@ -145,11 +152,15 @@ class TransferManager:
         if not is_valid_phone_number(norm_target):
             raise ValueError(f"Invalid E.164 transfer target number: '{target_number}'")
 
-        transfer_id = f"xfer-blind-{int(time.time())}-{norm_target[-4:]}"
+        transfer_id = f"xfer-blind-{int(time.time()*1000)}-{secrets.token_hex(3)}"
+        real_room, real_part = self._call_contexts.get(call_id, (call_id, source_participant))
+        effective_participant = real_part if source_participant in ("caller", "active-call", "") else source_participant
+        effective_room = real_room if call_id.startswith("call-") else call_id
+
         record = TransferRecord(
             transfer_id=transfer_id,
-            call_id=call_id,
-            source_participant=source_participant,
+            call_id=effective_room,
+            source_participant=effective_participant,
             target_number=norm_target,
             mode=TransferMode.BLIND,
             status=TransferStatus.INITIATED,
@@ -159,20 +170,21 @@ class TransferManager:
             metadata=metadata or {},
         )
         self._transfers[transfer_id] = record
-        log.info("Initiating blind transfer: %s -> %s (dept=%s)", call_id, norm_target, department)
+        log.info("Initiating blind transfer: %s -> %s (dept=%s, participant=%s)", effective_room, norm_target, department, effective_participant)
 
         # SIP REFER execution
         try:
-            is_test_call = call_id.startswith(("test-", "verify-", "mock-", "sandbox-"))
+            is_test_call = effective_room.startswith(("test-", "verify-", "mock-", "sandbox-"))
             if self.api_key and self.api_secret and "127.0.0.1" not in self.livekit_url and not is_test_call:
                 from livekit import api
                 lk_api = api.LiveKitAPI(self.livekit_url, self.api_key, self.api_secret)
                 try:
-                    # In LiveKit SIP, participant transfer sends SIP REFER
+                    # In LiveKit SIP, participant transfer sends SIP REFER with tel: or sip: URI
+                    target_uri = norm_target if norm_target.startswith(("tel:", "sip:")) else f"tel:{norm_target}"
                     transfer_req = api.TransferSIPParticipantRequest(
-                        room_name=call_id,
-                        participant_identity=source_participant,
-                        transfer_to=norm_target,
+                        room_name=effective_room,
+                        participant_identity=effective_participant,
+                        transfer_to=target_uri,
                     )
                     await lk_api.sip.transfer_sip_participant(transfer_req)
                 finally:
@@ -180,7 +192,8 @@ class TransferManager:
             else:
                 # Simulated SIP REFER execution for local development and test calls
                 await asyncio.sleep(0.05)
-                log.info("Simulated SIP REFER sent to carrier: REFER %s -> %s", source_participant, norm_target)
+                record.metadata["simulated"] = True
+                log.info("Simulated SIP REFER sent to carrier: REFER %s -> %s", effective_participant, norm_target)
 
             record.status = TransferStatus.COMPLETED
             record.completed_at = time.time()
@@ -223,7 +236,7 @@ class TransferManager:
         if not is_valid_phone_number(norm_target):
             raise ValueError(f"Invalid E.164 transfer target number: '{target_number}'")
 
-        transfer_id = f"xfer-warm-{int(time.time())}-{norm_target[-4:]}"
+        transfer_id = f"xfer-warm-{int(time.time()*1000)}-{secrets.token_hex(3)}"
         briefing = self.generate_briefing(
             caller_name=caller_name,
             topic=caller_inquiry,
@@ -231,8 +244,11 @@ class TransferManager:
             context_notes=briefing_notes,
         )
 
-        consult_room = f"consult-{int(time.time())}-{norm_target[-4:]}"
+        consult_room = f"consult-{int(time.time()*1000)}-{norm_target[-4:] if len(norm_target) >= 4 else 'xfer'}"
         consult_participant = f"agent-{norm_target}"
+
+        record_meta = dict(metadata or {})
+        record_meta["simulated"] = True
 
         record = TransferRecord(
             transfer_id=transfer_id,
@@ -247,37 +263,60 @@ class TransferManager:
             briefing_summary=briefing,
             consultation_room=consult_room,
             consultation_participant=consult_participant,
-            metadata=metadata or {},
+            metadata=record_meta,
         )
         self._transfers[transfer_id] = record
         log.info("Initiating warm transfer: %s -> %s (consult_room=%s)", call_id, norm_target, consult_room)
 
-        # Step 1: Put caller on hold
-        self.put_on_hold(call_id, reason=f"Transferring to {department or target_name or 'specialist'}")
-        record.status = TransferStatus.HOLD
-        await asyncio.sleep(0.04)
+        current_task = asyncio.current_task()
+        if current_task:
+            self._warm_tasks[transfer_id] = current_task
 
-        # Step 2: Establish consultation leg with receiving agent
-        record.status = TransferStatus.CONSULTING
-        log.info("Consultation leg active: dialing %s (%s)", norm_target, consult_participant)
-        await asyncio.sleep(0.05)
+        try:
+            # Step 1: Put caller on hold
+            self.put_on_hold(call_id, reason=f"Transferring to {department or target_name or 'specialist'}")
+            record.status = TransferStatus.HOLD
+            await asyncio.sleep(0.04)
+            if record.status in (TransferStatus.CANCELLED, TransferStatus.FAILED):
+                return record
 
-        # Step 3: Deliver handoff briefing to receiving agent
-        record.status = TransferStatus.BRIEFING
-        log.info("Delivering warm handoff briefing to receiving agent: '%s'", briefing)
-        await asyncio.sleep(0.05)
+            # Step 2: Establish consultation leg with receiving agent
+            record.status = TransferStatus.CONSULTING
+            log.info("Consultation leg active: dialing %s (%s)", norm_target, consult_participant)
+            await asyncio.sleep(0.05)
+            if record.status in (TransferStatus.CANCELLED, TransferStatus.FAILED):
+                return record
 
-        # Step 4: Bridge participants together (take caller off hold & connect tracks)
-        record.status = TransferStatus.BRIDGED
-        self.remove_from_hold(call_id)
-        log.info("Call %s bridged with receiving specialist %s", call_id, norm_target)
-        await asyncio.sleep(0.04)
+            # Step 3: Deliver handoff briefing to receiving agent
+            record.status = TransferStatus.BRIEFING
+            log.info("Delivering warm handoff briefing to receiving agent: '%s'", briefing)
+            await asyncio.sleep(0.05)
+            if record.status in (TransferStatus.CANCELLED, TransferStatus.FAILED):
+                return record
 
-        # Step 5: Voice agent departs gracefully; transfer complete
-        record.status = TransferStatus.COMPLETED
-        record.completed_at = time.time()
-        record.duration_seconds = round(record.completed_at - record.created_at, 2)
-        log.info("Warm transfer %s completed successfully (duration=%.2fs)", transfer_id, record.duration_seconds)
+            # Step 4: Bridge participants together (take caller off hold & connect tracks)
+            record.status = TransferStatus.BRIDGED
+            self.remove_from_hold(call_id)
+            log.info("Call %s bridged with receiving specialist %s", call_id, norm_target)
+            await asyncio.sleep(0.04)
+            if record.status in (TransferStatus.CANCELLED, TransferStatus.FAILED):
+                return record
+
+            # Step 5: Voice agent departs gracefully; transfer complete
+            record.status = TransferStatus.COMPLETED
+            record.completed_at = time.time()
+            record.duration_seconds = round(record.completed_at - record.created_at, 2)
+            log.info("Warm transfer %s completed successfully (duration=%.2fs)", transfer_id, record.duration_seconds)
+        except asyncio.CancelledError:
+            self.remove_from_hold(call_id)
+            if record.status not in (TransferStatus.CANCELLED, TransferStatus.FAILED):
+                record.status = TransferStatus.CANCELLED
+                record.failure_reason = "task_cancelled"
+            record.completed_at = time.time()
+            record.duration_seconds = round(record.completed_at - record.created_at, 2)
+            raise
+        finally:
+            self._warm_tasks.pop(transfer_id, None)
 
         return record
 
@@ -292,6 +331,9 @@ class TransferManager:
         record.failure_reason = reason
         record.completed_at = time.time()
         record.duration_seconds = round(record.completed_at - record.created_at, 2)
+        task = self._warm_tasks.pop(transfer_id, None)
+        if task and not task.done() and task != asyncio.current_task():
+            task.cancel()
         log.info("Transfer %s cancelled (reason: %s)", transfer_id, reason)
         return record
 
@@ -306,6 +348,9 @@ class TransferManager:
         record.failure_reason = error_reason
         record.completed_at = time.time()
         record.duration_seconds = round(record.completed_at - record.created_at, 2)
+        task = self._warm_tasks.pop(transfer_id, None)
+        if task and not task.done() and task != asyncio.current_task():
+            task.cancel()
         log.warning("Transfer %s failed: %s (caller un-held for fallback dialogue)", transfer_id, error_reason)
         return record
 
@@ -325,6 +370,10 @@ class TransferManager:
         return brief
 
     def list_transfers(self) -> List[dict]:
+        if len(self._transfers) > 200:
+            sorted_keys = sorted(self._transfers.keys(), key=lambda k: self._transfers[k].created_at)
+            for k in sorted_keys[:-100]:
+                self._transfers.pop(k, None)
         return [asdict(t) for t in self._transfers.values()]
 
     def get_transfer(self, transfer_id: str) -> Optional[dict]:

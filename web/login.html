@@ -147,9 +147,21 @@
 
 <script>
 (function () {
-  var $ = function (id) { return document.getElementById(id); };
-  var nextUrl = (function () { try { var n = new URLSearchParams(location.search).get("next"); return n && n.indexOf("/") === 0 && n.indexOf("//") !== 0 ? n : "/"; } catch (e) { return "/"; } })();
-  var ticket = null, countdownTimer = null, resendTimer = null;
+  var nextUrl = (function () {
+    try {
+      var n = new URLSearchParams(location.search).get("next");
+      if (n && typeof n === "string") {
+        n = n.trim();
+        if (n.startsWith("/") && !n.startsWith("//") && !n.startsWith("/\\") && !n.includes("\\") && !/[\r\n\t\s]/.test(n)) {
+          var u = new URL(n, location.origin);
+          if (u.origin === location.origin) {
+            return u.pathname + u.search + u.hash;
+          }
+        }
+      }
+      return "/";
+    } catch (e) { return "/"; }
+  })();
 
   function show(step) {
     ["stepSetup", "stepPassword", "stepCode", "stepForgot"].forEach(function (id) { $(id).classList.toggle("on", id === step); });

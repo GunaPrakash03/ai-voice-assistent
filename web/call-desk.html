@@ -551,7 +551,8 @@
       <div class="form-group">
         <label>Bind to Inbound SIP Trunk</label>
         <select id="modalBuyTrunk">
-          <option value="trunk-inbound-primary">Primary Inbound Carrier Trunk (Telnyx/Twilio)</option>
+          <option value="trunk-primary">Primary Unified SIP Trunk (trunk-primary)</option>
+          <option value="trunk-inbound-primary">Primary Inbound Carrier Trunk (trunk-inbound-primary)</option>
         </select>
       </div>
       <div style="background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:6px;padding:10px 14px;font-size:12.5px">
@@ -1238,8 +1239,8 @@
       var uniTrunks = data.trunks || [];
       var inTrunks = data.inbound || [];
       var outTrunks = data.outbound || [];
-      var rules = data.rules || [];
-      cachedTrunks = uniTrunks.length ? uniTrunks : inTrunks;
+      var inboundCapable = uniTrunks.filter(function(t){ return !t.direction || t.direction === "both" || t.direction === "inbound"; }).concat(inTrunks);
+      cachedTrunks = inboundCapable.length ? inboundCapable : (uniTrunks.concat(inTrunks).length ? uniTrunks.concat(inTrunks) : [{ trunk_id: "trunk-primary", name: "Primary Unified SIP Trunk" }]);
 
       var totalTrunks = uniTrunks.length ? uniTrunks.length : (inTrunks.length + outTrunks.length);
       $("#telStatTrunks").innerHTML = totalTrunks + '<span class="delta" style="color:var(--pos)">trunks online</span>';
@@ -1365,6 +1366,14 @@
     sel.innerHTML = cachedAgents.length ? cachedAgents.map(function (a) {
       return '<option value="' + CI.escapeHtml(a.name) + '">' + CI.escapeHtml(a.name) + '</option>';
     }).join("") : '<option value="Intake Agent">Intake Agent</option><option value="Support Agent">Support Agent</option>';
+
+    // Populate trunk select
+    var trunkSel = $("#modalBuyTrunk");
+    if (trunkSel && cachedTrunks.length) {
+      trunkSel.innerHTML = cachedTrunks.map(function (t) {
+        return '<option value="' + CI.escapeHtml(t.trunk_id) + '">' + CI.escapeHtml(t.name) + '</option>';
+      }).join("");
+    }
 
     $("#modalPurchase").classList.add("open");
   }

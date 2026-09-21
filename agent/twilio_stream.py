@@ -83,15 +83,22 @@ class TwilioMediaStreamSession:
         session) when the stream does not carry our token: only sockets opened from our own TwiML may
         feed audio into the STT/LLM budget. The token is a custom parameter because Twilio strips any
         query string from the <Stream> url."""
-        self.stream_sid = start_data.get("streamSid", "")
-        self.call_sid = start_data.get("callSid", "")
         custom = start_data.get("customParameters", {}) or {}
+        token_candidate = str(custom.get("token", ""))
         expected = media_stream_token()
-        if expected and not hmac.compare_digest(str(custom.get("token", "")), expected):
-            log.warning("Rejected media stream %s (call %s): bad/missing token", self.stream_sid, self.call_sid)
-            self.is_active = False
-            self._stopped = True          # nothing to file: the call never reached the agent
-            return False
+        if expected:
+            try:
+                valid = hmac.compare_digest(token_candidate.encode("utf-8"), expected.encode("utf-8"))
+            except Exception:
+                valid = False
+            if not valid:
+                log.warning("Rejected media stream: bad/missing token")
+                self.is_active = False
+                self._stopped = True          # nothing to file: the call never reached the agent
+                return False
+
+        self.stream_sid = str(start_data.get("streamSid", ""))
+        self.call_sid = str(start_data.get("callSid", ""))
         self.called_number = custom.get("called") or custom.get("To") or start_data.get("called", "")
         self.caller_number = custom.get("caller") or custom.get("From") or start_data.get("caller", "")
 
@@ -220,8 +227,13 @@ class TwilioMediaStreamSession:
                         full_turn = " ".join(self._speech_accumulator).strip()
                         self._speech_accumulator.clear()
                         if full_turn:
-                            log.info("Caller said: '%s'", full_turn)
-                            await self.on_caller_turn(full_turn)
+                            if self.is_agent_speaking and len(full_turn.split()) < INTERRUPT_MIN_WORDS:
+                                log.info("Ignored caller backchannel utterance while agent speaking: '%s'", full_turn)
+                            else:
+                                if self.is_agent_speaking:
+                                    await self.interrupt_agent()
+                                log.info("Caller said: '%s'", full_turn)
+                                await self.on_caller_turn(full_turn)
 
         except asyncio.CancelledError:
             return
@@ -246,7 +258,9 @@ class TwilioMediaStreamSession:
             log.error("Deepgram STT could not be re-established for call %s", self.call_sid)
             apology = "I'm sorry, I'm having trouble hearing you right now. Please call back in a moment."
             if self._current_speech_task and not self._current_speech_task.done():
-                self._current_speech_task.cancel()
+                old_task = self._current_speech_task
+                self._current_speech_task = None
+                old_task.cancel()
             self._add_history("agent", apology)
             self._current_speech_task = asyncio.create_task(self._speak_agent_text(apology))
 
@@ -339,6 +353,7 @@ class TwilioMediaStreamSession:
         the rest is still rendering (instead of waiting for the whole reply). Chunks are paced against
         the wall clock rather than a chain of 20 ms sleeps, which drifted and under-ran on long replies.
         """
+        current_task = asyncio.current_task()
         self.is_agent_speaking = True
         self._playing_text = text
         self._playing_progress = 0.0
@@ -388,7 +403,8 @@ class TwilioMediaStreamSession:
         finally:
             if next_synth is not None and not next_synth.done():
                 next_synth.cancel()       # a barge-in or hang-up must not leave a paid TTS call running
-            self.is_agent_speaking = False
+            if self._current_speech_task is current_task or self._current_speech_task is None:
+                self.is_agent_speaking = False
 
     async def _synthesize_to_mulaw(self, text: str) -> bytes:
         """Generates 8000Hz mu-law audio bytes directly using Deepgram Aura, Cartesia, or fallback."""
@@ -506,6 +522,9 @@ class TwilioMediaStreamSession:
         self.is_active = False
         if self._current_speech_task and not self._current_speech_task.done():
             self._current_speech_task.cancel()
+        if not self.call_sid:
+            log.info("Twilio Stream closed without initialization (no call_sid); skipping record filing")
+            return
         duration = time.time() - self.started_at
         log.info("Twilio Stream call completed: %s (duration: %.1fs)", self.call_sid, duration)
 
@@ -692,6 +711,11 @@ def handle_twilio_media_stream(handler, request_path: str) -> None:
     handler.wfile.flush()
 
     log.info("Twilio Media Stream WebSocket upgraded successfully.")
+    try:
+        if hasattr(handler, "connection") and handler.connection:
+            handler.connection.settimeout(15.0)
+    except Exception as ex:
+        log.debug("Could not set socket timeout on Twilio stream connection: %s", ex)
 
     # 2. Run async event loop for the session on this thread
     loop = asyncio.new_event_loop()
@@ -741,7 +765,14 @@ def handle_twilio_media_stream(handler, request_path: str) -> None:
                 log.warning("Twilio stream loop error: %s", ex)
                 break
 
-        await session.on_stop()
+        if session.call_sid:
+            await session.on_stop()
+
+        try:
+            from agent.webhook_dispatcher import webhook_dispatcher
+            await webhook_dispatcher.wait_pending_dispatches(timeout=4.0)
+        except Exception:
+            pass
 
     try:
         loop.run_until_complete(stream_loop())

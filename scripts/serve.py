@@ -150,6 +150,10 @@ class Handler(SimpleHTTPRequestHandler):
         return auth_manager.session_user(self._session_token())
 
     def _is_loopback(self) -> bool:
+        # If client is behind a reverse proxy (X-Forwarded-For or X-Real-IP is set),
+        # it is NOT a local request from the host machine itself.
+        if self.headers.get("X-Forwarded-For") or self.headers.get("X-Real-IP"):
+            return False
         return (self.client_address[0] if self.client_address else "") in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
     def _require_session(self, parsed) -> bool:
@@ -162,6 +166,11 @@ class Handler(SimpleHTTPRequestHandler):
         if path in self.PUBLIC_PATHS or path.endswith(self.STATIC_SUFFIXES) or path.startswith("/audio/"):
             return True
         if self._session_user():
+            return True
+        # Allow programmatic REST API clients carrying Bearer or API Key headers to proceed to authenticate_request
+        auth_hdr = self.headers.get("Authorization", "")
+        api_key_hdr = self.headers.get("X-API-Key", "")
+        if path.startswith("/api/v1/") and (auth_hdr or api_key_hdr):
             return True
         is_page = path == "/" or path.endswith("/") or self._page_file(path) is not None
         if is_page:
@@ -189,7 +198,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     ADMIN_GET_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces")
     ADMIN_POST_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces",
-                           "/api/v1/auth/users", "/api/agents", "/api/telephony", "/api/webhooks")
+                           "/api/v1/auth/users", "/api/agents", "/api/telephony", "/api/webhooks",
+                           "/api/v1/calls/dispatch")
     ADMIN_PAGES = ("/api-keys", "/admin-guide", "/cost-comparison", "/agent-builder", "/webhooks",
                    "/competitor-analysis", "/user-guide", "/agents", "/sip-trunks", "/phone-numbers",
                    "/call-desk/agents", "/call-desk/sip-trunks", "/call-desk/phone-numbers")
@@ -198,8 +208,10 @@ class Handler(SimpleHTTPRequestHandler):
         """Who is looking. Returns user identity, role, and permission flags."""
         u = self._session_user()
         if u is None:
-            # When loopback test mode is active without a session, assume super_admin
-            return {"user": None, "is_super_admin": True, "is_admin": True, "role": "super_admin", "owner": None, "agents": None}
+            # When genuine loopback without proxy headers is active with AUTH_TRUST_LOOPBACK=1:
+            if self._is_loopback() and os.getenv("AUTH_TRUST_LOOPBACK", "1") != "0":
+                return {"user": None, "is_super_admin": True, "is_admin": True, "role": "super_admin", "owner": None, "agents": None}
+            return {"user": None, "is_super_admin": False, "is_admin": False, "role": "anonymous", "owner": None, "agents": None}
         from agent.auth_manager import normalize_role, UserRole
         role = normalize_role(u.role)
         is_super = role == UserRole.SUPER_ADMIN.value
@@ -987,7 +999,11 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
                 return
             q = parse_qs(parsed.query)
-            ws_id = (q.get("workspace_id") or [""])[0] or ctx["workspace_id"]
+            requested_ws = (q.get("workspace_id") or [""])[0]
+            if requested_ws and requested_ws != ctx["workspace_id"] and ctx.get("role") != "super_admin":
+                self._send_json({"status": "error", "error": "Forbidden: cannot inspect API keys of other workspaces"}, 403)
+                return
+            ws_id = requested_ws if (ctx.get("role") == "super_admin" and requested_ws) else ctx["workspace_id"]
             self._send_json({"status": "ok", "api_keys": auth_manager.list_api_keys(workspace_id=ws_id)})
             return
         elif parsed.path == "/api/v1/users":
@@ -996,7 +1012,11 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
                 return
             q = parse_qs(parsed.query)
-            ws_id = (q.get("workspace_id") or [""])[0] or ctx["workspace_id"]
+            requested_ws = (q.get("workspace_id") or [""])[0]
+            if requested_ws and requested_ws != ctx["workspace_id"] and ctx.get("role") != "super_admin":
+                self._send_json({"status": "error", "error": "Forbidden: cannot inspect users of other workspaces"}, 403)
+                return
+            ws_id = requested_ws if (ctx.get("role") == "super_admin" and requested_ws) else ctx["workspace_id"]
             self._send_json({"status": "ok", "users": auth_manager.list_users(workspace_id=ws_id)})
             return
         elif parsed.path == "/api/v1/calls":
@@ -1005,7 +1025,11 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
                 return
             q = parse_qs(parsed.query)
-            self._send_json({"status": "ok", "workspace_id": ctx["workspace_id"], **call_history.list_calls(page=int((q.get("page") or ["1"])[0] or 1), page_size=int((q.get("page_size") or ["25"])[0] or 25))})
+            page = int((q.get("page") or ["1"])[0] or 1)
+            page_size = int((q.get("page_size") or ["25"])[0] or 25)
+            ws_id = None if ctx.get("role") == "super_admin" else ctx.get("workspace_id")
+            calls_data = call_history.list_calls(page=page, page_size=page_size, workspace_id=ws_id)
+            self._send_json({"status": "ok", "workspace_id": ctx["workspace_id"], **calls_data})
             return
         page = self._page_file(parsed.path)
         if page:
@@ -1140,7 +1164,22 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json(generic)
                 return
             user, token = issued
-            base = public_base_url() or self._public_base_url()
+            base = public_base_url()
+            if not base:
+                # If PUBLIC_BASE_URL is not set, only permit trusted local or platform hosts to prevent reset link poisoning
+                host_hdr = (self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "localhost:8091").strip()
+                railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
+                is_safe_host = (
+                    host_hdr in ("localhost", "127.0.0.1")
+                    or host_hdr.startswith(("localhost:", "127.0.0.1:"))
+                    or host_hdr.endswith(".railway.app")
+                    or (railway_domain and host_hdr == railway_domain)
+                )
+                if is_safe_host:
+                    base = self._public_base_url()
+                else:
+                    log.warning("Untrusted Host header in password reset request: '%s'; falling back to localhost", host_hdr)
+                    base = "http://localhost:8091"
             link = f"{base}/reset-password?token={token}"
             name = user.name or user.email.split("@")[0]
             text = (f"Hi {name},\n\nSomeone asked to reset the password for {user.email} on the Voice Agent dashboard.\n"
@@ -2419,10 +2458,35 @@ class Handler(SimpleHTTPRequestHandler):
         # --- Task 4.3: REST API & Multi-Tenant v1 POST Endpoints ---
         elif parsed.path == "/api/v1/auth/token":
             # Issues signed JWT Bearer token
-            subject = payload.get("username", payload.get("email", payload.get("subject", "user")))
-            ws_id = payload.get("workspace_id", "ws-default")
-            role = payload.get("role", "member_admin")
-            ttl = int(payload.get("ttl_seconds", 3600))
+            viewer = self._viewer()
+            sess_user = viewer.get("user")
+            is_super = viewer.get("is_super_admin", False)
+            if not is_super and not sess_user:
+                self._send_json({"status": "error", "error": "Authentication required to issue tokens"}, 401)
+                return
+
+            req_role = payload.get("role", "member_admin")
+            req_ws = payload.get("workspace_id", "")
+            subject = payload.get("username", payload.get("email", payload.get("subject", "")))
+
+            # Non-super admins cannot mint tokens for arbitrary roles or other workspaces
+            if not is_super:
+                ws_id = sess_user.workspace_id
+                subject = sess_user.email or sess_user.user_id
+                from agent.auth_manager import ROLE_RANK
+                user_rank = ROLE_RANK.get(sess_user.role, 0)
+                requested_rank = ROLE_RANK.get(req_role, 0)
+                if requested_rank > user_rank:
+                    self._send_json({"status": "error", "error": f"Cannot issue token with role '{req_role}' exceeding your role '{sess_user.role}'"}, 403)
+                    return
+                role = req_role
+            else:
+                ws_id = req_ws or (sess_user.workspace_id if sess_user else "ws-default")
+                role = req_role
+                if not subject:
+                    subject = "super_admin"
+
+            ttl = max(60, min(86400 * 30, int(payload.get("ttl_seconds", 3600))))
             token = auth_manager.issue_token(workspace_id=ws_id, subject=subject, role=role, ttl_seconds=ttl)
             self._send_json({"status": "ok", "token": token, "token_type": "Bearer", "expires_in": ttl, "workspace_id": ws_id})
             return
@@ -2446,7 +2510,11 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": err}, self._auth_err_code(err))
                 return
             name = payload.get("name", "Default Key").strip()
-            ws_id = payload.get("workspace_id", ctx["workspace_id"])
+            requested_ws = payload.get("workspace_id")
+            if requested_ws and requested_ws != ctx["workspace_id"] and ctx.get("role") != "super_admin":
+                self._send_json({"status": "error", "error": "Forbidden: cannot manage API keys for other workspaces"}, 403)
+                return
+            ws_id = requested_ws if (ctx.get("role") == "super_admin" and requested_ws) else ctx["workspace_id"]
             scopes = payload.get("scopes")
             is_test = bool(payload.get("is_test", False))
             try:
@@ -2475,7 +2543,11 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             email = payload.get("email", "").strip()
             role = payload.get("role", "member_admin").strip()
-            ws_id = payload.get("workspace_id", ctx["workspace_id"])
+            requested_ws = payload.get("workspace_id")
+            if requested_ws and requested_ws != ctx["workspace_id"] and ctx.get("role") != "super_admin":
+                self._send_json({"status": "error", "error": "Forbidden: cannot create users in other workspaces"}, 403)
+                return
+            ws_id = requested_ws if (ctx.get("role") == "super_admin" and requested_ws) else ctx["workspace_id"]
             try:
                 user = auth_manager.create_user(workspace_id=ws_id, email=email, role=role)
                 self._send_json({"status": "ok", "user": user.to_dict()}, 201)
@@ -2506,6 +2578,8 @@ class Handler(SimpleHTTPRequestHandler):
                         destination_number=destination,
                         caller_id=caller_id,
                         room_name=room_name,
+                        agent=agent_id,
+                        metadata=custom_metadata,
                     )
                 )
                 loop.close()

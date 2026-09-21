@@ -270,7 +270,7 @@ def sip_caller_number(ctx: agents.JobContext) -> str:
 def call_direction(room_name: str) -> str:
     """How the call was placed, from the room naming the Call Desk uses."""
     name = room_name or ""
-    if name.startswith("test-"):
+    if name.startswith(("test-", "dashboard-test-", "sandbox-", "verify-")):
         return "sandbox"
     if name.startswith(("outbound-", "softphone-", "dial-", "dispatch-")):
         return "outbound"
@@ -1492,8 +1492,7 @@ async def entrypoint(ctx: agents.JobContext):
         log.warning("Playout jitter buffer not installed: %s", e)
     publish_voice_state(active_cfg)
 
-    # ── Call History for every LiveKit call (test rooms and real ones) ─────────────────────────
-    is_test_room = ctx.room.name.startswith("test-")
+    is_test_room = ctx.room.name.startswith(("test-", "dashboard-test-", "sandbox-", "verify-"))
 
     def export_recording() -> Optional[str]:
         """The framework's audio.ogg → recordings/rec-<room>-<ts>.wav (16 kHz stereo) for the dashboard."""
@@ -1613,6 +1612,15 @@ async def entrypoint(ctx: agents.JobContext):
 
         async def greet():
             try:
+                # For outbound calls, wait until the remote callee actually picks up/answers
+                if direction == "outbound":
+                    for _ in range(60):
+                        remotes = list(ctx.room.remote_participants.values())
+                        if remotes:
+                            status = getattr(remotes[0], "attributes", {}).get("sip.callStatus")
+                            if status in ("active", "answered"):
+                                break
+                        await asyncio.sleep(0.5)
                 await asyncio.sleep(0.6)
                 publish({"type": "agent_reply", "text": greeting, "metrics": {"greeting": True},
                          "backend": llm_manager.backend, "timestamp": time.time()}, topic="agent_reply", reliable=True)

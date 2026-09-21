@@ -111,9 +111,13 @@ class SimulatedSynthesizeStream(_SynthesizeStreamBase):
             stream=True,
         )
 
+        current_segment_id = None
         segment_idx = 0
         async for item in self._input_ch:
             if hasattr(self, "_FlushSentinel") and isinstance(item, self._FlushSentinel):
+                if current_segment_id is not None:
+                    output_emitter.end_segment()
+                    current_segment_id = None
                 output_emitter.flush()
                 continue
 
@@ -123,9 +127,11 @@ class SimulatedSynthesizeStream(_SynthesizeStreamBase):
 
             if hasattr(self, "_mark_started"):
                 self._mark_started()
-            segment_id = f"seg_{segment_idx}"
-            segment_idx += 1
-            output_emitter.start_segment(segment_id=segment_id)
+
+            if current_segment_id is None:
+                current_segment_id = f"seg_{segment_idx}"
+                segment_idx += 1
+                output_emitter.start_segment(segment_id=current_segment_id)
 
             pcm_frames = generate_speech_pcm_frames(
                 text_chunk,
@@ -138,7 +144,9 @@ class SimulatedSynthesizeStream(_SynthesizeStreamBase):
                 # Clock synchronization: emulate real-time TTS audio generation
                 await asyncio.sleep(0.019)
 
+        if current_segment_id is not None:
             output_emitter.end_segment()
+            current_segment_id = None
 
         output_emitter.end_input()
 
@@ -157,15 +165,33 @@ class SimulatedStreamingTTS(_TTSBase):
         voice: str = "aura-asteria-en",
         num_channels: int = 1,
     ):
+        self._sample_rate_val = sample_rate
+        self._num_channels_val = num_channels
         if tts:
             super().__init__(
                 capabilities=tts.TTSCapabilities(streaming=True),
                 sample_rate=sample_rate,
                 num_channels=num_channels,
             )
-        self.sample_rate = sample_rate
-        self.num_channels = num_channels
         self._label = "simulated.StreamingTTS"
+
+    @property
+    def sample_rate(self) -> int:
+        if tts and hasattr(super(), "sample_rate"):
+            try:
+                return super().sample_rate
+            except Exception:
+                pass
+        return self._sample_rate_val
+
+    @property
+    def num_channels(self) -> int:
+        if tts and hasattr(super(), "num_channels"):
+            try:
+                return super().num_channels
+            except Exception:
+                pass
+        return self._num_channels_val
 
     @property
     def model(self) -> str:
@@ -259,24 +285,28 @@ class StreamingTTSManager:
     # (Studio / Neural sample voices) or its engine refused the request.
     _AURA_FALLBACK = {"female": "aura-asteria-en", "male": "aura-orion-en", "unisex": "aura-asteria-en"}
 
-    @staticmethod
-    def _elevenlabs_preflight(voice_id: str, api_key: str) -> str:
-        """Returns "" if ElevenLabs will synthesize this voice, else the reason it will not.
+    _elevenlabs_cache: Dict[str, str] = {}
 
-        Free / Starter plans refuse Voice Library and professional voices with HTTP 402. Finding
-        that out here costs ~1 s once per session instead of a silent agent on the first turn.
+    @classmethod
+    def _elevenlabs_preflight(cls, voice_id: str, api_key: str) -> str:
+        """Returns "" if ElevenLabs will synthesize this voice, else the reason it will not.
+        Uses cached voice check or lightweight GET /v1/voices/{voice_id} to avoid blocking synthesis & billing.
         """
+        cache_key = f"{voice_id}:{api_key[:8]}"
+        if cache_key in cls._elevenlabs_cache:
+            return cls._elevenlabs_cache[cache_key]
+
         import json as _json
         import urllib.error
         import urllib.request
         try:
             req = urllib.request.Request(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format=mp3_22050_32",
-                data=_json.dumps({"text": "Hi", "model_id": "eleven_turbo_v2_5"}).encode("utf-8"),
-                headers={"xi-api-key": api_key, "Content-Type": "application/json"},
+                f"https://api.elevenlabs.io/v1/voices/{voice_id}",
+                headers={"xi-api-key": api_key, "User-Agent": "VoiceAgentService/1.0"},
             )
-            with urllib.request.urlopen(req, timeout=8.0) as resp:
-                resp.read(64)
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                pass
+            cls._elevenlabs_cache[cache_key] = ""
             return ""
         except urllib.error.HTTPError as e:
             detail = ""
@@ -284,9 +314,13 @@ class StreamingTTSManager:
                 detail = _json.loads(e.read().decode("utf-8", "replace")).get("detail", {}).get("message", "")
             except Exception:
                 pass
-            return f"ElevenLabs HTTP {e.code}: {detail or e.reason}"
+            res = f"ElevenLabs HTTP {e.code}: {detail or e.reason}"
+            cls._elevenlabs_cache[cache_key] = res
+            return res
         except Exception as e:
-            return f"ElevenLabs unreachable: {e}"
+            res = f"ElevenLabs unreachable: {e}"
+            cls._elevenlabs_cache[cache_key] = res
+            return res
 
     def apply_voice(self, voice_id: str, provider: str = "", gender: str = "female", voice_name: str = "") -> dict:
         """Rebuilds the streaming engine for the voice the agent builder picked.
@@ -349,12 +383,21 @@ class StreamingTTSManager:
             info["fallback_reason"] = f"'{provider or 'sample'}' voices have no streaming engine for live calls"
 
         if new_tts is None:
-            if deepgram_key:
+            if self.api_key:
+                try:
+                    from livekit.plugins import cartesia
+                    fallback_voice = os.getenv("CARTESIA_VOICE_ID", "248be419-c632-4f23-adf1-5324ed7dbf1d")
+                    new_tts = cartesia.TTS(api_key=self.api_key, model=self.model, voice=fallback_voice, sample_rate=self.sample_rate)
+                    info.update(engine="cartesia", model=self.model)
+                except Exception as e:
+                    log.warning("Cartesia fallback failed: %s", e)
+
+            if new_tts is None and deepgram_key:
                 from livekit.plugins import deepgram
                 model = self._AURA_FALLBACK.get((gender or "female").lower(), "aura-asteria-en")
                 new_tts = deepgram.TTS(api_key=deepgram_key, model=model, sample_rate=self.sample_rate)
                 info.update(engine="deepgram-aura", model=model)
-            else:
+            elif new_tts is None:
                 new_tts = SimulatedStreamingTTS(sample_rate=self.sample_rate)
                 info.update(engine="simulator", model="formant")
 
@@ -463,6 +506,7 @@ class StreamingTTSManager:
             await self._active_play_task
         except asyncio.CancelledError:
             self._interrupted = True
+            raise
 
         duration_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
         ttfa_ms = (

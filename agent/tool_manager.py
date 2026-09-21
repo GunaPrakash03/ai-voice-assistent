@@ -14,14 +14,19 @@ Components:
 """
 
 import asyncio
+import ipaddress
 import json
 import logging
 import random
+import re
+import socket
 import time
+import urllib.parse
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 log = logging.getLogger("tool-manager")
+
 
 
 @dataclass
@@ -69,13 +74,20 @@ class FillerSpeechEngine:
         """Returns a natural contextual filler phrase formatted with arguments if possible."""
         phrases = self._tool_fillers.get(tool_name) or self.DEFAULT_FILLERS
         template = random.choice(phrases)
+        safe_args = {}
         if arguments:
-            try:
-                # Safe formatting for templates with placeholders like {order_id} or {date}
-                return template.format(**arguments)
-            except Exception:
-                return template
-        return template
+            for k, v in arguments.items():
+                if v is None:
+                    safe_args[k] = "support" if k == "department" else ""
+                else:
+                    safe_args[k] = str(v)
+        try:
+            formatted = template.format(**safe_args)
+        except Exception:
+            formatted = template
+        # Clean up any lingering unfilled {placeholder}
+        formatted = re.sub(r"\{[a-zA-Z0-9_]+\}\s*", "", formatted)
+        return re.sub(r"\s+", " ", formatted).strip()
 
 
 class AsyncToolDispatcher:
@@ -352,15 +364,36 @@ class ToolRegistry:
             )
         )
 
-        # 5. Execute Webhook
+        # 5. Execute Webhook with strict SSRF protection
+        def _is_safe_destination(url: str) -> Tuple[bool, str]:
+            try:
+                parsed = urllib.parse.urlparse(url)
+                if parsed.scheme not in ("http", "https"):
+                    return False, f"Unsupported scheme '{parsed.scheme}'"
+                hostname = parsed.hostname
+                if not hostname:
+                    return False, "Missing URL hostname"
+                # Resolve host IPs and verify none fall into restricted ranges
+                addr_info = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+                for family, socktype, proto, canonname, sockaddr in addr_info:
+                    ip_str = sockaddr[0]
+                    ip = ipaddress.ip_address(ip_str)
+                    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                        return False, f"Access to private/internal network IP '{ip_str}' is prohibited"
+                return True, ""
+            except Exception as e:
+                return False, f"Could not validate destination host: {e}"
+
         async def execute_webhook(
             endpoint_url: str,
             method: str = "POST",
             payload: Optional[dict] = None,
         ) -> dict:
-            # Safe simulated or real HTTP dispatcher
-            t_exec = time.perf_counter()
             if endpoint_url.startswith("http://") or endpoint_url.startswith("https://"):
+                safe, reason = _is_safe_destination(endpoint_url)
+                if not safe:
+                    log.warning("SSRF check rejected webhook request to %s: %s", endpoint_url, reason)
+                    return {"status_code": 403, "error": f"SSRF blocked: {reason}", "url": endpoint_url}
                 try:
                     import aiohttp
                     async with aiohttp.ClientSession() as session:
@@ -416,7 +449,7 @@ class ToolRegistry:
             department: Optional[str] = None,
             reason: Optional[str] = None,
         ) -> dict:
-            from agent.transfer_manager import transfer_manager, TransferMode
+            from agent.transfer_manager import transfer_manager, TransferMode, TransferStatus
             norm_type = TransferMode.WARM if str(transfer_type).lower() == "warm" else TransferMode.BLIND
             if norm_type == TransferMode.WARM:
                 rec = await transfer_manager.initiate_warm_transfer(
@@ -433,13 +466,20 @@ class ToolRegistry:
                     department=department,
                     reason=reason,
                 )
+            is_success = rec.status != TransferStatus.FAILED
+            msg = (
+                f"Transfer to {department or destination} ({rec.mode.value}) initiated successfully."
+                if is_success
+                else f"Transfer to {department or destination} failed: {rec.failure_reason or 'unknown error'}."
+            )
             return {
                 "transfer_id": rec.transfer_id,
                 "status": rec.status.value,
                 "target_number": rec.target_number,
                 "mode": rec.mode.value,
                 "department": department or "specialist",
-                "message": f"Transfer to {department or destination} ({rec.mode.value}) initiated successfully.",
+                "message": msg,
+                "error": rec.failure_reason if not is_success else None,
             }
 
         self.register(

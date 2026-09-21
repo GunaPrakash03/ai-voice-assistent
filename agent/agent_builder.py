@@ -636,21 +636,23 @@ class AgentBuilder:
         lines = [line.strip() for line in prompt.splitlines() if line.strip()]
         for line in lines[:4]:
             # Pattern 1: "You are Maya, an intake specialist answering calls for Bottini & Bottini, Inc."
-            m_full = re.search(r"you are ([A-Z][a-z]+)[,\s]+(?:an?|the)?\s*([a-zA-Z\s]+?)\s*(?:answering calls for|for|at)\s*([^\.]+)", line, re.I)
+            m_full = re.search(r"you are (?!(?:the|an?|ai)\b)([A-Z][a-z]+)[,\s]+(?:an?|the)?\s*([a-zA-Z\s]+?)\s*(?:answering calls for|for|at)\s*([^\.]+)", line, re.I)
             if m_full:
                 p_name = m_full.group(1).strip()
-                p_role = m_full.group(2).strip()
-                p_company = m_full.group(3).strip().rstrip(".")
-                team = "the intake team" if "intake" in p_role.lower() else ("the support team" if "support" in p_role.lower() else f"the {p_role}")
-                return f"Hi, I'm {p_name} from {team} at {p_company}. I'm an AI assistant, how can I help you today?"
+                if p_name.lower() not in ("the", "an", "a", "ai", "our"):
+                    p_role = m_full.group(2).strip()
+                    p_company = m_full.group(3).strip().rstrip(".")
+                    team = "the intake team" if "intake" in p_role.lower() else ("the support team" if "support" in p_role.lower() else f"the {p_role}")
+                    return f"Hi, I'm {p_name} from {team} at {p_company}. I'm an AI assistant, how can I help you today?"
 
             # Pattern 2: "You are Maya, an intake specialist..."
-            m_name_role = re.search(r"you are ([A-Z][a-z]+)[,\s]+(?:an?|the)?\s*([a-zA-Z\s]+?)(?:\.|$)", line, re.I)
+            m_name_role = re.search(r"you are (?!(?:the|an?|ai)\b)([A-Z][a-z]+)[,\s]+(?:an?|the)?\s*([a-zA-Z\s]+?)(?:\.|$)", line, re.I)
             if m_name_role:
                 p_name = m_name_role.group(1).strip()
-                p_role = m_name_role.group(2).strip()
-                team = "the intake team" if "intake" in p_role.lower() else f"the {p_role}"
-                return f"Hi, I'm {p_name} from {team}. I'm an AI assistant, how can I help you today?"
+                if p_name.lower() not in ("the", "an", "a", "ai", "our"):
+                    p_role = m_name_role.group(2).strip()
+                    team = "the intake team" if "intake" in p_role.lower() else f"the {p_role}"
+                    return f"Hi, I'm {p_name} from {team}. I'm an AI assistant, how can I help you today?"
 
             # Pattern 3: "You are the receptionist for X" / "You are an intake specialist at X"
             m = re.search(r"you are (?:the|an|a)?\s*(.*?)(?:\.|$)", line, re.I)
