@@ -47,7 +47,7 @@ class FieldType(str, Enum):
 # ---------------------------------------------------------------------------
 
 _PHONE_RE = re.compile(
-    r"(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}"
+    r"\b(?:\+?1[-.\s]?)?(?:\([2-9]\d{2}\)|[2-9]\d{2})[-.\s]?[2-9]\d{2}[-.\s]?\d{4}\b"
 )
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}")
 _DATE_RE = re.compile(
@@ -131,6 +131,31 @@ def register_schema(schema_id: str, schema: Dict[str, Any]) -> None:
     """Register a JSON Schema (draft-7 subset) by ID."""
     if "properties" not in schema:
         raise ValueError(f"Schema '{schema_id}' must have 'properties'")
+    for field_name, field_spec in schema.get("properties", {}).items():
+        patterns = field_spec.get("x-patterns") or []
+        if isinstance(patterns, list):
+            for pat in patterns:
+                try:
+                    re.compile(str(pat))
+                except re.error as e:
+                    raise ValueError(f"Invalid regex in x-patterns for field '{field_name}': {e}")
+        elif patterns:
+            try:
+                re.compile(str(patterns))
+            except re.error as e:
+                raise ValueError(f"Invalid regex in x-patterns for field '{field_name}': {e}")
+
+        if field_spec.get("pattern"):
+            try:
+                re.compile(str(field_spec["pattern"]))
+            except re.error as e:
+                raise ValueError(f"Invalid regex in pattern for field '{field_name}': {e}")
+
+        if "enum" in field_spec:
+            enum_vals = field_spec.get("enum")
+            if not isinstance(enum_vals, list) or not enum_vals or any(e is None or str(e).strip() == "" for e in enum_vals):
+                raise ValueError(f"Field '{field_name}' has empty or invalid enum options: {enum_vals}")
+
     _SCHEMA_REGISTRY[schema_id] = schema
     log.debug("Registered extraction schema: %s (%d fields)", schema_id, len(schema["properties"]))
 
@@ -218,7 +243,9 @@ def fields_to_schema(fields: List[Dict[str, Any]]) -> Dict[str, Any]:
             if not prop["enum"]:
                 prop["type"] = "string"
         if f.get("keywords"):
-            prop["keywords"] = list(f["keywords"])
+            prop["x-keywords"] = list(f["keywords"])
+        elif f.get("x-keywords"):
+            prop["x-keywords"] = list(f["x-keywords"])
         props[name] = prop
         if f.get("required"):
             required.append(name)
@@ -341,7 +368,7 @@ class SchemaExtractor:
                         return FieldResult(field_name, ftype.value, False, "no", 0.80, "proximity")
 
                 # String — extract next meaningful token after keyword (stop at punctuation)
-                else:
+                elif ftype == FieldType.STRING:
                     kw_end = idx + len(kw_lower)
                     snippet = full_text[kw_end: kw_end + 60].strip()
                     # Strip leading articles/connectors
@@ -436,10 +463,13 @@ class SchemaExtractor:
             if ftype == FieldType.PHONE:
                 # Normalize to digits-only representation
                 digits = re.sub(r"\D", "", raw)
-                if len(digits) >= 10:
+                if 10 <= len(digits) <= 15:
                     return raw  # return original formatted
+                return None
             return raw
         except Exception:
+            if ftype in (FieldType.INTEGER, FieldType.NUMBER, FieldType.PHONE, FieldType.ENUM):
+                return None
             return raw
 
     def extract(
@@ -503,11 +533,12 @@ class SchemaExtractor:
         Falls back to the regex extractor entirely when no key is configured or the call fails, so the
         pipeline never breaks because of the model.
         """
-        schema = schema or get_schema(schema_id)
+        if schema:
+            register_schema(schema_id, schema)
+        else:
+            schema = get_schema(schema_id)
         if not schema:
             raise KeyError(f"Schema '{schema_id}' not registered")
-        if schema_id not in _SCHEMA_REGISTRY:
-            _SCHEMA_REGISTRY[schema_id] = schema
         base = self.extract(schema_id, call_id, transcript_turns, metadata)
         if not _gemini_key():
             return base
@@ -529,46 +560,49 @@ class SchemaExtractor:
         user = f"FIELDS:\n{json.dumps(spec, indent=1)}\n\nTRANSCRIPT:\n{transcript}"
         try:
             data = gemini_json(sys_text, user, max_tokens=1500)
+            values = (data.get("values") or {}) if isinstance(data, dict) else {}
+            confs = (data.get("confidence") or {}) if isinstance(data, dict) else {}
+            if not isinstance(confs, dict):
+                scalar_conf = confs if isinstance(confs, (int, float)) else 0.85
+                confs = {name: scalar_conf for name in props}
+
+            by_name = {f.field_name: f for f in base.fields}
+            for name, prop in props.items():
+                val = values.get(name)
+                if val is None or val == "":
+                    continue
+                ftype = prop.get("type", "string")
+                try:
+                    if ftype == "number":
+                        val = float(re.sub(r"[^0-9.\-]", "", str(val))) if not isinstance(val, (int, float)) else val
+                    elif ftype == "boolean":
+                        val = bool(val) if isinstance(val, bool) else str(val).strip().lower() in ("true", "yes", "1")
+                    elif ftype == "enum" and prop.get("enum") and str(val) not in prop["enum"]:
+                        match = next((o for o in prop["enum"] if o.lower() == str(val).lower()), None)
+                        if not match:
+                            continue
+                        val = match
+                    else:
+                        val = str(val).strip()
+                except Exception:
+                    continue
+                conf = confs.get(name)
+                try:
+                    conf = max(0.0, min(1.0, float(conf))) if conf is not None else 0.85
+                except Exception:
+                    conf = 0.85
+                fr = by_name.get(name)
+                if fr is None:
+                    fr = FieldResult(name, ftype, None, "", 0.0, "missing"); base.fields.append(fr); by_name[name] = fr
+                fr.value, fr.raw_match, fr.confidence, fr.source = val, "gemini", round(conf, 3), "ai"
+            extracted = [f for f in base.fields if f.value is not None and not f.field_name.startswith("_")]
+            real = [f for f in base.fields if not f.field_name.startswith("_")]
+            base.missing_required = [r for r in schema.get("required", []) if not any(f.field_name == r and f.value is not None for f in real)]
+            base.overall_confidence = round(sum(f.confidence for f in real) / max(1, len(real)), 3)
+            base.extraction_coverage = round(len(extracted) / max(1, len(real)), 3)
         except Exception as e:
             log.warning("AI extraction fell back to regex for %s: %s", call_id, e)
             base.fields.append(FieldResult("_ai_note", "string", None, str(e)[:160], 0.0, "ai_unavailable"))
-            return base
-        values = (data.get("values") or {}) if isinstance(data, dict) else {}
-        confs = (data.get("confidence") or {}) if isinstance(data, dict) else {}
-        by_name = {f.field_name: f for f in base.fields}
-        for name, prop in props.items():
-            val = values.get(name)
-            if val is None or val == "":
-                continue
-            ftype = prop.get("type", "string")
-            try:
-                if ftype == "number":
-                    val = float(re.sub(r"[^0-9.\-]", "", str(val))) if not isinstance(val, (int, float)) else val
-                elif ftype == "boolean":
-                    val = bool(val) if isinstance(val, bool) else str(val).strip().lower() in ("true", "yes", "1")
-                elif ftype == "enum" and prop.get("enum") and str(val) not in prop["enum"]:
-                    match = next((o for o in prop["enum"] if o.lower() == str(val).lower()), None)
-                    if not match:
-                        continue
-                    val = match
-                else:
-                    val = str(val).strip()
-            except Exception:
-                continue
-            conf = confs.get(name)
-            try:
-                conf = max(0.0, min(1.0, float(conf))) if conf is not None else 0.85
-            except Exception:
-                conf = 0.85
-            fr = by_name.get(name)
-            if fr is None:
-                fr = FieldResult(name, ftype, None, "", 0.0, "missing"); base.fields.append(fr); by_name[name] = fr
-            fr.value, fr.raw_match, fr.confidence, fr.source = val, "gemini", round(conf, 3), "ai"
-        extracted = [f for f in base.fields if f.value is not None and not f.field_name.startswith("_")]
-        real = [f for f in base.fields if not f.field_name.startswith("_")]
-        base.missing_required = [r for r in schema.get("required", []) if not any(f.field_name == r and f.value is not None for f in real)]
-        base.overall_confidence = round(sum(f.confidence for f in real) / max(1, len(real)), 3)
-        base.extraction_coverage = round(len(extracted) / max(1, len(real)), 3)
         return base
 
     def extract_multi(
