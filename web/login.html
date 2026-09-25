@@ -147,6 +147,26 @@
 
 <script>
 (function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var ticket = null;
+  var countdownTimer = null;
+  var resendTimer = null;
+
+  // Dynamic system branding
+  fetch("/api/v1/system/branding").then(function (r) { return r.json(); }).then(function (d) {
+    if (d && d.branding) {
+      if (d.branding.dashboard_name) {
+        var el = document.querySelector(".brand b");
+        if (el) el.textContent = d.branding.dashboard_name;
+        document.title = document.title.replace(/Call Desk/g, d.branding.dashboard_name);
+      }
+      if (d.branding.tagline) {
+        var tel = document.querySelector(".brand span");
+        if (tel) tel.textContent = d.branding.tagline;
+      }
+    }
+  }).catch(function () {});
+
   var nextUrl = (function () {
     try {
       var n = new URLSearchParams(location.search).get("next");
