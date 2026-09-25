@@ -1,0 +1,208 @@
+{
+  "tools": [
+    {
+      "name": "check_availability",
+      "description": "Check available appointment time slots for a specified service type and date.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "service_type": {
+            "type": "string",
+            "description": "The category or type of service (e.g. consultation, inspection, support)."
+          },
+          "date": {
+            "type": "string",
+            "description": "The requested date, e.g. 'today', 'tomorrow', or 'YYYY-MM-DD'."
+          }
+        },
+        "required": [
+          "service_type"
+        ]
+      },
+      "timeout": 2.5,
+      "filler_phrases": [
+        "Let me check our calendar for available {service_type} times...",
+        "Looking into the schedule for {service_type} right now...",
+        "One second while I pull up open appointment slots..."
+      ],
+      "endpoint_url": "",
+      "method": "POST",
+      "metadata": {}
+    },
+    {
+      "name": "book_appointment",
+      "description": "Book a confirmed appointment reservation for a customer.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Customer full name"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Customer contact phone number"
+          },
+          "date": {
+            "type": "string",
+            "description": "Appointment date"
+          },
+          "time_slot": {
+            "type": "string",
+            "description": "Appointment time slot, e.g. '11:00 AM'"
+          },
+          "service": {
+            "type": "string",
+            "description": "Service name or type"
+          }
+        },
+        "required": [
+          "name",
+          "date",
+          "time_slot"
+        ]
+      },
+      "timeout": 3.0,
+      "filler_phrases": [
+        "Booking that appointment slot for you right now...",
+        "Securing your reservation in our booking system...",
+        "One moment while I confirm your appointment details..."
+      ],
+      "endpoint_url": "",
+      "method": "POST",
+      "metadata": {}
+    },
+    {
+      "name": "lookup_order",
+      "description": "Look up tracking details, shipping carrier, and delivery status for an order ID.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "description": "The order reference ID, e.g. 'ORD-1042' or '1042'"
+          }
+        },
+        "required": [
+          "order_id"
+        ]
+      },
+      "timeout": 2.5,
+      "filler_phrases": [
+        "Looking up the latest tracking details for order {order_id}...",
+        "Checking the status of your order in our fulfillment system...",
+        "One moment while I pull up those shipping records..."
+      ],
+      "endpoint_url": "",
+      "method": "POST",
+      "metadata": {}
+    },
+    {
+      "name": "query_knowledge_base",
+      "description": "Search documentation and knowledge base for FAQs, return policies, hours, and pricing.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Natural language search query or question"
+          },
+          "category": {
+            "type": "string",
+            "description": "Optional category filter (e.g. policies, hours, pricing)"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "timeout": 2.5,
+      "filler_phrases": [
+        "Let me check our knowledge base for that information...",
+        "Searching our policy documentation right now...",
+        "One second while I find the exact answer for you..."
+      ],
+      "endpoint_url": "",
+      "method": "POST",
+      "metadata": {}
+    },
+    {
+      "name": "execute_webhook",
+      "description": "Dispatch an asynchronous HTTP webhook to an external business API or endpoint.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "endpoint_url": {
+            "type": "string",
+            "description": "The destination URL or webhook identifier"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST"
+            ],
+            "description": "HTTP method"
+          },
+          "payload": {
+            "type": "object",
+            "description": "JSON payload to transmit"
+          }
+        },
+        "required": [
+          "endpoint_url"
+        ]
+      },
+      "timeout": 3.5,
+      "filler_phrases": [
+        "Dispatching request to external system, one moment...",
+        "Connecting to the external service now..."
+      ],
+      "endpoint_url": "",
+      "method": "POST",
+      "metadata": {}
+    },
+    {
+      "name": "transfer_call",
+      "description": "Transfer the current live caller to another telephone number, department, or human specialist.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "destination": {
+            "type": "string",
+            "description": "Target phone number or extension (E.164 format, e.g. +18885550142)"
+          },
+          "transfer_type": {
+            "type": "string",
+            "enum": [
+              "blind",
+              "warm"
+            ],
+            "description": "Transfer mode: blind (immediate handoff) or warm (attended with briefing)"
+          },
+          "department": {
+            "type": "string",
+            "description": "Target department name, e.g. 'billing', 'technical support', 'sales'"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Reason for the transfer to provide in handoff briefing"
+          }
+        },
+        "required": [
+          "destination"
+        ]
+      },
+      "timeout": 4.0,
+      "filler_phrases": [
+        "Transferring you to our {department} specialist right now, please stay on the line...",
+        "I am connecting you directly with a human representative, one moment please...",
+        "Placing you on a brief hold while I conference in our specialist..."
+      ],
+      "endpoint_url": "",
+      "method": "POST",
+      "metadata": {}
+    }
+  ],
+  "updated_at": 1789989820.527836
+}

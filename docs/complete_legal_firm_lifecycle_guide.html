@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Complete End-to-End Law Firm Lifecycle with Voice Agent & Clio</title>
+<style>
+  @page {
+    size: letter portrait;
+    margin: 14mm 14mm 14mm 14mm;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1a202c;
+    line-height: 1.45;
+    font-size: 8.8pt;
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .header {
+    border-bottom: 2px solid #0052cc;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 7pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: #e8f0fe;
+    color: #0052cc;
+    margin-bottom: 4px;
+  }
+
+  h1 {
+    font-size: 16pt;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0 0 4px 0;
+    line-height: 1.2;
+  }
+
+  .subtitle {
+    font-size: 8.5pt;
+    color: #475569;
+    margin: 0 0 6px 0;
+  }
+
+  .meta-row {
+    font-size: 7.5pt;
+    color: #64748b;
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+
+  h2 {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #0052cc;
+    border-left: 3px solid #0052cc;
+    padding-left: 6px;
+    margin: 14px 0 6px 0;
+    page-break-after: avoid;
+  }
+
+  h3 {
+    font-size: 9pt;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 10px 0 4px 0;
+    page-break-after: avoid;
+  }
+
+  p {
+    margin: 0 0 6px 0;
+    text-align: justify;
+  }
+
+  ul, ol {
+    margin: 0 0 6px 0;
+    padding-left: 18px;
+  }
+
+  li {
+    margin-bottom: 3px;
+  }
+
+  .highlight-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid #0052cc;
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin: 8px 0;
+    page-break-inside: avoid;
+  }
+
+  .highlight-box.step1 { border-left-color: #7c3aed; background: #faf5ff; }
+  .highlight-box.step2 { border-left-color: #0284c7; background: #f0f9ff; }
+  .highlight-box.step3 { border-left-color: #059669; background: #f0fdf4; }
+  .highlight-box.step4 { border-left-color: #ea580c; background: #fff7ed; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 10px 0;
+    font-size: 8pt;
+    page-break-inside: avoid;
+  }
+
+  th, td {
+    border: 1px solid #cbd5e1;
+    padding: 5px 7px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: #f1f5f9;
+    color: #0f172a;
+    font-weight: 700;
+  }
+
+  tr:nth-child(even) td {
+    background: #f8fafc;
+  }
+
+  pre, code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 7.2pt;
+    background: #0f172a;
+    color: #f8fafc;
+    border-radius: 4px;
+  }
+
+  code {
+    padding: 1px 3px;
+    color: #0969da;
+    background: #f1f5f9;
+    font-weight: 600;
+  }
+
+  pre {
+    padding: 7px 9px;
+    overflow-x: auto;
+    margin: 6px 0;
+    line-height: 1.35;
+    page-break-inside: avoid;
+  }
+
+  pre code {
+    color: #e2e8f0;
+    background: transparent;
+    padding: 0;
+  }
+
+  .ui-mockup {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #f8fafc;
+    padding: 8px 12px;
+    margin: 8px 0;
+    font-family: system-ui, sans-serif;
+    font-size: 8pt;
+    page-break-inside: avoid;
+  }
+
+  .ui-mockup-header {
+    font-weight: 700;
+    color: #0f172a;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .page-break {
+    page-break-before: always;
+  }
+
+  .footer-note {
+    font-size: 7pt;
+    color: #94a3b8;
+    text-align: center;
+    margin-top: 12px;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 4px;
+    page-break-inside: avoid;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="badge">Complete Operational Blueprint</span>
+  <h1>The End-to-End Law Firm System: Setup, Inbound Calls, Case Management & Client Portal</h1>
+  <div class="subtitle">A Step-by-Step Practical Guide Explaining How to Create the Firm, Route Calls, Manage Legal Cases, and Deliver Client Experiences</div>
+  <div class="meta-row">
+    <span><strong>Platform Architecture:</strong> Telephony Gateway + Voice Agent Service + Clio Manage + Clio for Clients</span>
+    <span><strong>Scope:</strong> Complete Business & Technical Workflow</span>
+  </div>
+</div>
+
+<h2>Overview: The 4 Life Stages of a Modern Law Firm</h2>
+<p>
+  To truly understand how this technology works, look at it as <strong>4 sequential life stages</strong>:
+</p>
+<ol>
+  <li><strong>Stage 1: Setting Up the Law Firm</strong> — Configuring the firm's brand, staff roles, and phone number in Clio.</li>
+  <li><strong>Stage 2: Receiving the Phone Call</strong> — A real caller dials the firm's number; the AI Voice Agent talks, questions, and records the intake.</li>
+  <li><strong>Stage 3: Managing the Case (The Lawyers' Work)</strong> — The lawyer reviews the file in Clio Manage, schedules court appearances, and tracks billables.</li>
+  <li><strong>Stage 4: The Client Portal (The Client's Smartphone Experience)</strong> — The client logs in on their phone to see case milestones, upload accident bills, and chat with their lawyer.</li>
+</ol>
+
+<div class="page-break"></div>
+
+<h2>Stage 1: How to Set Up the Law Firm in Clio</h2>
+<p>
+  When you open a law firm account in Clio Manage (<code>https://app.clio.com</code>), you perform four basic setup tasks:
+</p>
+
+<div class="highlight-box step1">
+  <strong>1. Configure Firm Details:</strong> Go to <em>Settings &gt; Firm Profile</em>. Enter your firm name (e.g., <em>Apex Legal Group</em>), address, website, and upload your firm logo.<br>
+  <strong>2. Set Up Practice Areas:</strong> Go to <em>Settings &gt; Practice Areas</em>. Add your core practice categories: <em>Personal Injury</em>, <em>Car Accidents</em>, <em>Contract Disputes</em>, <em>Family Law</em>.<br>
+  <strong>3. Add Attorney & Staff User Accounts:</strong> Go to <em>Settings &gt; Manage Users</em>. Invite your attorneys (e.g., <em>Sarah Jenkins, Lead Counsel</em>) and paralegals with distinct access permissions.<br>
+  <strong>4. Set Up the Firm's Dedicated Phone Number:</strong> In your Voice Agent telephony console (or Twilio/Telnyx carrier), obtain a virtual phone number (e.g., <code>+1 (555) 234-5678</code>) and route it to your Voice Agent SIP endpoint.
+</div>
+
+<h2>Stage 2: How a Client Calls the Firm & How the Voice Agent Handles It</h2>
+<p>
+  Here is the exact journey when an injured caller reaches your firm:
+</p>
+
+<pre><code>[ Caller: Mary Watson ] ──(Dials Firm Phone: +1 555-234-5678)──► [ Carrier / Twilio SIP Trunk ]
+                                                                             │
+                                                                             ▼
+[ AI Voice Agent Answers Sub-100ms ] ◄─────────────────────────── [ Voice Agent LiveKit Gateway ]
+  ├─ 1. Greets: "Thank you for calling Apex Legal Group. How can I help you today?"
+  ├─ 2. Mary: "I was injured in a collision with a commercial delivery van on 4th Street."
+  ├─ 3. Agent: "I am sorry to hear that. What is your full name and phone number?"
+  ├─ 4. Mary: "My name is Mary Watson, phone 555-019-3388."
+  └─ 5. Agent checks adverse party conflict: Queries Clio API for 'Delivery Van Corp' -> Clear!
+                                                                             │
+                                                                             ▼ (Call Finishes)
+[ Post-Call Processing Worker (agent/pipeline_worker.py) ]
+  ├─ Normalizes conversation audio into stereo WAV & saves to archive
+  ├─ Runs AI entity extraction (Name: Mary Watson, Phone: 555-019-3388, Type: Personal Injury)
+  └─ Calls Clio API (agent/clio_connector.py) to push the file into Clio Manage!</code></pre>
+
+<div class="ui-mockup">
+  <div class="ui-mockup-header">
+    <span>🤖 Voice Agent Call Summary Output</span>
+    <span>Duration: 2m 14s | Status: Processed</span>
+  </div>
+  <strong>Caller:</strong> Mary Watson | <strong>Phone:</strong> +1-555-019-3388 | <strong>Email:</strong> mary.watson@example.com<br>
+  <strong>Case Category:</strong> Personal Injury (Vehicle Accident) | <strong>Incident Date:</strong> 2026-09-20<br>
+  <strong>Opposing Party:</strong> Commercial Delivery Van | <strong>Summary:</strong> Caller was rear-ended at intersection; suffered neck sprain.
+</div>
+
+<div class="page-break"></div>
+
+<h2>Stage 3: How the Law Firm Manages the Case in Clio Manage</h2>
+<p>
+  Once the Voice Agent finishes the call, the attorney never has to do manual data entry. Everything appears in <strong>Clio Manage</strong>:
+</p>
+
+<div class="ui-mockup">
+  <div class="ui-mockup-header">
+    <span>⚖️ Clio Manage — Matter Overview: #00005-Watson (Mary Watson)</span>
+    <span>Status: Open | Responsible Attorney: Sarah Jenkins</span>
+  </div>
+  <table style="margin: 4px 0;">
+    <tr><td><strong>Client:</strong></td><td>Mary Watson (+1-555-019-3388)</td><td><strong>Practice Area:</strong></td><td>Personal Injury</td></tr>
+    <tr><td><strong>Matter Description:</strong></td><td>Vehicle collision on 4th St - Inbound Voice Intake</td><td><strong>Originating Source:</strong></td><td>AI Voice Agent Inbound Line</td></tr>
+    <tr><td><strong>Trust Ledger Balance:</strong></td><td>$0.00 (Pending Initial Retainer)</td><td><strong>Attached Audio:</strong></td><td>call_recording_20260923_rec.wav</td></tr>
+  </table>
+</div>
+
+<h3>What the Firm Staff Does Inside Clio:</h3>
+<ol>
+  <li><strong>Review the File:</strong> The paralegal clicks into Matter <code>00005-Watson</code>, reads the AI-generated executive summary, and listens to the recorded audio.</li>
+  <li><strong>Assign Onboarding Tasks:</strong> With one click, the paralegal applies the firm's <em>"Personal Injury Task Template"</em>. Clio automatically assigns:
+    <ul>
+      <li>Task 1: Request Police Traffic Incident Report (Due in 3 days).</li>
+      <li>Task 2: Send Medical Authorization HIPPA Release to Mary (Due in 5 days).</li>
+    </ul>
+  </li>
+  <li><strong>Court Calendaring:</strong> The attorney enters the court hearing and statute of limitations deadline into Clio's rules-based calendar.</li>
+  <li><strong>Time Tracking & Billing:</strong> The attorney starts Clio's built-in stopwatch timer whenever drafting court documents, logging billable hours automatically.</li>
+</ol>
+
+<div class="page-break"></div>
+
+<h2>Stage 4: How the Client Portal Works for the Client ("Clio for Clients")</h2>
+<p>
+  In traditional firms, clients call every week asking: <em>"Did you get my police report? When is my court date?"</em><br>
+  <strong>The Clio Client Portal eliminates this completely.</strong>
+</p>
+
+<h3>Step 1: The Firm Invites the Client</h3>
+<p>
+  Inside Clio Manage, on Mary Watson's matter, the attorney clicks <strong>"Share with Client Portal"</strong>. Clio automatically sends Mary an SMS and email with a secure link.
+</p>
+
+<h3>Step 2: What the Client Sees on Her Smartphone</h3>
+<p>
+  Mary clicks the link and opens the <strong>Clio for Clients</strong> app on her smartphone:
+</p>
+
+<div class="ui-mockup" style="border: 2px solid #ea580c; background: #fffaf0;">
+  <div class="ui-mockup-header" style="color: #c2410c;">
+    <span>📱 Client Portal — Mary Watson's Smartphone View</span>
+    <span>Apex Legal Group</span>
+  </div>
+  <div style="padding: 6px 0;">
+    <strong>Your Case:</strong> Motor Vehicle Collision (#00005-Watson)<br>
+    <strong>Your Lead Attorney:</strong> Sarah Jenkins, Esq. (<a href="mailto:sarah@apexlegal.com">sarah@apexlegal.com</a>)<br>
+    <hr style="border: none; border-top: 1px solid #fed7aa; margin: 6px 0;">
+    <strong>📅 Upcoming Milestones:</strong><br>
+    • October 14, 2026: Preliminary Status Conference (Attorney Attending)<br>
+    <hr style="border: none; border-top: 1px solid #fed7aa; margin: 6px 0;">
+    <strong>📁 Documents & Uploads:</strong><br>
+    • [Download] Signed Retainer Agreement.pdf<br>
+    • [Upload Button] <em>"Tap here to take a photo of your medical bills or auto repair estimates"</em><br>
+    <hr style="border: none; border-top: 1px solid #fed7aa; margin: 6px 0;">
+    <strong>💬 Direct Lawyer Messaging:</strong><br>
+    <em>"Hi Mary, we received your police report today. Our team is preparing the demand letter."</em>
+  </div>
+</div>
+
+<h3>Step 3: Why Clients Love the Client Portal</h3>
+<ul>
+  <li><strong>Instant Document Uploads:</strong> When Mary gets a doctor's bill, she takes a photo with her phone and taps upload. The photo saves directly into Clio Manage under her matter's document folder.</li>
+  <li><strong>Secure Messaging:</strong> No lost emails or spam folders. Messages are encrypted and stored right inside the case file for attorney-client privilege.</li>
+  <li><strong>Online Payments:</strong> Mary can pay court filing fees or retainers using Apple Pay, Google Pay, or debit card directly through the portal via Clio Payments.</li>
+</ul>
+
+<h2>5. Summary Architecture Diagram</h2>
+
+<pre><code>[ 1. PROSPECT CALLS ]        [ 2. AI VOICE AGENT ]        [ 3. CLIO MANAGE (FIRM) ]       [ 4. CLIENT PORTAL ]
+  Mary dials firm phone  ──►   Takes call, transcribes ──►   Attorney manages case,    ──►   Mary checks court dates,
+  after auto collision        facts, checks conflicts        assigns tasks & billing         uploads doctor bills on phone</code></pre>
+
+<div class="footer-note">
+  Generated for Voice Agent Service Technical Documentation | File: docs/COMPLETE_LEGAL_FIRM_LIFECYCLE_GUIDE.pdf
+</div>
+
+</body>
+</html>

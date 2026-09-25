@@ -192,15 +192,16 @@ class Handler(SimpleHTTPRequestHandler):
     # counts) stay unrestricted on GET; only mutating calls and full-page navigation are gated,
     # so a hidden sidebar link can't be worked around with a direct API call or typed URL.
     # Super Admin (Overall Admin) pages and system APIs: strictly restricted to super_admin.
-    # Product Admins (admin), Member Admins (member_admin), and regular Users (user) receive 403 / redirect.
-    SUPER_ADMIN_PAGES = ("/organizations", "/users")
-    SUPER_ADMIN_PREFIXES = ("/api/v1/system/",)
+    # Product Admins (admin) and Member Admins (member_admin) receive 403 / redirect for these.
+    # Softphone WebRTC dialer and API Keys & Provider Secrets are strictly Super Admin only.
+    SUPER_ADMIN_PAGES = ("/organizations", "/users", "/softphone", "/api-keys", "/branding")
+    SUPER_ADMIN_PREFIXES = ("/api/v1/system/", "/api/v1/api-keys", "/api/providers")
 
-    ADMIN_GET_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces")
-    ADMIN_POST_PREFIXES = ("/api/providers", "/api/v1/users", "/api/v1/api-keys", "/api/v1/workspaces",
+    ADMIN_GET_PREFIXES = ("/api/v1/users", "/api/v1/workspaces")
+    ADMIN_POST_PREFIXES = ("/api/v1/users", "/api/v1/workspaces",
                            "/api/v1/auth/users", "/api/agents", "/api/telephony", "/api/webhooks",
                            "/api/v1/calls/dispatch")
-    ADMIN_PAGES = ("/api-keys", "/admin-guide", "/cost-comparison", "/agent-builder", "/webhooks",
+    ADMIN_PAGES = ("/admin-guide", "/cost-comparison", "/agent-builder", "/webhooks",
                    "/competitor-analysis", "/user-guide", "/agents", "/sip-trunks", "/phone-numbers",
                    "/call-desk/agents", "/call-desk/sip-trunks", "/call-desk/phone-numbers")
 
@@ -223,6 +224,10 @@ class Handler(SimpleHTTPRequestHandler):
         v = self._viewer()
         path = parsed.path
 
+        # Allow reading system branding for all users on GET
+        if path == "/api/v1/system/branding" and method == "GET":
+            return True
+
         # 1. Super Admin Only Pages & APIs
         is_super_page = path in self.SUPER_ADMIN_PAGES or any(path == p or path.startswith(p + "/") for p in self.SUPER_ADMIN_PAGES)
         is_super_api = path.startswith(self.SUPER_ADMIN_PREFIXES)
@@ -239,6 +244,10 @@ class Handler(SimpleHTTPRequestHandler):
 
         # 2. Product Admin Only Pages & APIs
         if v["is_admin"]:
+            return True
+
+        # Member Admins are permitted to invite teammates in their own workspace; can_create_role enforces limits.
+        if path == "/api/v1/auth/users" and v.get("role") == "member_admin":
             return True
 
         if path.startswith(self.ADMIN_PAGES):
@@ -292,11 +301,19 @@ class Handler(SimpleHTTPRequestHandler):
         if match:
             start = int(match.group(1)) if match.group(1) else 0
             end = int(match.group(2)) if match.group(2) else None
-            chunk, start, end, total = call_history.read_audio_range(call_id, start, end)
+            range_res = call_history.read_audio_range(call_id, start, end)
+            if not range_res:
+                self._send_json({"status": "error", "error": "Invalid audio range or file not found"}, 416)
+                return
+            chunk, start, end, total = range_res
             self.send_response(206)
             self.send_header("Content-Range", f"bytes {start}-{end}/{total}")
         else:
-            chunk, start, end, total = call_history.read_audio_range(call_id)
+            range_res = call_history.read_audio_range(call_id)
+            if not range_res:
+                self._send_json({"status": "error", "error": "Audio file not found"}, 404)
+                return
+            chunk, start, end, total = range_res
             self.send_response(200)
 
         self.send_header("Content-Type", "audio/wav")
@@ -367,15 +384,18 @@ class Handler(SimpleHTTPRequestHandler):
             return False
         # Which DID was dialled — Twilio sends "To"/"Called".
         params = {}
+        post_body_params = {}
         try:
             if self.command == "POST":
                 length = int(self.headers.get("Content-Length", 0) or 0)
                 body = self.rfile.read(length).decode("utf-8", "replace") if length else ""
-                params = {k: v[0] for k, v in urllib.parse.parse_qs(body, keep_blank_values=True).items()}
+                post_body_params = {k: v[0] for k, v in urllib.parse.parse_qs(body, keep_blank_values=True).items()}
+            params = dict(post_body_params)
             params.update({k: v[0] for k, v in parse_qs(parsed.query, keep_blank_values=True).items()})
         except Exception:
             params = {}
-        if not self._twilio_signature_ok(parsed, params):
+            post_body_params = {}
+        if not self._twilio_signature_ok(parsed, post_body_params):
             log.warning("Rejected inbound voice webhook with bad/missing X-Twilio-Signature from %s", self.client_address)
             self.send_response(403)
             self.send_header("Content-Type", "text/plain")
@@ -400,7 +420,9 @@ class Handler(SimpleHTTPRequestHandler):
             ws_url = "ws" + base[len("http"):] + "/api/telephony/media-stream"
             # The shared secret rides as a custom parameter: Twilio drops any query string from the
             # <Stream> url, so it is checked on the "start" event, not at the HTTP upgrade.
-            token = media_stream_token()
+            # Refuse to emit media-stream token if signature validation is explicitly disabled
+            sig_val = os.getenv("TWILIO_VALIDATE_SIGNATURE", "1").strip().lower()
+            token = media_stream_token() if sig_val not in ("0", "false", "no") else ""
             token_param = f'      <Parameter name="token" value="{xml_escape(token)}" />\n' if token else ""
 
             twiml = (
@@ -494,6 +516,108 @@ class Handler(SimpleHTTPRequestHandler):
                 "product_admins": admin_count,
                 "member_admins": member_admin_count,
             })
+            return
+
+        if parsed.path == "/api/v1/system/branding":
+            self._send_json({"status": "ok", "branding": auth_manager.get_branding()})
+            return
+
+        if parsed.path in ("/branding", "/dashboard-branding"):
+            self.send_response(302)
+            self.send_header("Location", "/profile#cardBranding")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+
+        if parsed.path == "/oauth/callback":
+            q = parse_qs(parsed.query)
+            code = (q.get("code") or [""])[0]
+            error = (q.get("error") or [""])[0]
+            token_exchanged = False
+            token_error = ""
+
+            if code:
+                client_id = os.getenv("CLIO_MANAGE_CLIENT_ID", "1zYn1AJ48HtBvdTZz3OOLljEqPKYhHQZKAWK11tz")
+                client_secret = os.getenv("CLIO_MANAGE_CLIENT_SECRET", "CkoI8O7UzM5XapyKEnLNxvUXvckmyJAOKSqsV1Ww")
+                redirect_uri = os.getenv("CLIO_REDIRECT_URI", "https://dashboard-production-55c4.up.railway.app/oauth/callback")
+                if "127.0.0.1" in self.headers.get("Host", "") or "localhost" in self.headers.get("Host", ""):
+                    redirect_uri = f"http://{self.headers.get('Host')}/oauth/callback"
+
+                token_payload = urllib.parse.urlencode({
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                }).encode("utf-8")
+
+                req = urllib.request.Request(
+                    "https://app.clio.com/oauth/token",
+                    data=token_payload,
+                    headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=10.0) as resp:
+                        token_data = json.loads(resp.read().decode("utf-8"))
+                        acc_tok = token_data.get("access_token")
+                        ref_tok = token_data.get("refresh_token")
+                        if acc_tok:
+                            os.environ["CLIO_MANAGE_ACCESS_TOKEN"] = acc_tok
+                            if ref_tok:
+                                os.environ["CLIO_MANAGE_REFRESH_TOKEN"] = ref_tok
+                            # Update local .env file
+                            env_path = os.path.join(ROOT, ".env")
+                            if os.path.exists(env_path):
+                                lines = open(env_path).read().splitlines()
+                                lines = [l for l in lines if not l.startswith("CLIO_MANAGE_ACCESS_TOKEN=")]
+                                lines.append(f"CLIO_MANAGE_ACCESS_TOKEN={acc_tok}")
+                                open(env_path, "w").write("\n".join(lines) + "\n")
+                            token_exchanged = True
+                except Exception as tok_err:
+                    token_error = str(tok_err)
+                    log.error("Clio token exchange failed: %s", tok_err)
+
+            status_title = "Clio Connected Successfully!" if token_exchanged else ("Authorization Error" if (error or token_error) else ("Code Received" if code else "Callback Endpoint Ready"))
+            if token_exchanged:
+                msg = f"<strong>Success!</strong> Successfully connected to Clio Manage API. Access token retrieved and saved to environment."
+            elif token_error:
+                msg = f"Authorization code received, but token exchange failed: <code>{xml_escape(token_error)}</code>"
+            elif code:
+                msg = f"Authorization code received from Clio: <code>{xml_escape(code[:16])}...</code>"
+            elif error:
+                msg = f"Clio authorization error: <code>{xml_escape(error)}</code>"
+            else:
+                msg = "This endpoint is registered and ready to receive OAuth callbacks from Clio Developer Portal."
+
+            html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Clio OAuth Gateway - Voice Agent</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: #f8fafc; }}
+        .card {{ background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 32px; max-width: 480px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }}
+        h1 {{ font-size: 20px; color: {"#4ade80" if token_exchanged else "#38bdf8"}; margin-top: 0; }}
+        p {{ font-size: 14px; color: #94a3b8; line-height: 1.6; }}
+        .badge {{ display: inline-block; padding: 4px 12px; border-radius: 999px; background: {"#166534" if token_exchanged else "#0369a1"}; color: #e0f2fe; font-size: 12px; font-weight: 600; margin-bottom: 12px; }}
+        code {{ background: #0f172a; padding: 3px 6px; border-radius: 4px; font-size: 13px; color: #fbbf24; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <span class="badge">Clio OAuth Gateway</span>
+        <h1>{status_title}</h1>
+        <p>{msg}</p>
+        <p style="margin-top: 24px; font-size: 12px; color: #64748b;">You can safely return to the Voice Agent console or close this tab.</p>
+    </div>
+</body>
+</html>"""
+            body = html_content.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
 
         if parsed.path == "/token":
@@ -1074,6 +1198,10 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"error": "Invalid JSON"}, 400)
             return
 
+        if not isinstance(payload, dict):
+            self._send_json({"error": "Request body must be a JSON object"}, 400)
+            return
+
         if not self._require_session(parsed) or not self._enforce_role(parsed, "POST"):
             return
         if parsed.path == "/api/v1/auth/login":
@@ -1152,18 +1280,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": "Password reset email is not set up on this server yet. "
                                  "Ask your administrator to reset your password."}, 503)
                 return
-            # Throttled and send-failure cases answer with the same generic message: a different
-            # status for them would reveal which addresses have accounts. The real reason is logged.
-            try:
-                issued = auth_manager.create_password_reset(email)
-            except ValueError as e:
-                log.info("Password reset for %s throttled: %s", email, e)
-                self._send_json(generic)
-                return
-            if not issued:
-                self._send_json(generic)
-                return
-            user, token = issued
+
             base = public_base_url()
             if not base:
                 # If PUBLIC_BASE_URL is not set, only permit trusted local or platform hosts to prevent reset link poisoning
@@ -1180,20 +1297,35 @@ class Handler(SimpleHTTPRequestHandler):
                 else:
                     log.warning("Untrusted Host header in password reset request: '%s'; falling back to localhost", host_hdr)
                     base = "http://localhost:8091"
-            link = f"{base}/reset-password?token={token}"
-            name = user.name or user.email.split("@")[0]
-            text = (f"Hi {name},\n\nSomeone asked to reset the password for {user.email} on the Voice Agent dashboard.\n"
-                    f"Open this link to choose a new password (valid for 1 hour):\n\n{link}\n\n"
-                    "If you did not ask for this, ignore this email; your password stays the same.")
-            html = (f"<p>Hi {xml_escape(name)},</p><p>Someone asked to reset the password for <b>{xml_escape(user.email)}</b> "
-                    "on the Voice Agent dashboard.</p>"
-                    f"<p><a href=\"{xml_escape(link)}\" style=\"display:inline-block;padding:10px 18px;background:#C2560F;color:#fff;"
-                    "border-radius:6px;text-decoration:none;font-weight:600\">Choose a new password</a></p>"
-                    f"<p style=\"color:#666;font-size:13px\">Or paste this link: {xml_escape(link)}<br>It expires in 1 hour. "
-                    "If you did not ask for this, ignore this email; your password stays the same.</p>")
-            result = mailer.send_email(user.email, "Reset your Voice Agent password", text, html)
-            if not result.get("ok"):
-                log.error("Reset email to %s failed: %s", user.email, result.get("error"))
+
+            # Execute token issuance and email delivery asynchronously in a background thread to prevent
+            # response timing variations from leaking account existence.
+            def _async_send_reset(target_email: str, base_url: str):
+                try:
+                    issued = auth_manager.create_password_reset(target_email)
+                    if not issued:
+                        return
+                    user, token = issued
+                    link = f"{base_url}/reset-password?token={token}"
+                    name = user.name or user.email.split("@")[0]
+                    text = (f"Hi {name},\n\nSomeone asked to reset the password for {user.email} on the Voice Agent dashboard.\n"
+                            f"Open this link to choose a new password (valid for 1 hour):\n\n{link}\n\n"
+                            "If you did not ask for this, ignore this email; your password stays the same.")
+                    html = (f"<p>Hi {xml_escape(name)},</p><p>Someone asked to reset the password for <b>{xml_escape(user.email)}</b> "
+                            "on the Voice Agent dashboard.</p>"
+                            f"<p><a href=\"{xml_escape(link)}\" style=\"display:inline-block;padding:10px 18px;background:#C2560F;color:#fff;"
+                            "border-radius:6px;text-decoration:none;font-weight:600\">Choose a new password</a></p>"
+                            f"<p style=\"color:#666;font-size:13px\">Or paste this link: {xml_escape(link)}<br>It expires in 1 hour. "
+                            "If you did not ask for this, ignore this email; your password stays the same.</p>")
+                    res = mailer.send_email(user.email, "Reset your Voice Agent password", text, html)
+                    if not res.get("ok"):
+                        log.error("Reset email to %s failed: %s", user.email, res.get("error"))
+                except ValueError as e:
+                    log.info("Password reset for %s throttled: %s", target_email, e)
+                except Exception as e:
+                    log.warning("Background password reset error for %s: %s", target_email, e)
+
+            threading.Thread(target=_async_send_reset, args=(email, base), daemon=True).start()
             self._send_json(generic)
             return
 
@@ -1212,9 +1344,30 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError as e:
                 self._send_json({"status": "error", "error": str(e)}, 400)
                 return
-            # Sign them straight in on the new password.
-            token, doc = auth_manager.create_session(user, remember=False, user_agent=self.headers.get("User-Agent", ""), method="password_reset")
-            self._send_json({"status": "ok", "email": user.email},
+
+            from agent import sms
+            phone = auth_manager.normalize_phone(user.phone)
+            ua = self.headers.get("User-Agent", "")
+            if phone and sms.configured().get("ready"):
+                try:
+                    step = auth_manager.begin_two_step(user, remember=False, user_agent=ua)
+                except ValueError as e:
+                    self._send_json({"status": "error", "error": str(e)}, 400)
+                    return
+                result = sms.send_sms(step["phone"], f"Your Call Desk password reset code is {step['code']}. It expires in 5 minutes.")
+                if not result.get("ok"):
+                    self._send_json({"status": "error", "error": "Password accepted but the SMS code could not be sent: " + str(result.get("error", ""))}, 502)
+                    return
+                body = {"status": "ok", "step": "otp", "ticket": step["ticket"], "phone_masked": step["phone_masked"],
+                        "expires_in": auth_manager.OTP_TTL, "resend_after": auth_manager.OTP_RESEND_AFTER, "email": user.email}
+                if result.get("dry_run"):
+                    body["dry_run_code"] = step["code"]
+                self._send_json(body)
+                return
+
+            # If no phone on account, sign them straight in on the new password.
+            token, doc = auth_manager.create_session(user, remember=False, user_agent=ua, method="password_reset")
+            self._send_json({"status": "ok", "step": "done", "email": user.email},
                             extra_headers=self._set_session_cookie(token, doc["expires_at"] - time.time()))
             return
 
@@ -1253,6 +1406,19 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"status": "ok", "step": "done", **auth_manager.session_info(token)}, 200, self._set_session_cookie(token, doc["expires_at"] - time.time()))
             return
         # ── Super Admin System APIs (POST) ───────────────────────────────────
+        if parsed.path == "/api/v1/system/branding":
+            v = self._viewer()
+            if not v["is_super_admin"]:
+                self._send_json({"status": "error", "error": "Super Admin access required to update dashboard branding"}, 403)
+                return
+            try:
+                user_email = v["user"].email if v["user"] else "superadmin"
+                branding = auth_manager.set_branding(payload, user_email=user_email)
+                self._send_json({"status": "ok", "branding": branding})
+            except (ValueError, KeyError) as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+            return
+
         if parsed.path == "/api/v1/system/organizations":
             action = str(payload.get("action") or "create")
             try:

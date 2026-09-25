@@ -206,11 +206,24 @@
   }
 
   // Which step to show
-  fetch("/api/v1/auth/session").then(function (r) { return r.json(); }).then(function (d) {
-    if (d.authenticated) { done(); return; }
-    if (d.needs_setup) { $("suEmail").value = d.setup_email || ""; $("suName").value = d.setup_name || ""; }
-    show(d.needs_setup ? "stepSetup" : "stepPassword");
-  }).catch(function () { show("stepPassword"); });
+  var pendingOtp = null;
+  try {
+    var raw = sessionStorage.getItem("pending_otp");
+    if (raw) {
+      pendingOtp = JSON.parse(raw);
+      sessionStorage.removeItem("pending_otp");
+    }
+  } catch (e) {}
+
+  if (pendingOtp && pendingOtp.ticket) {
+    enterCodeStep(pendingOtp);
+  } else {
+    fetch("/api/v1/auth/session").then(function (r) { return r.json(); }).then(function (d) {
+      if (d.authenticated) { done(); return; }
+      if (d.needs_setup) { $("suEmail").value = d.setup_email || ""; $("suName").value = d.setup_name || ""; }
+      show(d.needs_setup ? "stepSetup" : "stepPassword");
+    }).catch(function () { show("stepPassword"); });
+  }
 
   $("setupForm").addEventListener("submit", function (e) {
     e.preventDefault();

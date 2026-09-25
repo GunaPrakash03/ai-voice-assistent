@@ -15,5 +15,7 @@ config/auth_store.json
 config/agents.json
 config/phone_numbers.json
 config/sip_trunks.json
+config/system_branding.json
 *.db
 webhook_receiver/
+.clio_tokens.json

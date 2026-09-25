@@ -106,6 +106,15 @@
       '</a>' +
       '<a href="/users" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">' +
         '<span>👥 Users Registry</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">ALL</span>' +
+      '</a>' +
+      '<a href="/api-keys" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">' +
+        '<span>🔑 API Keys & Providers</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>' +
+      '</a>' +
+      '<a href="/softphone" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">' +
+        '<span>📞 Softphone Dialer</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>' +
+      '</a>' +
+      '<a href="/profile#cardBranding" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">' +
+        '<span>🎨 Dashboard Branding</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>' +
       '</a>';
 
     nav.appendChild(sec);
@@ -113,6 +122,21 @@
 
   window.currentRole = null;
   window.currentProfile = null;
+  window.applyBranding = function (branding) {
+    if (!branding || !branding.dashboard_name) return;
+    var name = branding.dashboard_name;
+    var tagline = branding.tagline || "AI Assistant Voice";
+    Array.prototype.forEach.call(document.querySelectorAll(".brand b"), function (el) {
+      el.textContent = name;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".brand span"), function (el) {
+      el.textContent = tagline;
+    });
+    if (document.title.indexOf("Call Desk") !== -1) {
+      document.title = document.title.replace(/Call Desk/g, name);
+    }
+  };
+
   window.applyRoleVisibility = function () {
     if (!profile) return;
     var role = (window.currentRole || (profile && profile.role) || "viewer").toLowerCase();
@@ -126,7 +150,7 @@
 
     Array.prototype.forEach.call(document.querySelectorAll("[data-super-admin-only]"), function (el) {
       el.hidden = !isSuperAdmin;
-      el.style.display = isSuperAdmin ? "flex" : "none";
+      el.style.display = isSuperAdmin ? (el.dataset.display || "flex") : "none";
     });
 
     var saSec = document.getElementById("railSuperAdminSection");
@@ -146,6 +170,9 @@
         window.currentRole = profile.role || (profile.is_super_admin ? "super_admin" : (profile.is_admin ? "admin" : "member_admin"));
         render();
         window.applyRoleVisibility();
+        if (profile.system_branding) {
+          window.applyBranding(profile.system_branding);
+        }
         window.dispatchEvent(new CustomEvent("profileLoaded", { detail: profile }));
       } else {
         $("rpName").textContent = "Profile unavailable";

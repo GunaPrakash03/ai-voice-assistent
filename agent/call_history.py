@@ -126,7 +126,8 @@ class CallHistoryStore:
 
     def load(self, force: bool = False) -> List[CallRecord]:
         """Rebuilds the record set from disk (cheap enough to do per request)."""
-        if not force and self._cache and time.time() - self._loaded_at < 1.0:
+        jobs_mtime = os.path.getmtime(self.jobs_file) if os.path.isfile(self.jobs_file) else 0.0
+        if not force and self._cache and (time.time() - self._loaded_at < 1.0) and (jobs_mtime <= self._loaded_at):
             return list(self._cache.values())
 
         jobs: List[Dict[str, Any]] = []

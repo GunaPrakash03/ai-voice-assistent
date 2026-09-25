@@ -25,6 +25,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from agent.provider_manager import provider_manager as _pm
 from agent.sentiment_analyzer import sentiment_analyzer
 from agent.schema_extractor import schema_extractor, list_schemas
 
@@ -584,6 +585,54 @@ class PostCallPipelineWorker:
                 },
             })
             self._emit_event("stage_completed", job, {"stage": PipelineStage.SCHEMA_EXTRACTION.value})
+
+            # -------------------------------------------------------------
+            # Post-Extraction CRM Sync (Clio Grow Integration)
+            # -------------------------------------------------------------
+            try:
+                from agent.clio_connector import clio_connector
+                legal_extracted = job.metadata.get("crm_payloads", {}).get("legal_intake")
+                if not legal_extracted and "agent_extraction" in job.metadata:
+                    legal_extracted = job.metadata["agent_extraction"].get("values")
+                # Clio Grow Sync (if Grow token is set)
+                if legal_extracted and clio_connector.grow_token:
+                    full_transcript = "\n".join(
+                        f"{t.get('role', 'Speaker')}: {t.get('text', '')}"
+                        for t in (job.transcript_turns or [])
+                    )
+                    clio_res = clio_connector.send_lead_to_clio_grow(
+                        extracted_fields=legal_extracted,
+                        transcript_text=full_transcript,
+                        recording_url=job.archive_url,
+                    )
+                    job.metadata["clio_sync"] = clio_res
+
+                # Clio Manage Sync (using active OAuth2 Access Token)
+                if legal_extracted and clio_connector.manage_token:
+                    raw_name = legal_extracted.get("client_name") or "New Caller"
+                    parts = raw_name.strip().split()
+                    c_first = parts[0] if parts else "New"
+                    c_last = " ".join(parts[1:]) if len(parts) > 1 else "Client"
+                    c_res = clio_connector.create_manage_contact(
+                        first_name=c_first,
+                        last_name=c_last,
+                        phone=legal_extracted.get("contact_phone"),
+                        email=legal_extracted.get("contact_email"),
+                    )
+                    if c_res.get("status") == "success":
+                        cid = c_res["contact_id"]
+                        c_desc = f"{legal_extracted.get('case_type', 'Intake')} - Inbound Voice Agent Call"
+                        m_res = clio_connector.create_manage_matter(
+                            client_id=cid,
+                            description=c_desc,
+                        )
+                        job.metadata["clio_manage_sync"] = {
+                            "contact": c_res,
+                            "matter": m_res,
+                        }
+                        log.info("Clio Manage synced: Contact %s, Matter %s", cid, m_res.get("matter_id"))
+            except Exception as clio_err:
+                log.warning("Clio sync encountered non-blocking error for %s: %s", job.call_id, clio_err)
 
             # -------------------------------------------------------------
             # Stage 6: Storage Archive Verification & Metadata Manifest

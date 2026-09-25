@@ -33,6 +33,7 @@ if not log.handlers:
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_DIR = os.path.join(ROOT_DIR, "config")
 AUTH_STORE_PATH = os.path.join(CONFIG_DIR, "auth_store.json")
+SYSTEM_BRANDING_PATH = os.path.join(CONFIG_DIR, "system_branding.json")
 
 # Default system secret for signing session tokens
 JWT_SECRET = os.getenv("AUTH_JWT_SECRET", "voice-agent-jwt-secret-key-prod-2026")
@@ -125,9 +126,18 @@ class ApiScope(str, Enum):
 # Role-to-Scope Permissions Mapping
 ROLE_SCOPES: Dict[UserRole, Set[str]] = {
     UserRole.SUPER_ADMIN: {s.value for s in ApiScope},
-    UserRole.ADMIN: {s.value for s in ApiScope},
-    # Member Admin absorbed the retired Standard User role, so it carries that role's working scopes
-    # too; only workspace administration stays with the two admin tiers.
+    # Product Admin manages workspace configuration (agents, webhooks) but does NOT have access
+    # to API Keys & Provider Secrets (workspaces:admin) or Softphone WebRTC Dialer (telephony:dial),
+    # which are strictly reserved for Super Admin.
+    UserRole.ADMIN: {
+        ApiScope.CALLS_READ.value,
+        ApiScope.CALLS_WRITE.value,
+        ApiScope.CALLS_DISPATCH.value,
+        ApiScope.AGENTS_READ.value,
+        ApiScope.AGENTS_WRITE.value,
+        ApiScope.ANALYTICS_READ.value,
+        ApiScope.WEBHOOKS_ADMIN.value,
+    },
     UserRole.MEMBER_ADMIN: {
         ApiScope.CALLS_READ.value,
         ApiScope.CALLS_WRITE.value,
@@ -135,7 +145,6 @@ ROLE_SCOPES: Dict[UserRole, Set[str]] = {
         ApiScope.AGENTS_READ.value,
         ApiScope.AGENTS_WRITE.value,
         ApiScope.ANALYTICS_READ.value,
-        ApiScope.TELEPHONY_DIAL.value,
         ApiScope.WEBHOOKS_ADMIN.value,
     },
 }
@@ -920,7 +929,48 @@ class AuthManager:
                 if ws and k.workspace_id == ws.workspace_id and (user is None or user.role in (UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value))
             ][:10],
             "api_keys_active": sum(1 for k in self._api_keys.values() if ws and k.workspace_id == ws.workspace_id and not k.revoked),
+            "system_branding": self.get_branding(),
         }
+
+    def get_branding(self) -> Dict[str, Any]:
+        if os.path.isfile(SYSTEM_BRANDING_PATH):
+            try:
+                with open(SYSTEM_BRANDING_PATH, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return {
+                        "dashboard_name": str(data.get("dashboard_name") or "Call Desk").strip(),
+                        "tagline": str(data.get("tagline") or "AI Assistant Voice").strip(),
+                        "updated_at": data.get("updated_at"),
+                        "updated_by": data.get("updated_by") or "",
+                    }
+            except Exception as e:
+                log.warning("Failed to read system branding: %s", e)
+        return {
+            "dashboard_name": "Call Desk",
+            "tagline": "AI Assistant Voice",
+            "updated_at": None,
+            "updated_by": "",
+        }
+
+    def set_branding(self, changes: Dict[str, Any], user_email: str = "") -> Dict[str, Any]:
+        name = str(changes.get("dashboard_name") or "").strip()
+        if not name:
+            raise ValueError("Dashboard name cannot be empty")
+        if len(name) > 60:
+            raise ValueError("Dashboard name must be 60 characters or fewer")
+        tagline = str(changes.get("tagline") if "tagline" in changes else "AI Assistant Voice").strip()
+        if len(tagline) > 120:
+            raise ValueError("Tagline must be 120 characters or fewer")
+        doc = {
+            "dashboard_name": name,
+            "tagline": tagline,
+            "updated_at": time.time(),
+            "updated_by": user_email or "superadmin",
+        }
+        os.makedirs(os.path.dirname(SYSTEM_BRANDING_PATH), exist_ok=True)
+        with open(SYSTEM_BRANDING_PATH, "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=2)
+        return doc
 
     def update_profile(self, changes: Dict[str, Any], user_id: Optional[str] = None) -> Dict[str, Any]:
         user = (self._users.get(user_id) if user_id else None) or self._current_user()
@@ -1332,7 +1382,7 @@ class AuthManager:
                 "workspace_id": ws.workspace_id,
                 "auth_type": "workspace_header",
                 "identity": f"anon-{ws.workspace_id}",
-                "role": UserRole.USER.value,
+                "role": UserRole.MEMBER_ADMIN.value,
                 "scopes": [],
             }
             return True, ctx, None
@@ -1346,7 +1396,7 @@ class AuthManager:
             "workspace_id": "ws-default",
             "auth_type": "internal",
             "identity": "internal-user",
-            "role": UserRole.USER.value,
+            "role": UserRole.MEMBER_ADMIN.value,
             "scopes": [],
         }
         return True, ctx, None

@@ -52,6 +52,15 @@
     font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s}
   .nav button:hover,.nav a:hover{background:rgba(255,255,255,.06);color:var(--rail-on)}
   .nav [aria-selected="true"]{background:var(--accent);color:#fff;font-weight:600}
+  .nav [data-v="market"]{color:var(--accent);font-weight:600}
+  .nav [data-v="market"] .ct{background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700}
+  .nav [data-v="market"][aria-selected="true"]{background:var(--accent) !important;color:#fff !important}
+  .nav [data-v="market"][aria-selected="true"] .ct{background:rgba(255,255,255,0.25) !important;color:#fff !important}
+  .brand{position:relative}
+  .brand-edit-btn{display:none;position:absolute;top:0;right:18px;font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(124,58,237,.25);color:#d8b4fe;text-decoration:none;border:1px solid rgba(192,132,252,.3);font-family:var(--f-mono,monospace);font-weight:600;transition:all .15s}
+  .brand-edit-btn:hover{background:rgba(124,58,237,.45);color:#fff}
+  .modal-close-btn{font-size:16px;line-height:1;width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;color:var(--ink-soft);border:1px solid var(--line);background:transparent;transition:all .15s}
+  .modal-close-btn:hover{color:var(--ink);background:var(--sunk);border-color:var(--ink-faint)}
   .nav button:focus-visible,.nav a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
   .nav .ct{font-family:var(--f-mono);font-size:11px;opacity:.85}
   .rail-foot{margin-top:auto;padding:14px 18px 0;border-top:1px solid rgba(255,255,255,.07)}
@@ -236,15 +245,18 @@
 <div class="app">
   <!-- Navigation Rail -->
   <nav class="rail">
-    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div class="brand">
+      <b>Call Desk</b>
+      <span>AI Assistant Voice</span>
+      <a href="/profile#cardBranding" class="brand-edit-btn" data-super-admin-only title="Edit Dashboard Name (Super Admin)" style="display:none">✎ Edit</a>
+    </div>
     <div class="nav" role="tablist">
       <a role="tab" href="/call-desk" aria-selected="true" data-v="overview">Overview<span class="ct" id="ctOverview">…</span></a>
       <a role="tab" href="/call-desk/calls" aria-selected="false" data-v="calls">Calls<span class="ct" id="ctCalls">…</span></a>
       <a role="tab" href="/call-desk/call-detail" aria-selected="false" data-v="detail">Call detail</a>
       <a role="tab" href="/call-desk/sip-trunks" aria-selected="false" data-v="telephony" data-admin-only>SIP Trunks &amp; DIDs<span class="ct" id="ctDids">…</span></a>
-      <a role="tab" href="/call-desk/phone-numbers" aria-selected="false" data-v="market" data-admin-only style="color:var(--accent);font-weight:600">Buy Phone Numbers<span class="ct" style="background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:4px;font-weight:700">DID</span></a>
+      <a role="tab" href="/call-desk/phone-numbers" aria-selected="false" data-v="market" data-admin-only>Buy Phone Numbers<span class="ct">DID</span></a>
       <a role="tab" href="/call-desk/agents" aria-selected="false" data-v="agents" data-admin-only>Agents<span class="ct" id="ctAgents">…</span></a>
-      <a href="/api-keys" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">API Keys &amp; Providers</a>
       <a href="/webhooks" data-admin-only style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center">Webhooks &amp; Data</a>
       <div id="railSuperAdminSection" class="sa-nav-section" data-super-admin-only style="display:flex;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);flex-direction:column;gap:1px">
         <div style="font-family:var(--f-mono,monospace);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#c084fc;padding:4px 12px 6px;font-weight:700">👑 Overall System</div>
@@ -253,6 +265,15 @@
         </a>
         <a href="/users" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
           <span>👥 Users Registry</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">ALL</span>
+        </a>
+        <a href="/api-keys" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
+          <span>🔑 API Keys &amp; Providers</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>
+        </a>
+        <a href="/softphone" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
+          <span>📞 Softphone Dialer</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>
+        </a>
+        <a href="/profile#cardBranding" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
+          <span>🎨 Dashboard Branding</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>
         </a>
       </div>
     </div>
@@ -269,7 +290,10 @@
         <h1 id="title">Call history</h1>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <button id="btnSimulate" class="btn" title="Generate and execute a real live dynamic call through the AI pipeline" data-admin-only>
+        <a href="https://app.clio.com" target="_blank" class="btn" style="background:#0052cc;color:#fff;border-color:#0052cc" title="Open Clio Manage in new tab">
+          ⚖️ Clio Manage
+        </a>
+        <button id="btnSimulate" class="btn ghost" title="Generate and execute a real live dynamic call through the AI pipeline" data-admin-only>
           Simulate Inbound Call
         </button>
         <button id="btnOpenMarket" class="btn ghost" title="Browse and purchase carrier phone numbers" data-admin-only>
@@ -409,14 +433,14 @@
 
         <!-- Sub navigation pills -->
         <div class="filters" id="telNav">
-          <button aria-pressed="true" data-tv="owned">Active Phone Numbers</button>
+          <button aria-pressed="false" data-tv="owned">Active Phone Numbers</button>
           <button aria-pressed="false" data-tv="market">Purchase Direct Numbers</button>
-          <button aria-pressed="false" data-tv="trunks">SIP Trunks &amp; Gateways</button>
+          <button aria-pressed="true" data-tv="trunks">SIP Trunks &amp; Gateways</button>
           <button aria-pressed="false" data-tv="rules">Dispatch &amp; Routing Rules</button>
         </div>
 
         <!-- Section: Active Owned Numbers -->
-        <div id="sub-owned">
+        <div id="sub-owned" style="display:none">
           <div class="card">
             <div class="card-h" style="display:flex;justify-content:space-between;align-items:center">
               <div>
@@ -465,7 +489,7 @@
         </div>
 
         <!-- Section: SIP Trunks & Gateways -->
-        <div id="sub-trunks" style="display:none">
+        <div id="sub-trunks">
           <div class="card" style="margin-bottom:20px">
             <div class="card-h">
               <div>
@@ -529,7 +553,7 @@
   <div class="modal-card">
     <div class="modal-h">
       <h3>Purchase &amp; Provision Phone Number</h3>
-      <button class="btn ghost sm" id="btnClosePurchaseModal"></button>
+      <button class="btn ghost sm modal-close-btn" id="btnClosePurchaseModal" aria-label="Close" title="Close">✕</button>
     </div>
     <div class="modal-b">
       <div class="form-group">
@@ -571,7 +595,7 @@
   <div class="modal-card">
     <div class="modal-h">
       <h3 id="modalEditNumberTitle">Edit Phone Number &amp; Routing</h3>
-      <button class="btn ghost sm" id="btnCloseEditNumberModal"></button>
+      <button class="btn ghost sm modal-close-btn" id="btnCloseEditNumberModal" aria-label="Close" title="Close">✕</button>
     </div>
     <div class="modal-b">
       <div class="form-group">
@@ -613,7 +637,7 @@
   <div class="modal-card">
     <div class="modal-h">
       <h3>Configure Single SIP Trunk</h3>
-      <button class="btn ghost sm" id="btnCloseUnifiedTrunkModal"></button>
+      <button class="btn ghost sm modal-close-btn" id="btnCloseUnifiedTrunkModal" aria-label="Close" title="Close">✕</button>
     </div>
     <div class="modal-b">
       <div class="form-group">
@@ -677,7 +701,7 @@
   <div class="modal-card">
     <div class="modal-h">
       <h3>Create Inbound SIP Trunk</h3>
-      <button class="btn ghost sm" id="btnCloseInboundTrunkModal"></button>
+      <button class="btn ghost sm modal-close-btn" id="btnCloseInboundTrunkModal" aria-label="Close" title="Close">✕</button>
     </div>
     <div class="modal-b">
       <div class="form-group">
@@ -721,7 +745,7 @@
   <div class="modal-card">
     <div class="modal-h">
       <h3>Create Outbound SIP Trunk</h3>
-      <button class="btn ghost sm" id="btnCloseOutboundTrunkModal"></button>
+      <button class="btn ghost sm modal-close-btn" id="btnCloseOutboundTrunkModal" aria-label="Close" title="Close">✕</button>
     </div>
     <div class="modal-b">
       <div class="form-group">
@@ -804,7 +828,26 @@
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
-  function show(view) {
+  var currentActiveCallsCount = 0;
+  var currentTotalCallsCount = 0;
+
+  function updateLiveBadge() {
+    var text = (currentActiveCallsCount > 0 ? currentActiveCallsCount + " active · " : "0 active · ") + currentTotalCallsCount + " total";
+    var el = $("#livect");
+    if (el) { el.textContent = text; }
+    var pulse = document.querySelector(".livechip .pulse");
+    if (pulse) {
+      if (currentActiveCallsCount > 0) {
+        pulse.style.background = "#22c55e";
+        pulse.style.boxShadow = "0 0 8px #22c55e";
+      } else {
+        pulse.style.background = "var(--pos)";
+        pulse.style.boxShadow = "none";
+      }
+    }
+  }
+
+  function show(view, sub) {
     if (view === "market") {
       Array.prototype.forEach.call(document.querySelectorAll(".nav [data-v]"), function (b) {
         b.setAttribute("aria-selected", String(b.dataset.v === "market"));
@@ -833,15 +876,26 @@
     window.scrollTo(0, 0);
 
     if (view === "telephony") {
-      loadTelephony();
+      loadTelephony().then(function () {
+        var targetSub = sub || "trunks";
+        var tBtn = document.querySelector("#telNav button[data-tv='" + targetSub + "']");
+        if (tBtn) { tBtn.click(); }
+      });
       var pressed = document.querySelector("#telNav button[aria-pressed='true']");
-      syncPath("telephony", pressed ? pressed.dataset.tv : "owned");
+      syncPath("telephony", sub || (pressed ? pressed.dataset.tv : "trunks"));
     } else {
       syncPath(view);
     }
   }
   Array.prototype.forEach.call(document.querySelectorAll(".nav [data-v]"), function (b) {
-    b.addEventListener("click", function (e) { e.preventDefault(); show(b.dataset.v); });
+    b.addEventListener("click", function (e) {
+      e.preventDefault();
+      if (b.dataset.v === "telephony") {
+        show("telephony", "trunks");
+      } else {
+        show(b.dataset.v);
+      }
+    });
   });
 
   // URL ↔ view. Every sidebar item is a real link (/calls, /agents, /sip-trunks/trunks, /phone-numbers)
@@ -852,7 +906,8 @@
   var applyingPath = false;
   function pathFor(view, sub) {
     if (view === "telephony" && sub === "market") { return BASE + "/phone-numbers"; }
-    if (view === "telephony" && sub && sub !== "owned") { return BASE + "/sip-trunks/" + sub; }
+    if (view === "telephony" && sub && sub !== "trunks") { return BASE + "/sip-trunks/" + sub; }
+    if (view === "telephony") { return BASE + "/sip-trunks"; }
     var p = ROUTES[view] || "/";
     return p === "/" ? (BASE || "/") : BASE + p;
   }
@@ -866,14 +921,14 @@
     var legacy = location.hash.replace("#", "");            // old /#agents, /#telephony/trunks links
     var rest = location.pathname.slice(BASE.length).replace(/^\/+/, "").split("/");
     if (legacy) { view = legacy.split("/")[0]; sub = legacy.split("/")[1] || ""; }
-    else if (rest[0] === "sip-trunks") { view = "telephony"; sub = rest[1] || ""; }
+    else if (rest[0] === "sip-trunks") { view = "telephony"; sub = rest[1] || "trunks"; }
     else if (rest[0]) { for (var k in ROUTES) { if (ROUTES[k] === "/" + rest[0]) { view = k; } } }
     if (!ROUTES[view]) { return; }
     applyingPath = true;
     try {
-      show(view);
+      show(view, sub);
       if (view === "telephony") {
-        var b = document.querySelector("#telNav button[data-tv='" + (sub || "owned") + "']");
+        var b = document.querySelector("#telNav button[data-tv='" + (sub || "trunks") + "']");
         if (b) { b.click(); }
       }
     } finally { applyingPath = false; }
@@ -886,9 +941,10 @@
     if (!stats) { return; }
     var countChanged = lastCallCount > 0 && stats.calls !== lastCallCount;
     lastCallCount = stats.calls;
+    currentTotalCallsCount = stats.calls;
 
     $("#ctOverview").textContent = stats.calls + " calls";
-    $("#livect").textContent = stats.calls + " calls · Live";
+    updateLiveBadge();
 
     var cardsHtml =
       card("Calls recorded", stats.calls, stats.with_audio + " with audio", countChanged) +
@@ -960,6 +1016,8 @@
   function checkActiveCalls() {
     return fetch("/api/telephony/calls").then(function (r) { return r.json(); }).then(function (data) {
       var calls = (data.calls || []).filter(function (c) { return c.status === "in_progress" || c.status === "active" || c.status === "ringing"; });
+      currentActiveCallsCount = calls.length;
+      updateLiveBadge();
       var card = $("#activeCallsCard");
       var list = $("#activeCallsList");
       if (calls.length > 0) {
@@ -973,7 +1031,7 @@
             '<span class="agent">→ ' + CI.escapeHtml(c.metadata && c.metadata.agent_name ? c.metadata.agent_name : (c.agent_name || "AI Agent")) + '</span>' +
             '<span class="pill pos">' + CI.escapeHtml(c.status) + '</span>' +
             '<span class="timer">' + CI.formatDuration(dur) + '</span>' +
-            '<a class="btn ghost sm" href="/softphone">Softphone</a>' +
+            ((window.currentRole === "super_admin" || (window.currentProfile && Boolean(window.currentProfile.is_super_admin))) ? '<a class="btn ghost sm" href="/softphone">Softphone</a>' : '') +
             '</div>';
         }).join("");
       } else {
@@ -1759,6 +1817,13 @@
       m.classList.remove("open");
     });
   }
+  Array.prototype.forEach.call(document.querySelectorAll(".modal-overlay"), function (overlay) {
+    overlay.addEventListener("click", function (e) {
+      if (e.target === overlay) {
+        overlay.classList.remove("open");
+      }
+    });
+  });
   window.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
       closeModals();

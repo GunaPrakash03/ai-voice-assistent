@@ -107,7 +107,7 @@
     <span style="color:var(--ink-faint)">/</span>
     <span>My Profile</span>
   </div>
-  <div><a class="btn btn-ghost" href="/api-keys">API Keys &amp; Providers</a></div>
+  <div data-super-admin-only data-display="inline-block" style="display:none"><a class="btn btn-ghost" href="/api-keys">API Keys &amp; Providers</a></div>
 </header>
 
 <div class="app">
@@ -119,7 +119,7 @@
       <a href="/call-detail">Call detail</a>
       <a href="/sip-trunks">SIP Trunks &amp; DIDs</a>
       <a href="/agents" data-admin-only>Agents</a>
-      <a href="/api-keys" data-admin-only>API Keys &amp; Providers</a>
+      <a href="/api-keys" data-super-admin-only style="display:none">API Keys &amp; Providers</a>
       <a href="/webhooks" data-admin-only>Webhooks &amp; Data</a>
     </div>
     <div class="rail-foot">
@@ -235,8 +235,37 @@
             </div>
           </div>
 
+          <!-- Platform Branding & Dashboard Name (Super Admin Only) -->
+          <div class="card" id="cardBranding" data-super-admin-only data-display="block" style="display:none;border-left:3px solid #c084fc">
+            <div class="card-h">
+              <h2>👑 Platform Branding &amp; Dashboard Name</h2>
+              <span class="meta" style="color:#c084fc;font-weight:700">Super Admin Only</span>
+            </div>
+            <div class="card-b">
+              <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;margin-bottom:14px">
+                Customize the platform dashboard name and tagline displayed across all headers, navigation rails, and browser page titles. Only the Super Admin has permission to modify this.
+              </p>
+              <form id="formBranding">
+                <div class="field">
+                  <label for="brandDashboardName">Dashboard Name</label>
+                  <input id="brandDashboardName" type="text" required placeholder="e.g. Call Desk, OmniVoice, AI Dispatch" maxlength="60">
+                  <div class="hint">Replaces "Call Desk" across the main dashboard, sidebar, and headers.</div>
+                </div>
+                <div class="field">
+                  <label for="brandTagline">Subtitle / Tagline</label>
+                  <input id="brandTagline" type="text" placeholder="e.g. AI Assistant Voice" maxlength="120">
+                  <div class="hint">Replaces "AI Assistant Voice" in the brand bar.</div>
+                </div>
+                <div class="actions">
+                  <button type="submit" class="btn btn-primary" id="btnSaveBranding">Save Dashboard Branding</button>
+                  <span class="msg" id="brandMsg"></span>
+                </div>
+              </form>
+            </div>
+          </div>
+
           <!-- API keys -->
-          <div class="card" data-admin-only>
+          <div class="card" data-super-admin-only data-display="block" style="display:none">
             <div class="card-h"><h2>API keys</h2><a class="meta" href="/api-keys" style="color:var(--accent);text-decoration:none">Manage →</a></div>
             <div class="card-b" style="padding:0 6px 6px">
               <table id="keysTable">
@@ -286,7 +315,7 @@
     $("avatar").textContent = initials(profile.name, profile.email);
     $("heroName").textContent = name;
     $("heroSub").textContent = [profile.title, profile.email].filter(Boolean).join(" · ");
-    var ROLE_LABEL = { super_admin: "Super Admin", admin: "Product Admin", member_admin: "Member Admin", user: "User" };
+    var ROLE_LABEL = { super_admin: "Super Admin", admin: "Product Admin", member_admin: "Member Admin" };
     $("heroRole").textContent = ROLE_LABEL[profile.role] || profile.role || ""; $("heroRole").hidden = !profile.role;
     if ($("mRoleAdminOpt")) {
       var canCreateAdmin = profile.role === "super_admin" || profile.is_super_admin;
@@ -304,6 +333,11 @@
     $("wsRate").textContent = profile.rate_limit_rpm ? profile.rate_limit_rpm + " requests / minute" : "—";
     $("wsMeta").textContent = "member since " + fmtDate(profile.member_since);
     $("secMeta").textContent = profile.phone ? "password + SMS code" : "password only";
+
+    if (profile.system_branding) {
+      if ($("brandDashboardName")) { $("brandDashboardName").value = profile.system_branding.dashboard_name || ""; }
+      if ($("brandTagline")) { $("brandTagline").value = profile.system_branding.tagline || ""; }
+    }
 
     var members = profile.members || [];
     $("membersMeta").textContent = members.length + " member" + (members.length === 1 ? "" : "s");
@@ -375,6 +409,41 @@
         else { setMsg($("memberMsg"), d.error || "Could not add member", false); }
       }).catch(function () { setMsg($("memberMsg"), "Network error", false); });
   });
+
+  var formBranding = $("formBranding");
+  if (formBranding) {
+    formBranding.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var btn = $("btnSaveBranding");
+      var msg = $("brandMsg");
+      btn.disabled = true;
+      msg.textContent = "Saving…";
+      msg.className = "msg";
+      var body = {
+        dashboard_name: $("brandDashboardName").value.trim(),
+        tagline: $("brandTagline").value.trim()
+      };
+      fetch("/api/v1/system/branding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        btn.disabled = false;
+        if (d.status === "ok") {
+          setMsg(msg, "Dashboard branding updated!", true);
+          toast("Dashboard branding updated!");
+          if (window.applyBranding) {
+            window.applyBranding(d.branding);
+          }
+        } else {
+          setMsg(msg, d.error || "Failed to update branding", false);
+        }
+      }).catch(function (err) {
+        btn.disabled = false;
+        setMsg(msg, "Network error: " + err.message, false);
+      });
+    });
+  }
 
   fetch("/api/storage/status").then(function (r) { return r.json(); }).then(function (d) {
     var s = d.storage || {};

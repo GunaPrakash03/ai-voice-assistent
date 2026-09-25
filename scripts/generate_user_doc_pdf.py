@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """scripts/generate_user_doc_pdf.py — Generates the comprehensive User Documentation & Role-Based Analysis PDF.
-Covers all 4 user roles (Super Admin, Product Admin, Member Admin, Standard User) with visual screenshots.
+Covers all 3 platform roles (Super Admin, Product Admin, Member Admin) with visual screenshots.
+Enforces strict Super Admin exclusive access for Softphone WebRTC Dialer and API Keys & Provider Secrets.
+Standard User role has been retired/removed.
 """
 
 import os
@@ -62,52 +64,48 @@ def build_pdf():
         pagesize=letter,
         leftMargin=36,
         rightMargin=36,
-        topMargin=44,
-        bottomMargin=44,
+        topMargin=36,
+        bottomMargin=36
     )
 
     styles = getSampleStyleSheet()
-    
-    # Custom Brand Colors
-    c_primary = colors.HexColor('#161A2B')    # Dark Rail Navy
-    c_accent = colors.HexColor('#C2560F')     # Brand Warm Amber
+
+    # Color Palette matching Call Desk theme
+    c_primary = colors.HexColor('#0F172A')    # Deep Slate
+    c_accent = colors.HexColor('#C2560F')     # Warm Amber Call Desk accent
+    c_card_bg = colors.HexColor('#F8FAFC')    # Soft off-white
+    c_border = colors.HexColor('#E2E8F0')     # Border slate
+    c_ink = colors.HexColor('#1E293B')        # Body text
     c_super = colors.HexColor('#7C3AED')      # Super Admin Purple
     c_prod = colors.HexColor('#C2560F')       # Product Admin Amber
     c_member = colors.HexColor('#2563EB')     # Member Admin Blue
-    c_user = colors.HexColor('#4B5563')       # Standard User Slate
-    c_dark = colors.HexColor('#1F2937')       # Charcoal
-    c_muted = colors.HexColor('#6B7280')      # Gray
-    c_green = colors.HexColor('#2F7A4F')      # Positive Green
-    c_red = colors.HexColor('#A32F26')        # Negative Red
-    c_card_bg = colors.HexColor('#F9FAFB')    # Off-white
-    c_border = colors.HexColor('#E5E7EB')
+    c_green = colors.HexColor('#16A34A')      # Success green
+    c_red = colors.HexColor('#DC2626')        # Denied red
 
     title_style = ParagraphStyle(
         'DocTitle',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=17,
-        leading=21,
+        fontSize=18,
+        leading=22,
         textColor=c_accent,
-        spaceAfter=2,
     )
     subtitle_style = ParagraphStyle(
         'DocSubtitle',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=9.5,
+        fontSize=10,
         leading=13,
         textColor=c_primary,
-        spaceAfter=5,
     )
     h1_style = ParagraphStyle(
         'Heading1_Custom',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=11.5,
+        fontSize=12.5,
         leading=15,
         textColor=c_primary,
-        spaceBefore=6,
+        spaceBefore=7,
         spaceAfter=3,
         keepWithNext=True,
     )
@@ -115,36 +113,35 @@ def build_pdf():
         'Body_Custom',
         parent=styles['Normal'],
         fontName='Helvetica',
-        fontSize=8,
+        fontSize=8.5,
         leading=11.5,
-        textColor=c_dark,
-        spaceAfter=3,
+        textColor=c_ink,
     )
     caption_style = ParagraphStyle(
         'Caption_Custom',
         parent=styles['Normal'],
         fontName='Helvetica-Oblique',
-        fontSize=7.5,
-        leading=9.5,
-        textColor=c_muted,
+        fontSize=7.8,
+        leading=10,
+        textColor=colors.HexColor('#4B5563'),
         alignment=1, # Centered
-        spaceAfter=4,
     )
     th_style = ParagraphStyle(
         'TableHeader',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=7.5,
-        leading=9.5,
+        fontSize=8,
+        leading=10,
         textColor=colors.white,
+        alignment=0,
     )
     td_style = ParagraphStyle(
         'TableCell',
         parent=styles['Normal'],
         fontName='Helvetica',
-        fontSize=7,
-        leading=9,
-        textColor=c_dark,
+        fontSize=7.5,
+        leading=9.5,
+        textColor=c_ink,
     )
     td_bold = ParagraphStyle(
         'TableCellBold',
@@ -191,11 +188,11 @@ def build_pdf():
     meta_table_data = [
         [
             Paragraph("<b>VOICE AGENT SERVICE — USER DOCUMENTATION</b>", title_style),
-            Paragraph("<b>Date:</b> Sep 19, 2026<br/><b>Author:</b> Young Globes<br/><b>Status:</b> Production Ready", td_style),
+            Paragraph("<b>Date:</b> Sep 2026<br/><b>Author:</b> Young Globes<br/><b>Status:</b> Production Ready", td_style),
         ],
         [
             Paragraph("Multi-Tier Role-Based Access Control (RBAC) & Visual User Guide", subtitle_style),
-            Paragraph("<b>Target Roles:</b> 4 Distinct Roles<br/><b>Architecture:</b> Multi-Tenant RBAC", td_style),
+            Paragraph("<b>Active Roles:</b> 3 Distinct Roles<br/><b>Architecture:</b> Multi-Tenant RBAC", td_style),
         ]
     ]
     meta_table = Table(meta_table_data, colWidths=[380, 160])
@@ -209,50 +206,52 @@ def build_pdf():
 
     story.append(Paragraph("1. Multi-Tier Role-Based Access Control (RBAC) Architecture", h1_style))
     story.append(Paragraph(
-        "The <b>Call Desk AI Voice Assistant Platform</b> incorporates a multi-tenant, 4-tier Role-Based Access Control "
+        "The <b>Call Desk AI Voice Assistant Platform</b> incorporates a multi-tenant, 3-tier Role-Based Access Control "
         "engine enforced across both server middleware (<font name='Courier'>scripts/serve.py</font>) and frontend dynamic "
-        "visibility engines (<font name='Courier'>web/profile.js</font>). Every authenticated user belongs to an organization "
-        "workspace and is assigned one of four distinct administrative tiers:",
+        "visibility engines (<font name='Courier'>web/profile.js</font>). The legacy 'Standard User' role has been completely "
+        "retired from the system. Every authenticated user belongs to an organization workspace and is assigned one of three "
+        "distinct administrative tiers:",
         body_style
     ))
     story.append(Paragraph(
         "• <b>[Super Admin] (<font name='Courier'>super_admin</font>):</b> Global platform master. Possesses full cross-organization authority, "
-        "overall tenant provisioning, user directory administration, global metrics, rate limiting, and workspace reassignment.<br/>"
-        "• <b>[Product Admin] (<font name='Courier'>admin</font>):</b> Single-organization manager. Full operational control over their workspace's "
-        "agents, phone numbers, carrier SIP trunks, API keys, and webhooks. Can invite Member Admins and Standard Users.<br/>"
+        "overall tenant provisioning, user directory administration, global metrics, rate limiting, and workspace reassignment. "
+        "<b>Softphone WebRTC Dialer</b> and <b>API Keys & Provider Secrets</b> are strictly restricted to Super Admin only.<br/>"
+        "• <b>[Product Admin] (<font name='Courier'>admin</font>):</b> Single-organization manager. Operational control over their workspace's "
+        "agents, phone numbers, carrier SIP trunks, and webhooks. Can invite Member Admins. "
+        "<b>Product Admins do NOT have access to API Keys & Provider Secrets or the Softphone WebRTC Dialer.</b><br/>"
         "• <b>[Member Admin] (<font name='Courier'>member_admin</font>):</b> Operational team coordinator. Reviews call analytics, inspects transcripts, "
-        "and tests agents. Can provision Standard User accounts in their workspace. Carrier, billing, and API key management are strictly hidden.<br/>"
-        "• <b>[Standard User] (<font name='Courier'>user</font>):</b> Call desk operator / analyst. Accesses call records, audio playback waveforms, "
-        "sentiment metrics, softphone dialer, and personal profile in a view-only capacity.",
+        "and tests agents. Can invite other Member Admins within their workspace. Carrier, billing, API keys, and Softphone are strictly hidden and blocked.",
         body_style
     ))
     story.append(Spacer(1, 2))
 
     story.append(Paragraph("2. Complete RBAC Permission & Delegation Matrix", h1_style))
     rbac_data = [
-        [Paragraph("Feature / Capability", th_style), Paragraph("Super Admin", th_style), Paragraph("Product Admin", th_style), Paragraph("Member Admin", th_style), Paragraph("Standard User", th_style)],
-        [Paragraph("Overall Organizations (/organizations)", td_bold), Paragraph("Full Access (All Orgs)", td_pass), Paragraph("Blocked (302/403)", td_deny), Paragraph("Blocked (302/403)", td_deny), Paragraph("Blocked (302/403)", td_deny)],
-        [Paragraph("Global Users Registry (/users)", td_bold), Paragraph("Full Access (All Users)", td_pass), Paragraph("Blocked (302/403)", td_deny), Paragraph("Blocked (302/403)", td_deny), Paragraph("Blocked (302/403)", td_deny)],
-        [Paragraph("Create Organization & Set RPM", td_bold), Paragraph("Yes (System-wide)", td_pass), Paragraph("Blocked", td_deny), Paragraph("Blocked", td_deny), Paragraph("Blocked", td_deny)],
-        [Paragraph("Suspend / Activate Organizations", td_bold), Paragraph("Yes (System-wide)", td_pass), Paragraph("Blocked", td_deny), Paragraph("Blocked", td_deny), Paragraph("Blocked", td_deny)],
-        [Paragraph("Reassign User Workspace", td_bold), Paragraph("Yes (Cross-Tenant)", td_pass), Paragraph("Blocked", td_deny), Paragraph("Blocked", td_deny), Paragraph("Blocked", td_deny)],
-        [Paragraph("Account Creation Authority", td_bold), Paragraph("Can create all 4 roles", td_pass), Paragraph("Member Admins & Users", td_pass), Paragraph("Standard Users only", td_pass), Paragraph("Blocked", td_deny)],
-        [Paragraph("API Keys & Provider Secrets", td_bold), Paragraph("Full Access", td_pass), Paragraph("Full Access (Own Org)", td_pass), Paragraph("Hidden & Blocked", td_deny), Paragraph("Hidden & Blocked", td_deny)],
-        [Paragraph("Webhooks Hub & Signing Secrets", td_bold), Paragraph("Full Access", td_pass), Paragraph("Full Access (Own Org)", td_pass), Paragraph("Hidden & Blocked", td_deny), Paragraph("Hidden & Blocked", td_deny)],
-        [Paragraph("Carrier SIP Trunks & DIDs", td_bold), Paragraph("Full Access", td_pass), Paragraph("Full Access (Own Org)", td_pass), Paragraph("Hidden & Blocked", td_deny), Paragraph("Hidden & Blocked", td_deny)],
-        [Paragraph("Call Logs, Audio & Transcripts", td_bold), Paragraph("Full Access", td_pass), Paragraph("Full Access (Own Org)", td_pass), Paragraph("Full Access (Own Org)", td_pass), Paragraph("Full Access (Own Org)", td_pass)],
-        [Paragraph("Softphone WebRTC Dialer", td_bold), Paragraph("Full Access", td_pass), Paragraph("Full Access", td_pass), Paragraph("Full Access", td_pass), Paragraph("Full Access", td_pass)],
-        [Paragraph("User Self-Profile & Password", td_bold), Paragraph("Full Access", td_pass), Paragraph("Full Access", td_pass), Paragraph("Full Access", td_pass), Paragraph("Full Access", td_pass)],
+        [Paragraph("Feature / Capability", th_style), Paragraph("Super Admin", th_style), Paragraph("Product Admin", th_style), Paragraph("Member Admin", th_style)],
+        [Paragraph("Call Desk Overview (/) & Calls", td_bold), Paragraph("Full Access (Cross-Tenant)", td_pass), Paragraph("Full Access (Own Org)", td_pass), Paragraph("Full Access (Own Org)", td_pass)],
+        [Paragraph("Call Logs, Waveforms & Transcripts", td_bold), Paragraph("Full Access (All Calls)", td_pass), Paragraph("Full Access (Own Org)", td_pass), Paragraph("Full Access (Own Org)", td_pass)],
+        [Paragraph("Softphone WebRTC Dialer (/softphone)", td_bold), Paragraph("Full Access (Exclusive)", td_pass), Paragraph("Blocked (302/403)", td_deny), Paragraph("Blocked (302/403)", td_deny)],
+        [Paragraph("API Keys & Provider Secrets (/api-keys)", td_bold), Paragraph("Full Access (All Orgs)", td_pass), Paragraph("Blocked (302/403)", td_deny), Paragraph("Blocked (302/403)", td_deny)],
+        [Paragraph("Overall Organizations (/organizations)", td_bold), Paragraph("Full Access (All Orgs)", td_pass), Paragraph("Blocked (302/403)", td_deny), Paragraph("Blocked (302/403)", td_deny)],
+        [Paragraph("Global Users Registry (/users)", td_bold), Paragraph("Full Access (All Users)", td_pass), Paragraph("Blocked (302/403)", td_deny), Paragraph("Blocked (302/403)", td_deny)],
+        [Paragraph("Create Organization & Set RPM Quota", td_bold), Paragraph("Yes (System-wide)", td_pass), Paragraph("Blocked", td_deny), Paragraph("Blocked", td_deny)],
+        [Paragraph("Suspend / Activate Organizations", td_bold), Paragraph("Yes (System-wide)", td_pass), Paragraph("Blocked", td_deny), Paragraph("Blocked", td_deny)],
+        [Paragraph("Account Creation / Invite Authority", td_bold), Paragraph("Can create all 3 roles", td_pass), Paragraph("Member Admins only", td_pass), Paragraph("Other Member Admins", td_pass)],
+        [Paragraph("Webhooks Hub & Event Dispatching", td_bold), Paragraph("Full Access", td_pass), Paragraph("Full Access (Own Org)", td_pass), Paragraph("Hidden & Blocked", td_deny)],
+        [Paragraph("Carrier SIP Trunks & DIDs", td_bold), Paragraph("Full Access", td_pass), Paragraph("Full Access (Own Org)", td_pass), Paragraph("Hidden & Blocked", td_deny)],
+        [Paragraph("AI Agent Builder & Prompts", td_bold), Paragraph("Full Access", td_pass), Paragraph("Full Access (Own Org)", td_pass), Paragraph("Hidden & Blocked", td_deny)],
+        [Paragraph("User Self-Profile & Password", td_bold), Paragraph("Full Access", td_pass), Paragraph("Full Access", td_pass), Paragraph("Full Access", td_pass)],
     ]
-    t_rbac = Table(rbac_data, colWidths=[140, 100, 100, 100, 100])
+    t_rbac = Table(rbac_data, colWidths=[180, 120, 120, 120])
     t_rbac.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), c_primary),
         ('GRID', (0,0), (-1,-1), 0.5, c_border),
         ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, c_card_bg]),
         ('TOPPADDING', (0,0), (-1,-1), 2.5),
         ('BOTTOMPADDING', (0,0), (-1,-1), 2.5),
-        ('LEFTPADDING', (0,0), (-1,-1), 4),
-        ('RIGHTPADDING', (0,0), (-1,-1), 4),
+        ('LEFTPADDING', (0,0), (-1,-1), 5),
+        ('RIGHTPADDING', (0,0), (-1,-1), 5),
     ]))
     story.append(t_rbac)
 
@@ -263,41 +262,43 @@ def build_pdf():
     story.append(Paragraph("3. Role-Based Dashboard Comparison: Super Admin vs Product Admin", h1_style))
     story.append(Paragraph(
         "The Call Desk navigation rail dynamically adjusts based on the active role session. "
-        "Notice how Super Admins receive the dedicated Overall System section, whereas Product Admins manage single-organization resources:",
+        "Super Admins receive the dedicated Overall System section with exclusive access to Softphone Dialer and API Keys & Providers. "
+        "Product Admins manage their workspace tools (SIP Trunks, Agents, Webhooks) while API Keys, Softphone, and Overall System are strictly hidden:",
         body_style
     ))
     add_screenshot(
         "32_role_super_admin_dashboard.png",
-        "<b>Figure 1: Super Admin Dashboard View</b> — Displays all 10 links including 'Overall System' (Organizations & Users Registry). Profile card displays 'SA' Super Administrator badge with quick role switchers.",
+        "<b>Figure 1: Super Admin Dashboard View</b> — Displays the full operational workspace plus the dedicated '👑 Overall System' section: Organizations, Users Registry, 🔑 API Keys & Providers, and 📞 Softphone Dialer. Profile card displays 'SA' Super Administrator badge.",
         width_pt=470,
         max_height_pt=275
     )
     add_screenshot(
         "33_role_product_admin_dashboard.png",
-        "<b>Figure 2: Product Admin Dashboard View</b> — Displays 8 workspace links (API Keys, Webhooks, SIP Trunks, Agents). The Overall System section is strictly hidden.",
+        "<b>Figure 2: Product Admin Dashboard View</b> — Displays single-workspace operational links (SIP Trunks, Buy Phone Numbers, Agents, Webhooks). Notice that Overall System, API Keys & Providers, and the Softphone WebRTC Dialer are strictly hidden.",
         width_pt=470,
         max_height_pt=275
     )
 
     # ═════════════════════════════════════════════════════════════════════════
-    # PAGE 3: MEMBER ADMIN & STANDARD USER VIEWS
+    # PAGE 3: MEMBER ADMIN & ACCESS GUARDING (SOFTPHONE / API KEYS RESTRICTIONS)
     # ═════════════════════════════════════════════════════════════════════════
     story.append(PageBreak())
-    story.append(Paragraph("4. Role-Based Dashboard Comparison: Member Admin vs Standard User", h1_style))
+    story.append(Paragraph("4. Member Admin View & Strict Route Guarding", h1_style))
     story.append(Paragraph(
-        "Member Admins coordinate operations and can invite operators, but cannot access sensitive carrier/API/billing settings. "
-        "Standard Users operate in view-only mode to review call transcripts, waveforms, and customer sentiment:",
+        "Member Admins coordinate operations and team members. All administrative, carrier, and developer tooling are hidden. "
+        "When Product Admins or Member Admins attempt to access restricted routes (such as /softphone, /api-keys, or /organizations), "
+        "server middleware intercepts the request and safely redirects them:",
         body_style
     ))
     add_screenshot(
         "34_role_member_admin_dashboard.png",
-        "<b>Figure 3: Member Admin Dashboard View</b> — Operational coordinator view. Only operational links (Overview, Calls, Call Detail) are visible. Sensitive infrastructure tools (API Keys, Webhooks, SIP Trunks) are hidden.",
+        "<b>Figure 3: Member Admin Dashboard View</b> — Operational coordinator view. Only operational links (Overview, Calls, Call Detail) are visible. Sensitive infrastructure tools (API Keys, Softphone, Webhooks, SIP Trunks) are hidden.",
         width_pt=470,
         max_height_pt=275
     )
     add_screenshot(
-        "35_role_standard_user_dashboard.png",
-        "<b>Figure 4: Standard User (Operator) Dashboard View</b> — View-only call desk operator. Rail navigation contains call logs and overview. Profile reflects 'User' tier.",
+        "37_access_denied_softphone.png",
+        "<b>Figure 4: Softphone WebRTC Dialer Protection & Access Interception</b> — Non-super admins attempting to browse to /softphone or /api-keys are automatically intercepted by scripts/serve.py and redirected to the dashboard with denied parameter.",
         width_pt=470,
         max_height_pt=275
     )
@@ -314,7 +315,7 @@ def build_pdf():
     ))
     add_screenshot(
         "28_organizations_redesigned.png",
-        "<b>Figure 5: Organizations Directory (/organizations)</b> — Displays 31 tenant workspaces with active status pills, rate limits, member breakdowns, and action buttons. Styled with Call Desk warm amber theme.",
+        "<b>Figure 5: Organizations Directory (/organizations)</b> — Displays tenant workspaces with active status pills, rate limits, member breakdowns, and action buttons. Styled with Call Desk warm amber theme.",
         width_pt=470,
         max_height_pt=275
     )
@@ -332,18 +333,18 @@ def build_pdf():
     story.append(Paragraph("6. Super Admin Portal: Global Users Registry (/users)", h1_style))
     story.append(Paragraph(
         "The <b>Global Users Registry</b> provides complete tenant user visibility. Super Admins can audit accounts across "
-        "all organizations, filter by administrative tier, inspect password & OTP status, promote/demote roles, and reassign users to different workspaces:",
+        "all organizations, filter by the 3 active administrative tiers (Super Admin, Product Admin, Member Admin), promote/demote roles, and reassign users to different workspaces:",
         body_style
     ))
     add_screenshot(
         "30_users_registry_redesigned.png",
-        "<b>Figure 7: Users Registry (/users)</b> — 51 global accounts displayed with multi-role KPI metric counters (Super Admins, Product Admins, Member Admins, Standard Users), role filtering, and inline management actions.",
+        "<b>Figure 7: Users Registry (/users)</b> — Global accounts displayed with 3-role KPI metric counters (Super Admins, Product Admins, Member Admins), role filtering, and inline management actions.",
         width_pt=470,
         max_height_pt=275
     )
     add_screenshot(
         "31_add_user_modal_redesigned.png",
-        "<b>Figure 8: Add User or Admin Modal</b> — Allows Super Admins to provision any user into any organization with any administrative role tier (Super Admin, Product Admin, Member Admin, or Standard User).",
+        "<b>Figure 8: Add User or Admin Modal</b> — Allows Super Admins to provision any user into any organization with any administrative role tier (Super Admin, Product Admin, or Member Admin).",
         width_pt=470,
         max_height_pt=275
     )
@@ -366,7 +367,7 @@ def build_pdf():
     )
     add_screenshot(
         "36_access_denied_screen.png",
-        "<b>Figure 10: Server Route Protection & Access Guarding</b> — Non-super admins attempting to access restricted routes (/organizations or /users) are automatically intercepted and redirected to the workspace with denied parameters.",
+        "<b>Figure 10: Server Route Protection & Access Guarding</b> — Non-super admins attempting to access restricted routes (/organizations, /users, /softphone, /api-keys) are automatically intercepted and redirected to the workspace with denied parameters.",
         width_pt=470,
         max_height_pt=275
     )
@@ -375,46 +376,43 @@ def build_pdf():
     # PAGE 7: OPERATIONAL STEP-BY-STEP USER WORKFLOWS
     # ═════════════════════════════════════════════════════════════════════════
     story.append(PageBreak())
-    story.append(Paragraph("8. Step-by-Step User Workflows Across All Roles", h1_style))
+    story.append(Paragraph("8. Step-by-Step User Workflows Across Active Roles", h1_style))
     story.append(Paragraph(
-        "<b>Workflow 1: Super Admin — Provisioning a New Tenant Organization & Admin</b><br/>"
+        "<b>Workflow 1: Super Admin — Provisioning Organizations, API Keys & Softphone Calling</b><br/>"
         "1. Sign in as Super Admin (or click <i>Sign in as Super Admin</i> on <font name='Courier'>/login</font>).<br/>"
-        "2. Click <b>Organizations</b> in the left navigation rail.<br/>"
-        "3. Click <b>+ Create Organization</b> in the top header.<br/>"
-        "4. Enter Organization Name (e.g. <i>Acme Health Network</i>), RPM rate limit, and initial Product Admin email.<br/>"
-        "5. Click <b>Create Organization</b>. The workspace is created with isolated data partition and dedicated API quotas.<br/><br/>"
-        "<b>Workflow 2: Super Admin — Promoting a User or Reassigning Workspaces</b><br/>"
+        "2. Click <b>Organizations</b> in the navigation rail to provision workspaces and manage tenant quotas.<br/>"
+        "3. Click <b>API Keys & Providers</b> (<font name='Courier'>/api-keys</font>) to configure provider credentials and live secret keys.<br/>"
+        "4. Click <b>Softphone Dialer</b> (<font name='Courier'>/softphone</font>) to place live WebRTC test calls through the browser.<br/><br/>"
+        "<b>Workflow 2: Super Admin — Managing Global Users & Role Promotion</b><br/>"
         "1. Click <b>Users Registry</b> in the left navigation rail.<br/>"
         "2. Filter by organization or search user by email/name.<br/>"
-        "3. Click <b>Role</b> next to the target user, select new role (e.g. <i>Product Admin</i>), and apply.<br/>"
+        "3. Click <b>Role</b> next to any user to promote/demote between Super Admin, Product Admin, or Member Admin.<br/>"
         "4. Click <b>Reassign</b> to seamlessly migrate a user's account to a different tenant workspace.<br/><br/>"
-        "<b>Workflow 3: Product Admin — Managing Workspaces & Minting API Keys</b><br/>"
+        "<b>Workflow 3: Product Admin — Workspace Setup, Agents & Webhooks</b><br/>"
         "1. Sign in as Product Admin for your organization.<br/>"
-        "2. Navigate to <b>API Keys & Providers</b> (<font name='Courier'>/api-keys</font>).<br/>"
-        "3. Mint scoped API keys (<font name='Courier'>ak_live_...</font>) and configure provider secrets (Telnyx, Twilio, OpenAI, ElevenLabs).<br/>"
-        "4. Navigate to <b>Webhooks & Data</b> (<font name='Courier'>/webhooks</font>) to register event endpoints and test signed deliveries.<br/><br/>"
-        "<b>Workflow 4: Member Admin — Team Coordination & Inviting Operators</b><br/>"
+        "2. Configure AI agent prompts and voices via <b>Agents</b> (<font name='Courier'>/agents</font>).<br/>"
+        "3. Set up dispatch rules and DIDs via <b>SIP Trunks & DIDs</b> (<font name='Courier'>/sip-trunks</font>).<br/>"
+        "4. Register webhook endpoints and payload signing via <b>Webhooks & Data</b> (<font name='Courier'>/webhooks</font>).<br/>"
+        "5. Invite Member Admins into the workspace via <b>My Profile</b> (<font name='Courier'>/profile</font>).<br/><br/>"
+        "<b>Workflow 4: Member Admin — Team Coordination & Call Log Auditing</b><br/>"
         "1. Sign in as Member Admin.<br/>"
-        "2. Open <b>Call Desk</b> to review team call volume, sentiment distribution, and customer satisfaction scores.<br/>"
-        "3. Invite new Standard Users into the workspace without exposing carrier billing or API secrets.<br/><br/>"
-        "<b>Workflow 5: Standard User (Operator) — Call Inspection & Inbound Testing</b><br/>"
-        "1. Sign in as Standard User.<br/>"
-        "2. Review calls in the live call log, click to inspect full transcripts and audio playback.<br/>"
-        "3. Launch the <b>Softphone</b> (<font name='Courier'>/softphone.html</font>) to place test WebRTC calls directly with AI agents.",
+        "2. Open <b>Call Desk</b> to review incoming call history, audio waveforms, and customer sentiment analytics.<br/>"
+        "3. Inspect call transcript turns and tool execution logs in <b>Call Detail</b> (<font name='Courier'>/call-detail</font>).<br/>"
+        "4. Invite other Member Admins to join the team without exposing billing or carrier credentials.",
         body_style
     ))
     story.append(Spacer(1, 4))
 
     story.append(Paragraph("9. Quality Assurance & Automated Verification Audit", h1_style))
     story.append(Paragraph(
-        "The entire platform RBAC engine, server middleware, and role visibility were verified using automated test suites:",
+        "The platform RBAC engine, server middleware, and role visibility were verified using automated test suites:",
         body_style
     ))
 
     audit_table_data = [
         [Paragraph("Test Suite / Verification Target", th_style), Paragraph("Total Tests", th_style), Paragraph("Result", th_style), Paragraph("Coverage Details", th_style)],
         [Paragraph("<b>scripts/verify_super_admin.py</b>", td_bold), Paragraph("57 Checks", td_style), Paragraph("100% PASS", td_pass), Paragraph("Role hierarchy, can_create_role matrix, unauth redirects, 403 API protection, template structure", td_style)],
-        [Paragraph("<b>scripts/audit_all_pages.py</b>", td_bold), Paragraph("45 Route Checks", td_style), Paragraph("100% PASS", td_pass), Paragraph("Matrix audit across 5 auth states (Unauth, User, Member Admin, Product Admin, Super Admin)", td_style)],
+        [Paragraph("<b>scripts/audit_all_pages.py</b>", td_bold), Paragraph("45 Route Checks", td_style), Paragraph("100% PASS", td_pass), Paragraph("Matrix audit across auth states (Unauth, Member Admin, Product Admin, Super Admin)", td_style)],
         [Paragraph("<b>scripts/test_task1_rbac.py</b>", td_bold), Paragraph("14 Checks", td_style), Paragraph("100% PASS", td_pass), Paragraph("RBAC permission delegation engine, foreign org blocking, role normalization aliases", td_style)],
         [Paragraph("<b>scripts/test_task2_middleware.py</b>", td_bold), Paragraph("18 Checks", td_style), Paragraph("100% PASS", td_pass), Paragraph("Endpoint gatekeeping, session cookie validation, anti-cache HTTP headers", td_style)],
     ]
@@ -439,8 +437,8 @@ def build_pdf():
         [
             Paragraph(
                 "This user manual and technical report attests that the AI Voice Assistant Platform operates with strict multi-tier "
-                "Role-Based Access Control, robust tenant isolation, instant sub-5ms UI responsiveness, and a unified visual design language "
-                "across all administrative portals and operational views.",
+                "Role-Based Access Control: Softphone WebRTC Dialer and API Keys & Provider Secrets are strictly Super Admin exclusive, "
+                "the Standard User role is removed, and Product Admins are cleanly restricted to workspace-level configuration.",
                 body_style
             )
         ]

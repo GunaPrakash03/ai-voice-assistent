@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Law-Firm Architecture: Phone Routing, AI Isolation & Multi-Clio Integration</title>
+<style>
+  @page {
+    size: letter portrait;
+    margin: 14mm 14mm 14mm 14mm;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1a202c;
+    line-height: 1.45;
+    font-size: 8.8pt;
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .header {
+    border-bottom: 2px solid #0052cc;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 7pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: #e8f0fe;
+    color: #0052cc;
+    margin-bottom: 4px;
+  }
+
+  .badge-tenant {
+    background: #fdf2f8;
+    color: #db2777;
+  }
+
+  h1 {
+    font-size: 16pt;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0 0 4px 0;
+    line-height: 1.2;
+  }
+
+  .subtitle {
+    font-size: 8.5pt;
+    color: #475569;
+    margin: 0 0 6px 0;
+  }
+
+  .meta-row {
+    font-size: 7.5pt;
+    color: #64748b;
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+
+  h2 {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #0052cc;
+    border-left: 3px solid #0052cc;
+    padding-left: 6px;
+    margin: 14px 0 6px 0;
+    page-break-after: avoid;
+  }
+
+  h3 {
+    font-size: 9pt;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 10px 0 4px 0;
+    page-break-after: avoid;
+  }
+
+  p {
+    margin: 0 0 6px 0;
+    text-align: justify;
+  }
+
+  ul, ol {
+    margin: 0 0 6px 0;
+    padding-left: 18px;
+  }
+
+  li {
+    margin-bottom: 3px;
+  }
+
+  .highlight-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid #0052cc;
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin: 8px 0;
+    page-break-inside: avoid;
+  }
+
+  .highlight-box.pink { border-left-color: #db2777; background: #fdf2f8; }
+  .highlight-box.green { border-left-color: #16a34a; background: #f0fdf4; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 10px 0;
+    font-size: 8pt;
+    page-break-inside: avoid;
+  }
+
+  th, td {
+    border: 1px solid #cbd5e1;
+    padding: 5px 7px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: #f1f5f9;
+    color: #0f172a;
+    font-weight: 700;
+  }
+
+  tr:nth-child(even) td {
+    background: #f8fafc;
+  }
+
+  pre, code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 7.2pt;
+    background: #0f172a;
+    color: #f8fafc;
+    border-radius: 4px;
+  }
+
+  code {
+    padding: 1px 3px;
+    color: #0969da;
+    background: #f1f5f9;
+    font-weight: 600;
+  }
+
+  pre {
+    padding: 7px 9px;
+    overflow-x: auto;
+    margin: 6px 0;
+    line-height: 1.35;
+    page-break-inside: avoid;
+  }
+
+  pre code {
+    color: #e2e8f0;
+    background: transparent;
+    padding: 0;
+  }
+
+  .page-break {
+    page-break-before: always;
+  }
+
+  .footer-note {
+    font-size: 7pt;
+    color: #94a3b8;
+    text-align: center;
+    margin-top: 12px;
+    border-top: 1px solid #e2e8f0;
+    padding-top: 4px;
+    page-break-inside: avoid;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="badge">Multi-Tenant Engineering Specification</span>
+  <span class="badge badge-tenant">Enterprise SaaS Architecture</span>
+  <h1>Multi-Law-Firm Architecture: Inbound Routing, AI Isolation & Multi-Clio Integration</h1>
+  <div class="subtitle">How a Single Voice Agent Platform Simultaneously Serves Multiple Independent Law Firms with Strict Data Isolation</div>
+  <div class="meta-row">
+    <span><strong>Target Platform:</strong> Multi-Tenant Voice Agent Core &lt;—&gt; Independent Clio Accounts</span>
+    <span><strong>Architecture Mode:</strong> Multi-Tenant SaaS / Agency Provider</span>
+  </div>
+</div>
+
+<h2>1. Executive Summary: The Multi-Firm Challenge</h2>
+<p>
+  When running a Voice Agent platform for <strong>multiple different law firms</strong> (e.g., <em>Apex Legal Group</em>, <em>Bottini Law</em>, and <em>Gotham Partners</em>), the system must solve three mission-critical problems:
+</p>
+<ol>
+  <li><strong>Inbound Identification:</strong> When a phone call arrives, how does the Voice Agent know which law firm is being called?</li>
+  <li><strong>AI Brand & Persona Isolation:</strong> The agent must greet the caller with the correct firm name, attorney roster, and practice areas.</li>
+  <li><strong>Data Isolation & Multi-Clio Dispatch:</strong> The caller's contact, transcript, and legal matter must route <em>strictly</em> to that specific firm's Clio account, with zero risk of Firm A seeing Firm B's clients.</li>
+</ol>
+
+<div class="highlight-box pink">
+  <strong>Core Architectural Principle:</strong> The <strong>Dialed Phone Number (DID)</strong> is the universal routing key. Every law firm owns a distinct inbound phone number. When a call arrives, the Voice Agent matches the dialed number against a multi-tenant registry, loads that firm's specific AI prompt, and selects that firm's dedicated Clio OAuth token for post-call sync.
+</div>
+
+<h2>2. How the Voice Agent Identifies the Law Firm (DID Matching)</h2>
+<p>
+  In enterprise telephony, every phone number is known as a <strong>Direct Inward Dialing (DID)</strong> number. Whether a firm uses Twilio, Telnyx, or LiveKit SIP trunks, the carrier's incoming SIP INVITE always contains two essential headers:
+</p>
+<ul>
+  <li><code>From</code>: The caller's personal number (e.g., <code>+1-555-019-3388</code>).</li>
+  <li><code>To</code>: The dialed phone number that belongs to the law firm (e.g., <code>+1-555-222-0001</code>).</li>
+</ul>
+
+<h3>The Tenant Phone Registry Mapping Table</h3>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 20%;">Firm Identifier</th>
+      <th style="width: 25%;">Assigned Inbound Number (DID)</th>
+      <th style="width: 25%;">Firm Name & Brand</th>
+      <th style="width: 30%;">Target Clio Manage Account</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>firm_apex</code></td>
+      <td><code>+1 (555) 234-5678</code></td>
+      <td><strong>Apex Legal Group</strong></td>
+      <td>Clio Account ID: <code>US-99120</code> (Token: <code>41369-XSRy...</code>)</td>
+    </tr>
+    <tr>
+      <td><code>firm_bottini</code></td>
+      <td><code>+1 (555) 888-4321</code></td>
+      <td><strong>Bottini Law</strong></td>
+      <td>Clio Account ID: <code>US-44812</code> (Token: <code>77102-MKQz...</code>)</td>
+    </tr>
+    <tr>
+      <td><code>firm_gotham</code></td>
+      <td><code>+1 (555) 999-7700</code></td>
+      <td><strong>Gotham Partners</strong></td>
+      <td>Clio Account ID: <code>US-11509</code> (Token: <code>99341-PLOa...</code>)</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="page-break"></div>
+
+<h2>3. End-to-End Multi-Firm Workflow Diagram</h2>
+<p>
+  The diagram below demonstrates how two callers dialing different law firms at the exact same second are handled concurrently without data cross-contamination:
+</p>
+
+<pre><code>[ Mary calls +1 555-234-5678 ]                          [ Bruce calls +1 555-888-4321 ]
+               │                                                       │
+               ▼                                                       ▼
+[ Inbound Call to Apex Law ]                             [ Inbound Call to Bottini Law ]
+               │                                                       │
+               └───────────────────────────┬───────────────────────────┘
+                                           │
+                                           ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                            MULTI-TENANT VOICE AGENT SERVICE                                 │
+│                                                                                             │
+│  1. Inbound SIP Parser extracts 'To' header:                                                │
+│     • Call 1: +1 555-234-5678 ──► Look up Tenant: 'firm_apex'                              │
+│     • Call 2: +1 555-888-4321 ──► Look up Tenant: 'firm_bottini'                           │
+│                                                                                             │
+│  2. Dynamic AI Persona Injection:                                                           │
+│     • Call 1: "Thank you for calling Apex Legal Group. How can I help you today?"           │
+│     • Call 2: "Thank you for calling Bottini Law. Are you calling about the class action?"   │
+│                                                                                             │
+│  3. Post-Call Processing & Token Selection:                                                │
+│     • Call 1 finished ──► Use Apex Clio Token ──► POST to Apex Clio Account                 │
+│     • Call 2 finished ──► Use Bottini Clio Token ──► POST to Bottini Clio Account           │
+└──────────────────────────────────────────┬──────────────────────────────────────────────────┘
+                                           │
+                     ┌─────────────────────┴─────────────────────┐
+                     │                                           │
+                     ▼                                           ▼
+┌─────────────────────────────────────────┐ ┌─────────────────────────────────────────┐
+│     APEX LEGAL GROUP CLIO ACCOUNT       │ │        BOTTINI LAW CLIO ACCOUNT         │
+│  • New Contact: Mary Watson             │ │  • New Contact: Bruce Wayne             │
+│  • New Matter: 00005-Watson             │ │  • New Matter: 00001-Wayne              │
+│  • Firm A Staff review file             │ │  • Firm B Staff review file             │
+│  • Mary receives Apex Client Portal     │ │  • Bruce receives Bottini Client Portal │
+└─────────────────────────────────────────┘ └─────────────────────────────────────────┘</code></pre>
+
+<h2>4. Multi-Tenant Token Vault & Database Design</h2>
+<p>
+  In a multi-firm architecture, your Voice Agent database maintains an isolated <code>organizations</code> and <code>integrations</code> table:
+</p>
+
+<pre><code>{
+  "tenants": {
+    "org_apex_01": {
+      "firm_name": "Apex Legal Group",
+      "inbound_phone": "+15552345678",
+      "ai_greeting": "Thank you for calling Apex Legal Group.",
+      "practice_areas": ["Personal Injury", "Car Accidents"],
+      "clio_integration": {
+        "connected": true,
+        "clio_account_id": "99120",
+        "access_token": "41369-XSRyHVfoRkL0AK2o2wTys4P3Na61gjkbJM",
+        "refresh_token": "ncyIYwVfVA9pLH0erXI1yaZ8U5a0BUmSQysZ3Irm",
+        "token_expires_at": 1792748400
+      }
+    },
+    "org_bottini_02": {
+      "firm_name": "Bottini Law",
+      "inbound_phone": "+15558884321",
+      "ai_greeting": "Thank you for calling Bottini Law.",
+      "practice_areas": ["Securities Litigation", "Class Action"],
+      "clio_integration": {
+        "connected": true,
+        "clio_account_id": "44812",
+        "access_token": "88192-PLKxYJqoRmK1BL3o3wUzs5Q4Ob72hkclKN",
+        "refresh_token": "mdxHZwUeUB8oKG9dqWH0xzY7T4z9ATmRPxrY2Hql",
+        "token_expires_at": 1792751200
+      }
+    }
+  }
+}</code></pre>
+
+<div class="page-break"></div>
+
+<h2>5. How Each Law Firm Connects Their Clio Account (The OAuth Flow)</h2>
+<p>
+  You do not need to manually collect passwords from your law firms. Each firm connects securely via Clio OAuth 2.0:
+</p>
+
+<h3>Step 1: Send the Firm Their Unique Onboarding Link</h3>
+<p>
+  When you onboard <em>Bottini Law</em>, your platform generates a custom authorization link containing a unique <code>state</code> parameter:
+</p>
+<pre><code>https://app.clio.com/oauth/authorize?response_type=code&client_id=1zYn1AJ48HtBvdTZz3OOLljEqPKYhHQZKAWK11tz&redirect_uri=https://dashboard-production-55c4.up.railway.app/oauth/callback&state=org_bottini_02</code></pre>
+
+<h3>Step 2: Managing Partner Clicks "Allow Access"</h3>
+<p>
+  The managing partner at Bottini Law logs into their own Clio account and clicks <strong>Allow Access</strong>.
+</p>
+
+<h3>Step 3: Callback Stores Tokens to That Specific Firm</h3>
+<p>
+  Clio redirects back to your dashboard with both the authorization code and the state:
+  <code>/oauth/callback?code=AUTH_CODE&state=org_bottini_02</code>.
+  Your server exchanges the code and saves the resulting token under <code>org_bottini_02</code>.
+</p>
+
+<h2>6. Adding Firm #2, Firm #3, etc. (Step-by-Step Operator Checklist)</h2>
+
+<div class="highlight-box green">
+  <strong>Operator Checklist for Onboarding a New Law Firm:</strong><br><br>
+  <strong>Step 1: Create the Organization in Voice Agent:</strong><br>
+  Go to your Voice Agent dashboard at <code>/organizations</code> and click <em>Create Organization</em> (e.g., "Bottini Law").<br><br>
+  <strong>Step 2: Assign a Dedicated Phone Number:</strong><br>
+  Go to <em>Telephony &gt; Buy Phone Number</em> or assign an existing DID to that organization.<br><br>
+  <strong>Step 3: Configure Practice-Specific AI Prompt:</strong><br>
+  In Agent Builder, set the firm's custom greeting, business hours, and intake questions.<br><br>
+  <strong>Step 4: Connect the Firm's Clio Account:</strong><br>
+  Generate their unique OAuth connect link. Once authorized, all calls to their dedicated phone number automatically route into their private Clio account!
+</div>
+
+<h2>7. Security, Legal Ethics & Malpractice Prevention</h2>
+<ul>
+  <li><strong>Zero Data Bleed (Strict Multi-Tenancy):</strong> Every database query and Clio API dispatch strictly filters by <code>workspace_id</code>. There is no shared memory between active calls.</li>
+  <li><strong>Independent Conflict Checking:</strong> When an intake call arrives for Firm A, the conflict check only searches Firm A's Clio database, ensuring strict compliance with attorney-client confidentiality and ABA Model Rule 1.6.</li>
+  <li><strong>Independent Client Portals:</strong> When Firm A invites Mary, she sees Firm A's logo and legal team in her portal. Firm B's clients see Firm B's branding.</li>
+</ul>
+
+<div class="footer-note">
+  Generated for Voice Agent Service Technical Documentation | File: docs/MULTI_LAW_FIRM_ARCHITECTURE_GUIDE.pdf
+</div>
+
+</body>
+</html>
