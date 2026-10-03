@@ -130,6 +130,8 @@
   .pick .who span{font-size:12px;color:var(--ink-faint)}
   .pick .ct{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-faint);white-space:nowrap}
   .err{color:var(--neg);font-size:12.5px;min-height:1em}
+  .firm-picker{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-faint)}
+  .firm-picker select{padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font:600 13px var(--f-ui);max-width:220px}
   #toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:var(--ground);padding:10px 18px;border-radius:8px;font-size:13px;display:none;z-index:10000}
   #toast.show{display:block}
 
@@ -155,7 +157,7 @@
         <div class="crumb" id="crumb">Workspace</div>
         <h1 id="title">Cases</h1>
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center" id="topActions">
         <button class="btn" id="btnNew" hidden>+ New case</button>
         <button class="btn ghost" id="btnRefresh">↻ Refresh</button>
       </div>
@@ -240,6 +242,7 @@
 
 <div id="toast" role="status"></div>
 
+<script src="/firm-picker.js?v=1"></script>
 <script>
 (function () {
   var LABEL = { new: "New", in_progress: "In progress", on_hold: "On hold", closed: "Closed" };
@@ -269,12 +272,14 @@
     var qs = [];
     if ($("fFrom").value) qs.push("from=" + $("fFrom").value);
     if ($("fTo").value) qs.push("to=" + $("fTo").value);
+    if (FirmPicker.id()) qs.push("workspace_id=" + encodeURIComponent(FirmPicker.id()));
     return api("/api/v1/cases" + (qs.length ? "?" + qs.join("&") : "")).then(function (j) {
       state.cases = j.cases || [];
       state.statuses = j.statuses || state.statuses;
       state.isAdmin = Array.isArray(j.staff);
       state.staff = j.staff || null;
       setupRole();
+      if (state.isAdmin) $("crumb").textContent = j.workspace || "Workspace";
       render();
     }).catch(function (e) {
       $("tbody").innerHTML = '<tr><td colspan="6" class="empty" style="color:var(--neg)">Could not load cases: ' + esc(e.message) + '</td></tr>';
@@ -391,7 +396,7 @@
   function refreshStaffCounts() {
     if (!state.isAdmin) return;
     // Counts come from the server; re-read them quietly after a change.
-    api("/api/v1/cases").then(function (j) { state.staff = j.staff || state.staff; renderWorkload(); }).catch(function () {});
+    api("/api/v1/cases" + FirmPicker.query("?")).then(function (j) { state.staff = j.staff || state.staff; renderWorkload(); }).catch(function () {});
   }
 
   $("tbody").addEventListener("change", function (e) {
@@ -443,7 +448,8 @@
     e.preventDefault();
     var btn = this.querySelector("[type=submit]"); btn.disabled = true;
     api("/api/v1/cases", { client_name: $("nName").value, phone: $("nPhone").value, email: $("nEmail").value,
-                           case_type: $("nType").value, summary: $("nSummary").value }).then(function (j) {
+                           case_type: $("nType").value, summary: $("nSummary").value,
+                           workspace_id: FirmPicker.id() || undefined }).then(function (j) {
       state.cases.unshift(j.case); closeModals(); render(); toast("Case created for " + j.case.client_name);
     }).catch(function (err) { $("newErr").textContent = err.message; }).then(function () { btn.disabled = false; });
   });
@@ -459,6 +465,7 @@
   $("sortDate").addEventListener("click", function () { state.sortDesc = !state.sortDesc; render(); });
   $("btnRefresh").addEventListener("click", function () { load().then(function () { toast("Cases refreshed"); }); });
 
+  FirmPicker.mount($("topActions"), function () { $("fStaff").value = ""; load(); });
   load();
 })();
 </script>

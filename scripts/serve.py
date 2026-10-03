@@ -1490,7 +1490,8 @@ class Handler(SimpleHTTPRequestHandler):
                 assigned_to = v["user"].user_id if v["user"] else ""
             cases = case_manager.list_cases(ws, assigned_to=assigned_to, status=status or None,
                                             registered_from=reg_from, registered_to=reg_to)
-            body = {"status": "ok", "workspace_id": ws, "statuses": list(CASE_STATUSES),
+            workspace = auth_manager.get_workspace(ws)
+            body = {"status": "ok", "workspace_id": ws, "workspace": workspace.name if workspace else "", "statuses": list(CASE_STATUSES),
                     "cases": [self._case_out(case_manager.get(c["case_id"])) for c in cases]}
             if v["is_admin"]:
                 workload = case_manager.staff_workload(ws)
