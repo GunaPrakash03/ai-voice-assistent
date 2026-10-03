@@ -120,8 +120,22 @@ os.environ["SUPER_ADMIN_EMAIL"] = "intruder@firm.test"
 am4 = AuthManager(store_path=store)
 check("a different address cannot add a second Super Admin to an existing platform",
       [u.email for u in supers(am4)] == ["owner@firm.test"], [u.email for u in supers(am4)])
+# Password recovery for the existing Super Admin still works while old duplicate Super Admins remain.
+legacy = am4._users[next(u.user_id for u in am4._users.values() if u.email == "owner@firm.test")]
+dup = am4.add_member("ws-default", "dup@firm.test", PW, role="member_admin")
+am4._users[dup.user_id].role = "super_admin"     # simulate an old duplicate Super Admin
+am4._save_store()
+old_hash = legacy.password_hash
+os.environ["SUPER_ADMIN_EMAIL"] = "owner@firm.test"
+os.environ["SUPER_ADMIN_PASSWORD"] = "N3w-Passw0rd!"
+os.environ["SUPER_ADMIN_RESET_PASSWORD"] = "1"
+am5 = AuthManager(store_path=store)
+check("one-shot password reset works for the existing Super Admin despite old duplicates",
+      am5._find_user_by_email("owner@firm.test").password_hash != old_hash)
+check("and the new password signs in", am5.check_password("owner@firm.test", "N3w-Passw0rd!") is not None)
 os.environ["SUPER_ADMIN_EMAIL"] = ""
 os.environ["SUPER_ADMIN_PASSWORD"] = ""
+os.environ["SUPER_ADMIN_RESET_PASSWORD"] = ""
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

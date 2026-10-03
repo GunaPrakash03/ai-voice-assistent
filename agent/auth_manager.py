@@ -342,7 +342,8 @@ class AuthManager:
         for email in emails:
             user = self._find_user_by_email(email) or next(
                 (u for u in self._users.values() if u.email.lower() == email), None)
-            holder = self.admin_slot_holder(UserRole.SUPER_ADMIN.value, "", exclude_user_id=user.user_id if user else None)
+            already = bool(user and user.active and user.role == UserRole.SUPER_ADMIN.value)
+            holder = None if already else self.admin_slot_holder(UserRole.SUPER_ADMIN.value, "", exclude_user_id=user.user_id if user else None)
             if holder and holder.user_id == "usr-admin-01" and not holder.password_hash:
                 holder.active = False       # the built-in placeholder never signed in: the named owner replaces it
                 changed = True
