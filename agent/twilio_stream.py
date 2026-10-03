@@ -55,8 +55,12 @@ def media_stream_token() -> str:
 class TwilioMediaStreamSession:
     """Manages an active bi-directional telephone call with Twilio."""
 
-    def __init__(self, send_ws_json_cb) -> None:
+    def __init__(self, send_ws_json_cb, close_stream_cb=None) -> None:
         self.send_ws_json = send_ws_json_cb  # Callable[[dict], None]
+        # Closes the media stream from our side; with nothing after <Connect><Stream> in the TwiML,
+        # Twilio then ends the call. Used when the agent signs off.
+        self.close_stream = close_stream_cb
+        self.hung_up_by_agent: bool = False
         self.call_sid: str = ""
         self.stream_sid: str = ""
         self.called_number: str = ""
@@ -341,11 +345,31 @@ class TwilioMediaStreamSession:
             log.info("Agent replying: '%s'", reply_text)
             self._add_history("agent", reply_text)
             await self._speak_agent_text(reply_text)
+            from agent.agent_builder import looks_like_closing
+            if (self.is_active and self._playing_progress >= 1.0 and len(self.history) > 2
+                    and looks_like_closing(reply_text)):
+                await self._hang_up_after_goodbye()
 
         except asyncio.CancelledError:
             log.info("Agent reply generation cancelled (interrupted).")
         except Exception as ex:
             log.error("Failed to generate agent reply: %s", ex)
+
+    async def _hang_up_after_goodbye(self) -> None:
+        """The agent signed off and the line was spoken in full: let Twilio finish playing the audio we
+        sent ahead, then end the call unless the caller has started talking again."""
+        me = asyncio.current_task()
+        await asyncio.sleep(PLAYBACK_LEAD_SECS + 1.2)
+        if not self.is_active or self._current_speech_task not in (me, None) or self._speech_accumulator:
+            log.info("Caller spoke after the sign-off on %s; keeping the call open", self.call_sid)
+            return
+        self.hung_up_by_agent = True
+        log.info("Agent signed off; ending phone call %s", self.call_sid)
+        if self.close_stream:
+            try:
+                self.close_stream()
+            except Exception as ex:
+                log.warning("Could not close the Twilio stream for %s: %s", self.call_sid, ex)
 
     async def _speak_agent_text(self, text: str) -> None:
         """Synthesizes text into 8kHz mu-law audio and streams it to Twilio.
@@ -553,7 +577,7 @@ class TwilioMediaStreamSession:
                         "duration_seconds": round(duration, 2),
                     },
                     "transcript": [],
-                    "disconnection_reason": "user_hangup",
+                    "disconnection_reason": "agent_hangup" if self.hung_up_by_agent else "user_hangup",
                 }, call_id=self.call_sid)
             except Exception as ex:
                 log.warning("Could not dispatch call_ended webhook: %s", ex)
@@ -740,7 +764,20 @@ def handle_twilio_media_stream(handler, request_path: str) -> None:
         except Exception as ex:
             log.debug("Error sending WS frame to Twilio: %s", ex)
 
-    session = TwilioMediaStreamSession(send_ws_json)
+    def close_stream() -> None:
+        """Agent sign-off: send a WebSocket close and shut the socket so the blocked read returns."""
+        try:
+            handler.wfile.write(bytes([0x88, 0x02]) + struct.pack("!H", 1000))   # close frame, code 1000
+            handler.wfile.flush()
+        except Exception:
+            pass
+        try:
+            import socket as _socket
+            handler.connection.shutdown(_socket.SHUT_RDWR)
+        except Exception as ex:
+            log.debug("Socket shutdown after sign-off: %s", ex)
+
+    session = TwilioMediaStreamSession(send_ws_json, close_stream)
     start_deadline = time.monotonic() + 15.0
 
     async def stream_loop():
@@ -793,7 +830,10 @@ def handle_twilio_media_stream(handler, request_path: str) -> None:
                     log.warning("Twilio stream read timed out; closing inactive connection.")
                 break
             except Exception as ex:
-                log.warning("Twilio stream loop error: %s", ex)
+                if session.hung_up_by_agent:
+                    log.info("Twilio stream closed after the agent's sign-off")
+                else:
+                    log.warning("Twilio stream loop error: %s", ex)
                 break
 
         if session.call_sid:

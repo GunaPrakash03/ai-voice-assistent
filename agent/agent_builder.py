@@ -229,9 +229,13 @@ RETIRED_GEMINI = {
 
 
 _CLOSING_RE = re.compile(
-    r"\b(take care|goodbye|good bye|bye for now|have a (great|good|wonderful|nice) (day|evening|afternoon|one)|"
-    r"thank you for calling|thanks for calling|i have everything i need|we'll be in touch|will be in touch|"
-    r"you'll hear from us|talk to you soon)\b", re.I)
+    r"\b(take care|goodbye|good bye|good-bye|bye(?: bye| now| for now)?|"
+    r"have a (?:great|good|wonderful|nice|lovely|blessed|safe|fantastic) (?:day|evening|afternoon|morning|night|weekend|one)|"
+    r"enjoy (?:the rest of )?your (?:day|evening|weekend|afternoon)|"
+    r"thank you (?:so much )?for (?:calling|your time|reaching out|contacting us)|thanks (?:so much )?for (?:calling|your time|reaching out)|"
+    r"thanks again|thank you again|i have everything i need|we'?ll be in touch|will be in touch|you'?ll hear from us|talk to you soon|"
+    r"(?:someone|an attorney|one of our attorneys|our team|our office|the firm|a member of our team)"
+    r"(?: from [a-z&' ]{2,40})? will (?:call you(?: back)?|reach out|contact you|get back to you|be in touch|follow up))\b", re.I)
 
 
 def split_speech_chunks(text: str, max_chunks: int = 3) -> List[str]:

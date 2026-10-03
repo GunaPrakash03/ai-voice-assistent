@@ -104,6 +104,10 @@ GLOBAL_INSTRUCTIONS = (
     f"- {NO_LEGAL_ADVICE}\n"
     "- When a caller asks about the firm, answer from the ABOUT THE FIRM section below and nothing else; if it "
     "doesn't say, offer to have someone from the firm call back.\n"
+    "- Ending the call: once you have what you need and the caller has nothing else, finish with one short "
+    "closing line that ends in a goodbye, e.g. \"Thank you for calling. Someone from our team will call you back. "
+    "Goodbye.\" Don't ask another question in that line; the call hangs up after it. If the caller says goodbye "
+    "first, say goodbye back in one short line.\n"
     "\nAGENT INSTRUCTIONS:"
 )
 
