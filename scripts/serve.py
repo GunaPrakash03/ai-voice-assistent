@@ -389,6 +389,70 @@ class Handler(SimpleHTTPRequestHandler):
             log.error("Verification email to %s failed: %s", step["dest_masked"], res.get("error"))
         return res
 
+    # ── Email delivery page (Super Admin) ────────────────────────────────────
+    EMAIL_TEST_LIMITER = None   # set below the class
+
+    def _email_settings(self) -> Dict[str, Any]:
+        """What the Email delivery page shows. Secrets are reported as set / not set, never sent back."""
+        from agent import mailer
+        from agent.provider_manager import mask_key
+        cfg = mailer.configured()
+        env = lambda k: (os.getenv(k) or "").strip()
+        transport = "resend" if env("RESEND_API_KEY") else "smtp" if env("SMTP_HOST") else "off"
+        return {
+            "ready": bool(cfg.get("ready")), "transport": transport, "reason": cfg.get("reason", ""),
+            "from": cfg.get("from", ""), "dry_run": self._mail_dry_run(),
+            "settings": {"mail_from": env("MAIL_FROM"), "smtp_host": env("SMTP_HOST"), "smtp_port": env("SMTP_PORT") or "587",
+                         "smtp_user": env("SMTP_USER"), "smtp_tls": env("SMTP_TLS") or "auto",
+                         "smtp_password_set": bool(os.getenv("SMTP_PASSWORD")),
+                         "resend_key_set": bool(env("RESEND_API_KEY")),
+                         "resend_key_preview": mask_key(env("RESEND_API_KEY")) if env("RESEND_API_KEY") else ""},
+            "used_for": ["Sign-up verification codes", "Password reset links", "New-lead notifications"],
+        }
+
+    def _save_email_settings(self, payload: Dict[str, Any]) -> Dict[str, str]:
+        """Validates the Email delivery form and returns the .env keys to write. Raises ValueError."""
+        transport = str(payload.get("transport") or "").strip().lower()
+        if transport not in ("resend", "smtp", "off"):
+            raise ValueError("Choose Resend, SMTP or Off")
+        txt = lambda k, n=300: re.sub(r"\s+", " ", str(payload.get(k) or "")).strip()[:n]
+        mail_from = txt("mail_from")
+        if transport != "off":
+            addr = re.search(r"<([^>]+)>\s*$", mail_from)
+            addr = (addr.group(1) if addr else mail_from).strip()
+            if not re.match(r"^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$", addr):
+                raise ValueError("Sender must be an email address, e.g. Call Desk <noreply@yourfirm.com>")
+        keys: Dict[str, str] = {"MAIL_FROM": mail_from}
+        if transport == "resend":
+            key = txt("resend_api_key", 200)
+            if key:
+                if not key.startswith("re_"):
+                    raise ValueError("A Resend API key starts with re_")
+                keys["RESEND_API_KEY"] = key
+            elif not (os.getenv("RESEND_API_KEY") or "").strip():
+                raise ValueError("Enter your Resend API key")
+            keys["SMTP_HOST"] = ""            # Resend wins only when set; clear SMTP so the choice is unambiguous
+        elif transport == "smtp":
+            host = txt("smtp_host", 200)
+            if not (re.match(r"^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$", host) or host == "localhost"
+                    or re.match(r"^\d{1,3}(\.\d{1,3}){3}$", host)):
+                raise ValueError("Enter the SMTP server, e.g. smtp.gmail.com")
+            port = txt("smtp_port", 6) or "587"
+            if not port.isdigit() or not 1 <= int(port) <= 65535:
+                raise ValueError("SMTP port must be a number such as 587 or 465")
+            tls = txt("smtp_tls", 10).lower() or "auto"
+            if tls not in ("auto", "starttls", "ssl"):
+                raise ValueError("Security must be auto, STARTTLS or SSL")
+            keys.update(SMTP_HOST=host, SMTP_PORT=port, SMTP_USER=txt("smtp_user", 200),
+                        SMTP_TLS="" if tls == "auto" else tls, RESEND_API_KEY="")
+            if not keys["SMTP_USER"]:
+                keys["SMTP_PASSWORD"] = ""          # no username means no login; a stale password would block sending
+            elif str(payload.get("smtp_password") or ""):
+                keys["SMTP_PASSWORD"] = str(payload["smtp_password"]).strip()
+        else:
+            keys.update(RESEND_API_KEY="", SMTP_HOST="")
+        return keys
+
     def _start_signup_verification(self, user, remember: bool = True) -> Dict[str, Any]:
         """Send a pending sign-up its verification code, by email (or SMS when email isn't set up).
         Returns the response body for the sign-up / sign-in page."""
@@ -449,7 +513,7 @@ class Handler(SimpleHTTPRequestHandler):
     # Product Admins (admin) and Member Admins (member_admin) receive 403 / redirect for these.
     # Softphone WebRTC dialer and API Keys & Provider Secrets are strictly Super Admin only.
     WEBSITE_DRAFT_LIMITER = None   # set below the class (needs auth_manager's limiter type)
-    SUPER_ADMIN_PAGES = ("/organizations", "/users", "/softphone", "/api-keys", "/branding")
+    SUPER_ADMIN_PAGES = ("/organizations", "/users", "/softphone", "/api-keys", "/branding", "/email-settings")
     SUPER_ADMIN_PREFIXES = ("/api/v1/system/", "/api/v1/api-keys", "/api/providers")
 
     ADMIN_GET_PREFIXES = ("/api/v1/users", "/api/v1/workspaces", "/api/v1/team", "/api/v1/firm")
@@ -850,6 +914,10 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/v1/system/organizations":
             orgs = auth_manager.list_all_organizations()
             self._send_json({"status": "ok", "organizations": orgs, "count": len(orgs)})
+            return
+
+        if parsed.path == "/api/v1/system/email":
+            self._send_json({"status": "ok", **self._email_settings()})
             return
 
         if parsed.path == "/api/v1/system/users":
@@ -2011,6 +2079,39 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": str(e)}, 400)
             return
 
+        if parsed.path == "/api/v1/system/email":
+            from agent.provider_manager import provider_manager
+            try:
+                keys = self._save_email_settings(payload)
+                provider_manager.save_keys(keys)
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            except RuntimeError as e:
+                self._send_json({"status": "error", "error": str(e)}, 500)
+                return
+            self._send_json({"status": "ok", **self._email_settings()})
+            return
+        if parsed.path == "/api/v1/system/email/test":
+            from agent import mailer
+            v = self._viewer()
+            to = str(payload.get("to") or (v["user"].email if v["user"] else "")).strip()
+            if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", to):
+                self._send_json({"status": "error", "error": "Enter the address to send the test to"}, 400)
+                return
+            lim = self.EMAIL_TEST_LIMITER.check(f"mailtest:{v['user'].user_id if v['user'] else 'local'}")
+            if not lim.allowed:
+                self._send_json({"status": "error", "error": f"Too many test emails; try again in {lim.retry_after}s"}, 429)
+                return
+            res = mailer.send_email(to, "Call Desk test email",
+                                    "This is a test from your Call Desk dashboard. Email delivery is working.",
+                                    "<p>This is a test from your Call Desk dashboard.</p><p><b>Email delivery is working.</b></p>")
+            if not res.get("ok"):
+                self._send_json({"status": "error", "error": str(res.get("error") or "The email could not be sent")[:400],
+                                 "transport": res.get("transport", "")}, 502)
+                return
+            self._send_json({"status": "ok", "to": to, "transport": res.get("transport", "")})
+            return
         if parsed.path == "/api/v1/system/organizations":
             action = str(payload.get("action") or "create")
             try:
@@ -3472,6 +3573,7 @@ try:
 except Exception as _e:
     log.warning("Firm-details prompt cleanup skipped: %s", _e)
 Handler.WEBSITE_DRAFT_LIMITER = SlidingWindowRateLimiter(default_limit=5, window_seconds=600)
+Handler.EMAIL_TEST_LIMITER = SlidingWindowRateLimiter(default_limit=5, window_seconds=300)
 
 import signal
 try:
