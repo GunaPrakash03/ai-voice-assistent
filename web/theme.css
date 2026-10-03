@@ -5,7 +5,6 @@
  * at the auth palette and restyles the shared shell (sidebar, top bar, cards, buttons, inputs).
  * The dark-mode block repeats the pages' own selector so it wins on specificity *and* order.
  */
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
 
 :root{
   --ground:#FAFAF9; --panel:#FFFFFF; --sunk:#F4F4F5;
@@ -53,7 +52,7 @@ body{font-family:var(--f-ui);background:var(--ground);font-size:14px;letter-spac
 /* Icons, the "Workspace" heading, the collapse button and the account menu are added by profile.js. */
 .app{grid-template-columns:248px minmax(0,1fr)}
 .rail{background:var(--rail);border-right:1px solid var(--line);padding:14px 12px 12px;position:sticky;top:0;
-  height:100vh;align-self:start;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin}
+  height:100vh;align-self:start;overflow:hidden;display:flex;flex-direction:column}
 .rail .brand{display:flex;flex-direction:column;justify-content:center;position:relative;min-height:36px;margin:0 0 6px;
   padding:2px 8px 12px 50px;border-bottom:0}
 .rail .brand::before{content:"";position:absolute;left:6px;top:2px;width:34px;height:34px;border-radius:10px;
@@ -65,11 +64,17 @@ body{font-family:var(--f-ui);background:var(--ground);font-size:14px;letter-spac
 .rail .brand-edit-btn{top:8px;right:4px;background:var(--sa-soft);color:var(--sa);border:0;border-radius:999px;font-family:var(--f-ui);font-size:10.5px}
 .rail .brand-edit-btn:hover{background:var(--sa);color:#fff}
 
-.rail .nav{gap:1px;padding:0}
+/* Only the link list scrolls; the brand stays on top and the account button stays pinned at the bottom */
+.rail .nav{gap:1px;padding:0 0 8px;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;
+  margin:0 -4px;padding-left:4px;padding-right:4px}
+/* profile.js swaps in the shared sidebar list; keep the page's own list hidden until then
+   (shown anyway after 1.2s in case the script fails). */
+.rail .nav:not([data-built]){visibility:hidden;animation:nav-reveal 0s 1.2s forwards}
+@keyframes nav-reveal{to{visibility:visible}}
 .rail .nav-h,.sa-nav-section .sa-h{font-size:11px;font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--ink-faint);
-  padding:12px 10px 6px;font-family:var(--f-ui)}
+  padding:10px 10px 4px;font-family:var(--f-ui)}
 .rail .nav a,.rail .nav button,.sa-link{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;
-  min-height:36px;padding:0 10px;border-radius:9px;color:var(--ink-soft);font-size:13.5px;font-weight:500;
+  min-height:34px;padding:0 10px;border-radius:9px;color:var(--ink-soft);font-size:13.5px;font-weight:500;
   position:relative;transition:background .15s,color .15s,box-shadow .15s}
 .rail .nav [hidden]{display:none !important}
 .rail .nav .nav-ic{width:18px;height:18px;flex:none;color:var(--ink-faint);transition:color .15s}
@@ -81,7 +86,7 @@ body{font-family:var(--f-ui);background:var(--ground);font-size:14px;letter-spac
 .rail .nav [aria-selected="true"],.rail .nav a.active,.rail .nav .active{background:var(--panel);color:var(--ink);font-weight:600;
   box-shadow:0 0 0 1px var(--line),0 1px 2px rgba(10,10,11,.06)}
 .rail .nav [aria-selected="true"] .nav-ic,.rail .nav a.active .nav-ic{color:var(--accent)}
-.rail .nav [aria-selected="true"]::before,.rail .nav a.active::before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:3px;
+.rail .nav [aria-selected="true"]::before,.rail .nav a.active::before{content:"";position:absolute;left:-4px;top:9px;bottom:9px;width:3px;
   border-radius:0 3px 3px 0;background:var(--accent)}
 .rail .nav .ct{margin-left:auto;font-family:var(--f-mono);font-size:11px;font-weight:500;color:var(--ink-faint);opacity:1;
   background:transparent;padding:0;border-radius:999px}
@@ -100,7 +105,7 @@ body{font-family:var(--f-ui);background:var(--ground);font-size:14px;letter-spac
 .rail .nav .sa-nav-section a.active .ct,.rail .nav .sa-nav-section [aria-selected="true"] .ct{background:var(--sa-soft) !important}
 
 /* Foot: collapse toggle + account button */
-.rail-foot{margin-top:auto;padding:10px 0 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.rail-foot{flex:none;margin-top:0;padding:10px 0 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
 .rail-foot > div:not(#railProfile){color:var(--ink-faint)}
 .rail-collapse{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:10px;min-height:34px;padding:0 10px;
   border-radius:9px;color:var(--ink-faint);font-size:13px;font-weight:500}
@@ -148,7 +153,7 @@ body{font-family:var(--f-ui);background:var(--ground);font-size:14px;letter-spac
   .rail-collapsed .sa-nav-section .sa-h,.rail-collapsed #railProfile .rp-who,.rail-collapsed #railProfile .rp-chev{display:none !important}
   .rail-collapsed .rail .nav a,.rail-collapsed .rail .nav button,.rail-collapsed .rail-collapse{justify-content:center;padding:0}
   .rail-collapsed .sa-nav-section{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
-  .rail-collapsed .rail .nav [aria-selected="true"]::before,.rail-collapsed .rail .nav a.active::before{left:-10px}
+  .rail-collapsed .rail .nav [aria-selected="true"]::before,.rail-collapsed .rail .nav a.active::before{left:-4px}
   .rail-collapsed .rail-collapse .nav-ic{transform:scaleX(-1)}
   .rail-collapsed #railProfile .rp-trigger{justify-content:center;padding:6px 0;border-color:transparent;background:none;box-shadow:none}
   .rail-collapsed #railProfile .rp-menu{right:auto;width:240px;left:0}
@@ -208,7 +213,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
   .rail .brand{padding:0 0 0 40px;margin:0 4px 0 0;flex:none;min-height:32px}
   .rail .brand::before{left:0;top:0;width:32px;height:32px}
   .rail .brand span,.rail .brand-edit-btn{display:none !important}
-  .rail .nav{flex-direction:row;padding:0;flex:none;gap:2px}
+  .rail .nav{flex-direction:row;padding:0;margin:0;flex:none;gap:2px;overflow:visible}
   .rail .nav-h,.sa-nav-section .sa-h,.rail .nav .ct{display:none !important}
   .rail .nav a,.rail .nav button,.sa-link{white-space:nowrap;min-height:34px}
   .rail .nav [aria-selected="true"]::before,.rail .nav a.active::before{display:none}

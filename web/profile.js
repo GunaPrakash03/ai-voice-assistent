@@ -52,12 +52,6 @@
   function enhanceRail() {
     var rail = document.querySelector(".rail");
     if (!rail) return;
-    var nav = rail.querySelector(".nav");
-    if (nav && !nav.querySelector(".nav-h")) {
-      var h = document.createElement("div");
-      h.className = "nav-h"; h.textContent = "Workspace";
-      nav.insertBefore(h, nav.firstChild);
-    }
     Array.prototype.forEach.call(rail.querySelectorAll(".nav a, .nav button"), function (a) {
       if (a.dataset.enh || a.classList.contains("brand-edit-btn")) return;
       a.dataset.enh = "1";
@@ -75,6 +69,114 @@
       a.insertAdjacentHTML("afterbegin", icon(iconFor(a)));
     });
   }
+
+  // ── One sidebar for every page ───────────────────────────────────────────
+  // Pages used to hand-write their own lists, so items appeared and vanished between pages. The
+  // list below is the only source; links a page already has (with their click handlers, counters and
+  // ids) are reused, missing ones are created, extras dropped. Items are shown for the role seen on
+  // the last visit straight away, then confirmed by /api/v1/auth/profile, so nothing pops in.
+  // Roles follow serve.py: ADMIN_PAGES need an admin, SUPER_ADMIN_PAGES a super admin.
+  var NAV = [
+    { head: "Workspace" },
+    { href: "/", label: "Overview", v: "overview" },
+    { href: "/calls", label: "Calls", v: "calls" },
+    { href: "/call-detail", label: "Call detail", v: "detail" },
+    { href: "/agents", label: "Agents", v: "agents", role: "admin", also: ["/agent-builder"] },
+    { href: "/sip-trunks", label: "SIP Trunks & DIDs", v: "telephony", role: "admin" },
+    { href: "/phone-numbers", label: "Buy Phone Numbers", v: "market", role: "admin", tag: "DID" },
+    { href: "/webhooks", label: "Webhooks & Data", role: "admin" },
+    { head: "Resources", role: "admin" },
+    { href: "/user-guide", label: "User guide", role: "admin" },
+    { href: "/admin-guide", label: "Admin guide", role: "admin" },
+    { href: "/cost-comparison", label: "Cost comparison", role: "admin" },
+    { href: "/competitor-analysis", label: "Competitor analysis", role: "admin" },
+    { head: "Overall system", role: "super" },
+    { href: "/organizations", label: "Organizations", role: "super" },
+    { href: "/users", label: "Users Registry", role: "super" },
+    { href: "/api-keys", label: "API Keys & Providers", role: "super" },
+    { href: "/softphone", label: "Softphone Dialer", role: "super" },
+    { href: "/profile#cardBranding", label: "Dashboard Branding", role: "super" }
+  ];
+  var ROLE_KEY = "rail_role";
+  function roleAllows(role, need) {
+    if (!need) return true;
+    if (need === "super") return role === "super_admin";
+    return role === "super_admin" || role === "admin";
+  }
+  function normPath(href) {
+    var h = (href || "").replace(/^https?:\/\/[^/]+/, "");
+    if (/#cardBranding/.test(h)) return "/profile#cardBranding";
+    h = h.split(/[?#]/)[0].replace(/^\/call-desk(?=\/|$)/, "") || "/";
+    return h.length > 1 ? h.replace(/\/+$/, "") : h;
+  }
+  function setShown(el, on) {
+    el.hidden = !on;
+    el.style.display = on ? (el.dataset.display || "") : "none";
+  }
+  function buildNav(role) {
+    var nav = document.querySelector(".rail .nav");
+    if (!nav || nav.dataset.built) return;
+    var existing = {};
+    Array.prototype.forEach.call(nav.querySelectorAll("a[href], button[data-v]"), function (a) {
+      var key = a.tagName === "A" ? normPath(a.getAttribute("href")) : null;
+      if (key && !existing[key]) existing[key] = a;
+    });
+    var here = normPath(location.pathname + (location.hash === "#cardBranding" ? "#cardBranding" : ""));
+    var frag = document.createDocumentFragment(), group = frag;
+    NAV.forEach(function (item) {
+      if (item.head) {
+        if (item.role === "super") {
+          group = document.createElement("div");
+          group.id = "railSuperAdminSection"; group.className = "sa-nav-section";
+          group.setAttribute("data-super-admin-only", ""); group.dataset.display = "flex";
+          group.innerHTML = '<div class="sa-h"></div>';
+          group.firstChild.textContent = item.head;
+          setShown(group, roleAllows(role, "super"));
+          frag.appendChild(group);
+        } else {
+          var h = document.createElement("div");
+          h.className = "nav-h"; h.textContent = item.head;
+          if (item.role) { h.setAttribute("data-admin-only", ""); h.dataset.display = "block"; setShown(h, roleAllows(role, item.role)); }
+          (group === frag ? frag : group).appendChild(h);
+        }
+        return;
+      }
+      var a = existing[item.href];
+      if (a) {
+        // Same wording on every page: replace the page's own label text (keeps counters and ids).
+        var lbl = Array.prototype.filter.call(a.childNodes, function (n) {
+          return (n.nodeType === 3 && n.textContent.trim()) || (n.nodeType === 1 && n.tagName === "SPAN" && !n.classList.contains("ct"));
+        })[0];
+        if (lbl) lbl.textContent = item.label;
+      } else {
+        a = document.createElement("a");
+        a.href = item.href;
+        a.textContent = item.label;
+        if (item.tag) { var t = document.createElement("span"); t.className = "ct"; t.textContent = item.tag; a.appendChild(t); }
+      }
+      a.removeAttribute("data-admin-only"); a.removeAttribute("data-super-admin-only");
+      if (item.role === "admin") a.setAttribute("data-admin-only", "");
+      if (group === frag && item.role === "super") a.setAttribute("data-super-admin-only", "");
+      a.dataset.display = "";
+      a.classList.remove("sa-link");
+      if (group === frag || item.role !== "super") setShown(a, roleAllows(role, item.role));
+      else { a.hidden = false; a.style.display = ""; }
+      // Real links (not the in-page tabs on Overview / Call Desk) get their selected state here.
+      if (a.getAttribute("role") !== "tab") {
+        var on = item.href === here || (item.also || []).indexOf(here) >= 0;
+        a.classList.toggle("active", on);
+        if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+        a.removeAttribute("aria-selected");
+      }
+      group.appendChild(a);
+    });
+    nav.textContent = "";
+    nav.appendChild(frag);
+    nav.dataset.built = "1";
+  }
+  var cachedRole = "";
+  try { cachedRole = localStorage.getItem(ROLE_KEY) || ""; } catch (e) {}
+  buildNav(cachedRole);
 
   // Collapse to an icon-only sidebar; remembered per browser.
   var COLLAPSE_KEY = "rail_collapsed";
@@ -222,19 +324,7 @@
     } else if (isSuperAdmin) {
       injectSuperAdminNav();
     }
-    hideDuplicateLinks(isSuperAdmin);
   };
-
-  // Some pages also list super-admin pages (e.g. API Keys) under Workspace; show each page once.
-  function hideDuplicateLinks(isSuperAdmin) {
-    var sec = document.getElementById("railSuperAdminSection");
-    if (!sec || !isSuperAdmin) return;
-    var inSection = {};
-    Array.prototype.forEach.call(sec.querySelectorAll("a[href]"), function (a) { inSection[a.getAttribute("href")] = true; });
-    Array.prototype.forEach.call(document.querySelectorAll(".rail .nav a[href]"), function (a) {
-      if (!sec.contains(a) && inSection[a.getAttribute("href")]) { a.hidden = true; a.style.display = "none"; }
-    });
-  }
 
   function load() {
     return fetch("/api/v1/auth/profile").then(function (r) { return r.json(); }).then(function (d) {
@@ -242,6 +332,7 @@
         profile = d.profile;
         window.currentProfile = profile;
         window.currentRole = profile.role || (profile.is_super_admin ? "super_admin" : (profile.is_admin ? "admin" : "member_admin"));
+        try { localStorage.setItem(ROLE_KEY, profile.is_super_admin ? "super_admin" : profile.is_admin ? "admin" : window.currentRole); } catch (e) {}
         render();
         window.applyRoleVisibility();
         if (profile.system_branding) {
