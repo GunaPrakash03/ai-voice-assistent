@@ -429,42 +429,53 @@
     }).filter(function (a) { return a.name; });
     return { about_firm: $("fdAbout").value.trim() || null, practice_details: practices.length ? practices : null, attorneys: attorneys.length ? attorneys : null };
   }
+  // Reads a JSON reply; a non-JSON page (e.g. a 404 from a server started before this feature) becomes a
+  // clear message instead of a generic network error.
+  function fdJson(r) {
+    var ct = r.headers.get("Content-Type") || "";
+    if (ct.indexOf("application/json") < 0) {
+      throw new Error(r.status === 404 ? "The server is running an older version. Restart it (python3 scripts/serve.py) and try again."
+                                       : "The server answered with an error (" + r.status + "). Try again.");
+    }
+    return r.json();
+  }
+  function fdNetErr(e) { return e && e.message && !/Failed to fetch|NetworkError/i.test(e.message) ? e.message : "Couldn't reach the server. Check that it is running."; }
   function fdMetaText(d) {
     if (d.details_source === "website" && d.details_read_at) return "from website · " + fmtDate(d.details_read_at);
     return d.details_source === "manual" ? "entered by hand" : "";
   }
   function loadFirmDetails() {
-    fetch("/api/v1/firm/details").then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+    fetch("/api/v1/firm/details").then(fdJson).then(function (j) {
       if (!j || j.status !== "ok") return;
       var d = j.details || {};
       fd.website = d.website || ""; fd.source = d.details_source || "manual"; fd.readAt = d.details_read_at || null;
       fdFill(d);
       $("fdMeta").textContent = fdMetaText(d);
       $("btnRefreshFirm").hidden = !fd.website;
-    }).catch(function () {});
+    }).catch(function (e) { setMsg($("fdMsg"), fdNetErr(e), false); });
   }
   $("fdAddPractice").addEventListener("click", function () { fdPractice().querySelector("input").focus(); });
   $("fdAddAttorney").addEventListener("click", function () { fdAttorney().querySelector("input").focus(); });
   $("btnRefreshFirm").addEventListener("click", function () {
     var b = this; b.disabled = true; setMsg($("fdMsg"), "Reading " + fd.website.replace(/^https?:\/\//, "") + "… up to 30 seconds", true);
     fetch("/api/v1/onboarding/website-draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ website: fd.website }) })
-      .then(function (r) { return r.json(); }).then(function (j) {
+      .then(fdJson).then(function (j) {
         if (j.status !== "ok") { setMsg($("fdMsg"), j.error || "Couldn't read the website", false); return; }
         fdFill(j.draft); fd.source = "website"; fd.readAt = j.draft.read_at;
         setMsg($("fdMsg"), "Read from " + j.draft.pages_read.length + " pages. Check it, then press Save.", true);
-      }).catch(function () { setMsg($("fdMsg"), "Network error", false); }).then(function () { b.disabled = false; });
+      }).catch(function (e) { setMsg($("fdMsg"), fdNetErr(e), false); }).then(function () { b.disabled = false; });
   });
   $("btnSaveFirm").addEventListener("click", function () {
     var b = this, body = fdCollect();
     body.details_source = fd.source; body.details_read_at = fd.source === "website" ? fd.readAt : null;
     b.disabled = true;
     fetch("/api/v1/firm/details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json(); }).then(function (j) {
+      .then(fdJson).then(function (j) {
         if (j.status !== "ok") { setMsg($("fdMsg"), j.error || "Could not save", false); return; }
         $("fdMeta").textContent = fdMetaText(j.details);
         var t = "Firm details saved" + (j.agent_updated ? "; your receptionist now uses them" : "");
         setMsg($("fdMsg"), t, true); toast(t);
-      }).catch(function () { setMsg($("fdMsg"), "Network error", false); }).then(function () { b.disabled = false; });
+      }).catch(function (e) { setMsg($("fdMsg"), fdNetErr(e), false); }).then(function () { b.disabled = false; });
   });
   loadFirmDetails();
 
