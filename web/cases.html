@@ -299,8 +299,10 @@
       $("kUnassignedCard").hidden = true;
     }
   }
+  var linkedStaff = new URLSearchParams(location.search).get("staff") || "";   // from the Team page
   function fillStaffFilter() {
-    var sel = $("fStaff"), keep = sel.value;
+    var sel = $("fStaff"), keep = sel.value || linkedStaff;
+    linkedStaff = "";
     Array.prototype.slice.call(sel.options, 2).forEach(function (o) { o.remove(); });
     (state.staff || []).forEach(function (s) { var o = document.createElement("option"); o.value = s.user_id; o.textContent = s.name; sel.appendChild(o); });
     sel.value = keep;
@@ -351,7 +353,7 @@
       ? '<select class="status st-' + esc(c.status) + '" data-status="' + esc(c.case_id) + '" aria-label="Status for ' + esc(c.client_name) + '">' +
           state.statuses.map(function (s) { return '<option value="' + s + '"' + (s === c.status ? " selected" : "") + ">" + esc(LABEL[s] || s) + "</option>"; }).join("") + "</select>"
       : '<span class="pill st-' + esc(c.status) + '">' + esc(LABEL[c.status] || c.status) + "</span>";
-    var chips = c.staff.map(function (s) { return '<span class="chip" title="' + esc(s.email) + '"><span class="av">' + esc(initials(s.name)) + "</span>" + esc(s.name) + "</span>"; }).join("");
+    var chips = c.staff.map(function (s) { return '<span class="chip" title="' + esc(s.title ? s.title + " · " + s.email : s.email) + '"><span class="av">' + esc(initials(s.name)) + "</span>" + esc(s.name) + "</span>"; }).join("");
     if (!chips) chips = '<span class="unassigned">Unassigned</span>';
     var assign = state.isAdmin ? ' <button class="btn ghost sm" data-assign="' + esc(c.case_id) + '">' + (c.staff.length ? "Edit" : "Assign") + "</button>" : "";
     var src = c.source === "call" && c.call_id
@@ -378,8 +380,8 @@
       ? staff.map(function (s) {
           return '<li><span class="nm" title="' + esc(s.email) + '">' + esc(s.name) + '</span><span class="ct">' + s.open_cases + "</span>" +
                  '<span class="bar"><i style="width:' + (s.open_cases / max * 100) + '%"></i></span></li>';
-        }).join("") + '<li class="hint">Add law staff as Member Admins on the Profile page (Members).</li>'
-      : '<li class="hint">No staff yet. Add law staff as Member Admins on the Profile page (Members).</li>';
+        }).join("") + '<li class="hint">Add or remove law staff on the <a href="/team" style="color:var(--accent)">Team page</a>.</li>'
+      : '<li class="hint">No staff yet. Add law staff on the <a href="/team" style="color:var(--accent)">Team page</a>.</li>';
   }
 
   // ── Actions ────────────────────────────────────────────────────────────
@@ -422,9 +424,9 @@
     var staff = state.staff || [];
     $("pickList").innerHTML = staff.length ? staff.map(function (s) {
       return '<label><input type="checkbox" value="' + esc(s.user_id) + '"' + (c.assigned_staff.indexOf(s.user_id) >= 0 ? " checked" : "") + ">" +
-             '<span class="av">' + esc(initials(s.name)) + '</span><span class="who"><b>' + esc(s.name) + "</b><span>" + esc(s.email) + "</span></span>" +
+             '<span class="av">' + esc(initials(s.name)) + '</span><span class="who"><b>' + esc(s.name) + "</b><span>" + esc(s.title ? s.title + " · " + s.email : s.email) + "</span></span>" +
              '<span class="ct">' + s.open_cases + " open</span></label>";
-    }).join("") : '<div class="empty" style="padding:16px">No staff in this workspace yet. Add law staff as Member Admins on the Profile page.</div>';
+    }).join("") : '<div class="empty" style="padding:16px">No staff in this workspace yet. Add law staff on the <a href="/team" style="color:var(--accent)">Team page</a>.</div>';
     openModal("mAssign");
   }
   $("btnSaveAssign").addEventListener("click", function () {

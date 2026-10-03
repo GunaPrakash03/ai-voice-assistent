@@ -36,7 +36,7 @@
   function icon(name) {
     return '<svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || ICONS.dot) + '</svg>';
   }
-  var ROUTE_ICONS = { "": "overview", calls: "calls", cases: "cases", "call-detail": "detail", "sip-trunks": "trunks", "phone-numbers": "market",
+  var ROUTE_ICONS = { "": "overview", calls: "calls", cases: "cases", team: "users", "call-detail": "detail", "sip-trunks": "trunks", "phone-numbers": "market",
     agents: "agents", "agent-builder": "agents", webhooks: "webhooks", "api-keys": "keys", profile: "user", "user-guide": "guide",
     "admin-guide": "guide", organizations: "orgs", users: "users", softphone: "softphone", "competitor-analysis": "chart",
     "cost-comparison": "cost", "live-console": "calls" };
@@ -83,6 +83,7 @@
     { href: "/calls", label: "Calls", v: "calls" },
     { href: "/call-detail", label: "Call detail", v: "detail" },
     { href: "/cases", label: "Cases" },
+    { href: "/team", label: "Team", role: "admin" },
     { href: "/agents", label: "Agents", v: "agents", role: "admin", also: ["/agent-builder"] },
     { href: "/sip-trunks", label: "SIP Trunks & DIDs", v: "telephony", role: "admin" },
     { href: "/phone-numbers", label: "Buy Phone Numbers", v: "market", role: "admin", tag: "DID" },

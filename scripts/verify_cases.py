@@ -317,6 +317,38 @@ def live():
         code, body = A.call("GET", f"/api/v1/cases/{c1}")
         check("removed member unassigned from cases", [s["user_id"] for s in body["case"]["staff"]] == [staff_a1.user_id], body)
 
+        print("\n2b. Team page API")
+        code, body = A.call("GET", "/api/v1/team")
+        emails = {m["email"] for m in body.get("members", [])}
+        check("admin team list is own firm, removed member gone", code == 200 and emails == {"admin@alpha.test", "sam@alpha.test"}, (code, emails))
+        sam = next((m for m in body.get("members", []) if m["email"] == "sam@alpha.test"), {})
+        check("case load per member", (sam.get("open_cases"), sam.get("total_cases")) == (1, 1), sam)
+        me = next((m for m in body.get("members", []) if m["email"] == "admin@alpha.test"), {})
+        check("viewer marked is_me and cannot remove self", me.get("is_me") and not me.get("can_remove"), me)
+        check("Product Admin may add Member Admins only", body.get("can_add_roles") == ["member_admin"], body.get("can_add_roles"))
+        code, _ = S1.call("GET", "/api/v1/team")
+        check("member admin cannot read the team list (403)", code == 403, code)
+        req = urllib.request.Request(base + "/team")
+        try:
+            S1.opener.open(req, timeout=5)
+            landed = ""
+        except urllib.error.HTTPError as e:
+            landed = str(e.code)
+        page = S1.opener.open(urllib.request.Request(base + "/team"), timeout=5)
+        check("member admin is sent away from /team", "denied=admin" in page.geturl() or landed in ("302", "403"), page.geturl())
+
+        code, body = A.call("POST", "/api/v1/auth/users", {"name": "Lena Paralegal", "email": "lena@alpha.test", "password": pw,
+                                                           "title": "  Senior   Paralegal ", "role": "member_admin"})
+        check("admin adds staff with a job title", code == 200 and body.get("user", {}).get("title") == "Senior Paralegal", (code, body))
+        lena = body.get("user", {}).get("user_id", "")
+        code, body = A.call("POST", "/api/v1/auth/users", {"name": "X", "email": "x@alpha.test", "password": pw, "role": "admin"})
+        check("Product Admin cannot add a Product Admin (403)", code == 403, code)
+        code, body = A.call("POST", "/api/v1/cases/assign", {"case_id": c1, "user_ids": [lena], "mode": "add"})
+        check("job title shown on case staff", any(s.get("title") == "Senior Paralegal" for s in body.get("case", {}).get("staff", [])), body)
+        check("new staff member can sign in", Client(base).login("lena@alpha.test", pw))
+        code, body = B.call("POST", "/api/v1/auth/users", {"action": "remove", "user_id": lena})
+        check("other firm's admin removing our staff is 403, not a server error", code == 403, (code, body))
+
         check("cases saved to the copy's config/cases.json", os.path.isfile(os.path.join(tmp, "config", "cases.json")))
     finally:
         proc.terminate()
@@ -324,7 +356,7 @@ def live():
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-        if failed:
+        if failed or sys.exc_info()[0]:
             print(f"  server log kept at {log_path}")
         else:
             shutil.rmtree(tmp, ignore_errors=True)

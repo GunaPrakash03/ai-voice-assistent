@@ -602,7 +602,7 @@ class AuthManager:
         return self._users.get(user_id)
 
     def add_member(self, workspace_id: str, email: str, password: str, role: str = "member_admin",
-                   name: str = "", phone: str = "") -> AuthUser:
+                   name: str = "", phone: str = "", title: str = "") -> AuthUser:
         """Admin creates a teammate who can sign in (password, optional phone for the SMS step)."""
         email = (email or "").strip()
         if "@" not in email or " " in email:
@@ -614,6 +614,7 @@ class AuthManager:
         user = self.create_user(workspace_id, email, role)
         user.name = (name or "").strip()[:120]
         user.phone = (phone or "").strip()[:40]
+        user.title = " ".join((title or "").split())[:80]   # e.g. Attorney, Paralegal (shown on the Team and Cases pages)
         self.set_password(user.user_id, password)
         return user
 

@@ -413,13 +413,13 @@ class Handler(SimpleHTTPRequestHandler):
     SUPER_ADMIN_PAGES = ("/organizations", "/users", "/softphone", "/api-keys", "/branding")
     SUPER_ADMIN_PREFIXES = ("/api/v1/system/", "/api/v1/api-keys", "/api/providers")
 
-    ADMIN_GET_PREFIXES = ("/api/v1/users", "/api/v1/workspaces")
+    ADMIN_GET_PREFIXES = ("/api/v1/users", "/api/v1/workspaces", "/api/v1/team")
     ADMIN_POST_PREFIXES = ("/api/v1/users", "/api/v1/workspaces",
                            "/api/v1/auth/users", "/api/agents", "/api/telephony", "/api/webhooks",
                            "/api/v1/calls/dispatch", "/api/v1/cases")
     ADMIN_PAGES = ("/admin-guide", "/cost-comparison", "/agent-builder", "/webhooks",
                    "/competitor-analysis", "/user-guide", "/agents", "/sip-trunks", "/phone-numbers",
-                   "/call-desk/agents", "/call-desk/sip-trunks", "/call-desk/phone-numbers")
+                   "/call-desk/agents", "/call-desk/sip-trunks", "/call-desk/phone-numbers", "/team")
 
     def _viewer(self) -> Dict[str, Any]:
         """Who is looking. Returns user identity, role, and permission flags."""
@@ -503,7 +503,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def _staff_card(u) -> Dict[str, Any]:
-        return {"user_id": u.user_id, "name": u.name or u.email, "email": u.email, "role": u.role}
+        return {"user_id": u.user_id, "name": u.name or u.email, "email": u.email, "role": u.role, "title": u.title or ""}
 
     def _case_out(self, case) -> Dict[str, Any]:
         d = case.to_dict()
@@ -1437,6 +1437,35 @@ class Handler(SimpleHTTPRequestHandler):
             ws_id = requested_ws if (ctx.get("role") == "super_admin" and requested_ws) else ctx["workspace_id"]
             self._send_json({"status": "ok", "users": auth_manager.list_users(workspace_id=ws_id)})
             return
+        elif parsed.path == "/api/v1/team":
+            # The Team page: everyone active in the viewer's workspace with their case load, and which
+            # roles this viewer may add (can_create_role). Admin-only via ADMIN_GET_PREFIXES.
+            from agent.auth_manager import can_create_role
+            v, ws = self._case_viewer()
+            q = parse_qs(parsed.query)
+            if (q.get("workspace_id") or [""])[0] and v["is_super_admin"]:
+                ws = q["workspace_id"][0]
+            workspace = auth_manager.get_workspace(ws)
+            open_load = case_manager.staff_workload(ws)
+            totals: Dict[str, int] = {}
+            for c in case_manager.list_cases(ws):
+                for uid in c["assigned_staff"]:
+                    totals[uid] = totals.get(uid, 0) + 1
+            me = v["user"].user_id if v["user"] else None
+            members = []
+            for d in sorted(auth_manager.list_users(workspace_id=ws), key=lambda d: d["created_at"]):
+                members.append({
+                    "user_id": d["user_id"], "name": d["name"] or d["email"], "email": d["email"], "phone": d["phone"],
+                    "title": d["title"], "role": d["role"], "created_at": d["created_at"], "last_login_at": d["last_login_at"],
+                    "open_cases": open_load.get(d["user_id"], 0), "total_cases": totals.get(d["user_id"], 0),
+                    "is_me": d["user_id"] == me,
+                    "can_remove": d["user_id"] != me and (v["is_super_admin"] or d["role"] != "super_admin"),
+                })
+            creator_ws = v["user"].workspace_id if v["user"] else ws
+            roles = [r for r in ("member_admin", "admin") if can_create_role(v["role"], creator_ws, r, ws)[0]]
+            self._send_json({"status": "ok", "workspace_id": ws, "workspace": workspace.name if workspace else "",
+                             "members": members, "can_add_roles": roles})
+            return
         elif parsed.path == "/api/v1/cases":
             v, ws = self._case_viewer()
             q = parse_qs(parsed.query)
@@ -1990,11 +2019,15 @@ class Handler(SimpleHTTPRequestHandler):
 
                 user = auth_manager.add_member(target_ws, str(payload.get("email") or ""), str(payload.get("password") or ""),
                                                role=target_role, name=str(payload.get("name") or ""),
-                                               phone=str(payload.get("phone") or ""))
+                                               phone=str(payload.get("phone") or ""), title=str(payload.get("title") or ""))
+            except PermissionError as e:
+                self._send_json({"status": "error", "error": str(e)}, 403)
+                return
             except (ValueError, KeyError) as e:
                 self._send_json({"status": "error", "error": str(e)}, 400)
                 return
-            self._send_json({"status": "ok", "user": {"user_id": user.user_id, "email": user.email, "name": user.name, "role": user.role, "phone": user.phone}})
+            self._send_json({"status": "ok", "user": {"user_id": user.user_id, "email": user.email, "name": user.name, "role": user.role,
+                                                      "phone": user.phone, "title": user.title}})
             return
         if parsed.path == "/api/v1/auth/logout":
             auth_manager.logout(self._session_token())

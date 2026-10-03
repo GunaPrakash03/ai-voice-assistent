@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Team — Call Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
+    --rail-ink:#A8AEC4; --rail-on:#FFFFFF;
+    --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
+    --line:#DDE0E9; --line-soft:#EBEDF3;
+    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
+    --pos:#2F7A4F; --pos-soft:#E6F2EA;
+    --neu:#5A6480; --neu-soft:#EDEFF4;
+    --neg:#A32F26; --neg-soft:#FAEAE8;
+    --info:#2563EB; --info-soft:#EFF4FF;
+    --f-ui:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    --f-mono:"Geist Mono","SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
+      --rail-ink:#767D96; --rail-on:#FFFFFF;
+      --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
+      --line:#262B3A; --line-soft:#1C2130;
+      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
+      --pos:#5FBF88; --pos-soft:#12251A;
+      --neu:#8891AB; --neu-soft:#1A1F2C;
+      --neg:#E0776C; --neg-soft:#2A1513;
+      --info:#93B4FF; --info-soft:rgba(147,180,255,.12);
+    }
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
+  .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
+  .brand{padding:0 18px 18px;margin-bottom:14px}
+  .brand b{color:var(--rail-on);font-size:15px;font-weight:700;display:block}
+  .brand span{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+  .nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
+  .nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
+  .nav a.active{background:var(--accent);color:#fff;font-weight:600}
+  .rail-foot{margin-top:auto;padding:14px 18px 0}
+
+  .top{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  h1{font-size:20px;font-weight:700;margin:0}
+  .crumb{font-size:12px;color:var(--ink-faint);margin-bottom:2px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 15px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;background:var(--accent);color:#fff;font-family:var(--f-ui);text-decoration:none}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-soft)}
+  .btn.sm{padding:4px 10px;font-size:12px}
+  .btn.danger{background:var(--neg);border-color:var(--neg);color:#fff}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn:focus-visible,.icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  main{padding:24px 28px 60px;display:flex;flex-direction:column;gap:20px}
+
+  .roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .role-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+  .role-card .k{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .role-card .n{font-family:var(--f-mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+  .role-card p{margin:0;font-size:12.5px;color:var(--ink-soft)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .card-h{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .card-h h2{font-size:14px;margin:0}
+  .card-h .meta{font-size:12px;color:var(--ink-faint)}
+  .card-h input{padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font:13px var(--f-ui);min-width:0;width:240px;max-width:100%}
+  table{width:100%;border-collapse:collapse;text-align:left}
+  th{background:var(--sunk);color:var(--ink-soft);font-size:11.5px;font-weight:600;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:11px 14px;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .sub{display:block;font-size:12px;color:var(--ink-faint)}
+  .who{display:flex;gap:10px;align-items:center;min-width:0}
+  .av{width:32px;height:32px;flex:none;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;font:600 12px var(--f-mono)}
+  .who b{font-weight:600}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+  .r-admin{background:var(--accent-soft);color:var(--accent)}
+  .r-member_admin{background:var(--info-soft);color:var(--info)}
+  .r-super_admin{background:var(--neu-soft);color:var(--neu)}
+  .you{background:var(--sunk);color:var(--ink-soft);margin-left:6px}
+  .cases a{color:var(--accent);text-decoration:none;font-weight:600}
+  .cases a:hover{text-decoration:underline}
+  .actions{display:flex;gap:6px;justify-content:flex-end;white-space:nowrap}
+  .empty{padding:36px 16px;text-align:center;color:var(--ink-faint)}
+
+  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(19,23,37,.55);align-items:center;justify-content:center;z-index:9999;padding:16px}
+  .modal-backdrop.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:100%;max-width:480px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden}
+  .modal-h{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .modal-h h3{margin:0;font-size:16px}
+  .modal-b{padding:18px 20px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .modal-f{padding:12px 20px;background:var(--sunk);border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+  .icon-btn{font-size:16px;line-height:1;width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;color:var(--ink-soft);border:1px solid var(--line);background:transparent}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .fg{min-width:0}
+  .fg label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;font-weight:500}
+  .fg input,.fg select{width:100%;padding:8px 11px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:13px var(--f-ui)}
+  .fg .hint{font-size:11.5px;color:var(--ink-faint);margin-top:4px}
+  .pw{display:flex;gap:6px}
+  .pw input{flex:1;font-family:var(--f-mono)}
+  .err{color:var(--neg);font-size:12.5px;min-height:1em}
+  .done{background:var(--pos-soft);border-radius:8px;padding:12px 14px;font-size:13px;display:flex;flex-direction:column;gap:6px}
+  .done pre{margin:0;font:12.5px/1.6 var(--f-mono);white-space:pre-wrap;word-break:break-all;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;user-select:all}
+  #toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:var(--ground);padding:10px 18px;border-radius:8px;font-size:13px;display:none;z-index:10000}
+  #toast.show{display:block}
+  @media (max-width:860px){main{padding:18px 16px 48px}.top{padding:12px 16px}.row2{grid-template-columns:1fr}}
+</style>
+<link rel="stylesheet" href="/theme.css?v=7">
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div class="nav">
+      <a href="/">Overview</a>
+      <a href="/cases">Cases</a>
+      <a href="/team" class="active">Team</a>
+    </div>
+    <div class="rail-foot"><!-- profile card is injected here by /profile.js --></div>
+  </nav>
+
+  <div>
+    <header class="top">
+      <div>
+        <div class="crumb" id="crumb">Workspace</div>
+        <h1>Team</h1>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" id="btnAdd">+ Add staff</button>
+        <a class="btn ghost" href="/cases">Open cases</a>
+      </div>
+    </header>
+
+    <main>
+      <div class="roles">
+        <div class="role-card">
+          <div class="k"><span class="pill r-member_admin">Member Admin</span><span class="n" id="nStaff">–</span></div>
+          <p>Law staff. Sign in to see the cases assigned to them on My cases.</p>
+        </div>
+        <div class="role-card">
+          <div class="k"><span class="pill r-admin">Product Admin</span><span class="n" id="nAdmins">–</span></div>
+          <p>Run the workspace: agents, phone numbers, webhooks, and assigning cases to staff.</p>
+        </div>
+        <div class="role-card">
+          <div class="k"><span style="font-size:12.5px;font-weight:600">Unassigned open cases</span><span class="n" id="nUnassigned">–</span></div>
+          <p><a href="/cases" style="color:var(--accent);font-weight:600;text-decoration:none">Assign them on the Cases page →</a></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <h2>Members <span class="meta" id="meta"></span></h2>
+          <input id="q" type="search" placeholder="Search name, email or title" aria-label="Search members">
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Member</th><th>Role</th><th>Phone</th><th>Cases</th><th>Last sign-in</th><th>Added</th><th></th></tr></thead>
+            <tbody id="tbody"><tr><td colspan="7" class="empty">Loading team…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="mAdd" role="dialog" aria-modal="true" aria-labelledby="mAddTitle">
+  <div class="modal">
+    <div class="modal-h"><h3 id="mAddTitle">Add staff</h3><button class="icon-btn" data-close aria-label="Close" title="Close">✕</button></div>
+    <form id="formAdd">
+      <div class="modal-b" id="addFields">
+        <div class="row2">
+          <div class="fg"><label for="aName">Full name *</label><input id="aName" required maxlength="120" autocomplete="off"></div>
+          <div class="fg"><label for="aTitle">Job title</label><input id="aTitle" list="titles" maxlength="80" placeholder="e.g. Paralegal">
+            <datalist id="titles"><option>Attorney</option><option>Associate</option><option>Paralegal</option><option>Legal assistant</option><option>Intake specialist</option></datalist></div>
+        </div>
+        <div class="fg"><label for="aEmail">Email *</label><input id="aEmail" type="email" required maxlength="160" autocomplete="off" placeholder="name@yourfirm.com"><div class="hint">They sign in with this email.</div></div>
+        <div class="row2">
+          <div class="fg"><label for="aPhone">Mobile phone</label><input id="aPhone" type="tel" maxlength="40" placeholder="+1 555 010 0000"><div class="hint">Adds an SMS code at sign-in.</div></div>
+          <div class="fg" id="roleWrap"><label for="aRole">Role</label>
+            <select id="aRole"><option value="member_admin">Member Admin (law staff)</option><option value="admin">Product Admin</option></select></div>
+        </div>
+        <div class="fg"><label for="aPass">Temporary password *</label>
+          <div class="pw"><input id="aPass" required minlength="8" maxlength="128" autocomplete="new-password"><button type="button" class="btn ghost sm" id="btnGen">Generate</button></div>
+          <div class="hint">Give it to them in person or by phone; they can change it on their profile.</div></div>
+        <div class="err" id="addErr"></div>
+      </div>
+      <div class="modal-b" id="addDone" hidden>
+        <div class="done">
+          <b id="doneTitle"></b>
+          <span>Send these sign-in details to them privately:</span>
+          <pre id="doneText"></pre>
+          <div><button type="button" class="btn ghost sm" id="btnCopy">Copy details</button></div>
+        </div>
+      </div>
+      <div class="modal-f">
+        <button type="button" class="btn ghost" data-close id="btnCancel">Cancel</button>
+        <button class="btn" type="submit" id="btnSubmit">Add staff</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script>
+(function () {
+  var ROLE = { super_admin: "Super Admin", admin: "Product Admin", member_admin: "Member Admin" };
+  var state = { members: [], canAdd: [], confirming: null, unassigned: 0 };
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function initials(n) { return String(n || "?").split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join("") || "?"; }
+  function fmtDay(ts) { return ts ? new Date(ts * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : ""; }
+  function ago(ts) {
+    if (!ts) return "Never";
+    var s = Date.now() / 1000 - ts;
+    if (s < 3600) return Math.max(1, Math.round(s / 60)) + " min ago";
+    if (s < 86400) return Math.round(s / 3600) + " h ago";
+    if (s < 86400 * 30) return Math.round(s / 86400) + " days ago";
+    return fmtDay(ts);
+  }
+  function toast(msg) { var t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove("show"); }, 2600); }
+  function api(path, body) {
+    var opts = body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {};
+    return fetch(path, opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok || j.status === "error") throw new Error(j.error || ("Request failed (" + r.status + ")"));
+        return j;
+      });
+    });
+  }
+
+  function load() {
+    return Promise.all([api("/api/v1/team"), api("/api/v1/cases?status=").catch(function () { return { cases: [] }; })]).then(function (r) {
+      var t = r[0];
+      state.members = t.members || [];
+      state.canAdd = t.can_add_roles || [];
+      state.unassigned = (r[1].cases || []).filter(function (c) { return c.status !== "closed" && !c.assigned_staff.length; }).length;
+      $("crumb").textContent = t.workspace || "Workspace";
+      $("btnAdd").hidden = !state.canAdd.length;
+      $("roleWrap").hidden = state.canAdd.length < 2;
+      Array.prototype.forEach.call($("aRole").options, function (o) { o.hidden = state.canAdd.indexOf(o.value) < 0; });
+      render();
+    }).catch(function (e) {
+      $("tbody").innerHTML = '<tr><td colspan="7" class="empty" style="color:var(--neg)">Could not load the team: ' + esc(e.message) + "</td></tr>";
+    });
+  }
+
+  function render() {
+    var m = state.members;
+    $("nStaff").textContent = m.filter(function (x) { return x.role === "member_admin"; }).length;
+    $("nAdmins").textContent = m.filter(function (x) { return x.role === "admin"; }).length;
+    $("nUnassigned").textContent = state.unassigned;
+    var q = $("q").value.trim().toLowerCase();
+    var list = m.filter(function (x) { return !q || [x.name, x.email, x.title].join(" ").toLowerCase().indexOf(q) >= 0; });
+    $("meta").textContent = "· " + m.length + " active";
+    if (!list.length) {
+      $("tbody").innerHTML = '<tr><td colspan="7" class="empty">' + (m.length ? "No members match." : "No members yet. Add your law staff with Add staff.") + "</td></tr>";
+      return;
+    }
+    $("tbody").innerHTML = list.map(function (x) {
+      var cases = x.total_cases
+        ? '<a href="/cases?staff=' + encodeURIComponent(x.user_id) + '">' + x.open_cases + " open</a><span class=\"sub\">" + x.total_cases + " total</span>"
+        : '<span class="sub">None assigned</span>';
+      var act = "";
+      if (x.can_remove) {
+        act = state.confirming === x.user_id
+          ? '<button class="btn danger sm" data-remove="' + esc(x.user_id) + '">Remove ' + esc(x.name.split(" ")[0]) + '</button><button class="btn ghost sm" data-cancel>Keep</button>'
+          : '<button class="btn ghost sm" data-ask="' + esc(x.user_id) + '">Remove</button>';
+      }
+      return "<tr>" +
+        '<td><div class="who"><span class="av">' + esc(initials(x.name)) + '</span><div style="min-width:0"><b>' + esc(x.name) + "</b>" +
+          (x.is_me ? '<span class="pill you">you</span>' : "") +
+          '<span class="sub">' + esc(x.title ? x.title + " · " + x.email : x.email) + "</span></div></div></td>" +
+        '<td><span class="pill r-' + esc(x.role) + '">' + esc(ROLE[x.role] || x.role) + "</span></td>" +
+        '<td class="num">' + (x.phone ? esc(x.phone) : '<span class="sub">–</span>') + "</td>" +
+        '<td class="cases">' + cases + "</td>" +
+        "<td>" + esc(ago(x.last_login_at)) + "</td>" +
+        '<td class="num">' + esc(fmtDay(x.created_at)) + "</td>" +
+        '<td><div class="actions">' + act + "</div></td>" +
+      "</tr>";
+    }).join("");
+    var focus = $("tbody").querySelector("[data-remove]");
+    if (focus) focus.focus();
+  }
+
+  $("q").addEventListener("input", render);
+  $("tbody").addEventListener("click", function (e) {
+    var ask = e.target.closest("[data-ask]"), rm = e.target.closest("[data-remove]");
+    if (ask) { state.confirming = ask.getAttribute("data-ask"); render(); return; }
+    if (e.target.closest("[data-cancel]")) { state.confirming = null; render(); return; }
+    if (rm) {
+      var id = rm.getAttribute("data-remove"), who = state.members.filter(function (x) { return x.user_id === id; })[0];
+      rm.disabled = true;
+      api("/api/v1/auth/users", { action: "remove", user_id: id }).then(function () {
+        state.confirming = null; toast((who ? who.name : "Member") + " removed and unassigned from their cases"); load();
+      }).catch(function (err) { state.confirming = null; render(); toast(err.message); });
+    }
+  });
+
+  // ── Add staff ─────────────────────────────────────────────────────────
+  function genPassword() {
+    var chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789", out = "", a = new Uint32Array(12);
+    crypto.getRandomValues(a);
+    for (var i = 0; i < a.length; i++) out += chars[a[i] % chars.length];
+    return out.slice(0, 4) + "-" + out.slice(4, 8) + "-" + out.slice(8);
+  }
+  function openAdd() {
+    $("formAdd").reset();
+    $("aRole").value = state.canAdd[0] || "member_admin";
+    $("aPass").value = genPassword();
+    $("addErr").textContent = "";
+    $("addFields").hidden = false; $("addDone").hidden = true;
+    $("btnSubmit").hidden = false; $("btnCancel").textContent = "Cancel";
+    $("mAdd").classList.add("show");
+    $("aName").focus();
+  }
+  function closeModal() { $("mAdd").classList.remove("show"); }
+  $("btnAdd").addEventListener("click", openAdd);
+  $("btnGen").addEventListener("click", function () { $("aPass").value = genPassword(); });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-close]"), function (b) { b.addEventListener("click", closeModal); });
+  $("mAdd").addEventListener("click", function (e) { if (e.target === $("mAdd")) closeModal(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeModal(); });
+
+  $("formAdd").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var btn = $("btnSubmit"); btn.disabled = true; $("addErr").textContent = "";
+    var body = { name: $("aName").value.trim(), title: $("aTitle").value.trim(), email: $("aEmail").value.trim(),
+                 phone: $("aPhone").value.trim(), role: $("aRole").value, password: $("aPass").value };
+    api("/api/v1/auth/users", body).then(function (j) {
+      $("doneTitle").textContent = (j.user.name || j.user.email) + " was added as " + (ROLE[j.user.role] || j.user.role) + ".";
+      $("doneText").textContent = "Sign in at: " + location.origin + "/login\nEmail: " + j.user.email + "\nTemporary password: " + body.password;
+      $("addFields").hidden = true; $("addDone").hidden = false;
+      $("btnSubmit").hidden = true; $("btnCancel").textContent = "Done";
+      toast("Staff member added");
+      load();
+    }).catch(function (err) { $("addErr").textContent = err.message; }).then(function () { btn.disabled = false; });
+  });
+  $("btnCopy").addEventListener("click", function () {
+    var text = $("doneText").textContent;
+    var done = function () { toast("Sign-in details copied"); };
+    var fallback = function () { var r = document.createRange(); r.selectNodeContents($("doneText")); var s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("Selected. Press Ctrl+C to copy"); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+  });
+
+  load();
+})();
+</script>
+<script src="/profile.js?v=5"></script>
+</body>
+</html>

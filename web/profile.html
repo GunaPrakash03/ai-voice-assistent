@@ -204,27 +204,13 @@
             <div class="card-h"><h2>Members</h2><span class="meta" id="membersMeta"></span></div>
             <div class="card-b" style="padding:0 6px 6px">
               <div class="table-scroll"><table id="membersTable">
-                <thead><tr><th>User</th><th>Role</th><th>Since</th><th data-admin-only></th></tr></thead>
+                <thead><tr><th>User</th><th>Role</th><th>Since</th></tr></thead>
                 <tbody></tbody>
               </table></div>
               <div class="empty" id="membersEmpty" hidden style="padding:12px 10px">No members yet.</div>
-              <form id="memberForm" data-admin-only style="padding:12px 10px 6px;border-top:1px solid var(--line-soft);margin-top:6px">
-                <div style="font-size:11.5px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Add a member</div>
-                <div class="row2">
-                  <div class="field"><label for="mName">Name</label><input id="mName" placeholder="Full name"></div>
-                  <div class="field"><label for="mEmail">Email</label><input id="mEmail" type="email" placeholder="teammate@company.com" required></div>
-                </div>
-                <div class="row2">
-                  <div class="field"><label for="mPhone">Phone (SMS code)</label><input id="mPhone" type="tel" placeholder="+1 555 010 0000"></div>
-                  <div class="field"><label for="mRole">Role</label>
-                    <select id="mRole" style="width:100%;padding:9px 11px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13.5px">
-                      <option value="member_admin">Member Admin — Manage workspace members and users</option>
-                      <option value="admin" id="mRoleAdminOpt">Product Admin — Workspace configuration, agents, webhooks</option>
-                    </select></div>
-                </div>
-                <div class="field"><label for="mPass">Temporary password</label><input id="mPass" type="password" minlength="8" required placeholder="At least 8 characters"><div class="hint">Share it with the member; they can change it on their profile.</div></div>
-                <div class="actions"><button type="submit" class="btn btn-primary" id="btnAddMember">Add member</button><span class="msg" id="memberMsg"></span></div>
-              </form>
+              <div data-admin-only style="padding:12px 10px 6px;border-top:1px solid var(--line-soft);margin-top:6px;font-size:13px;color:var(--ink-soft)">
+                Add, remove and see the case load of your law staff on the <a href="/team" style="color:var(--accent);font-weight:600">Team page →</a>
+              </div>
             </div>
           </div>
 
@@ -310,13 +296,6 @@
     $("heroSub").textContent = [profile.title, profile.email].filter(Boolean).join(" · ");
     var ROLE_LABEL = { super_admin: "Super Admin", admin: "Product Admin", member_admin: "Member Admin" };
     $("heroRole").textContent = ROLE_LABEL[profile.role] || profile.role || ""; $("heroRole").hidden = !profile.role;
-    if ($("mRoleAdminOpt")) {
-      var canCreateAdmin = profile.role === "super_admin" || profile.is_super_admin;
-      $("mRoleAdminOpt").hidden = !canCreateAdmin;
-      if (!canCreateAdmin && $("mRole").value === "admin") {
-        $("mRole").value = "member_admin";
-      }
-    }
     $("heroWs").textContent = profile.workspace || ""; $("heroWs").hidden = !profile.workspace;
     $("fName").value = profile.name || ""; $("fTitle").value = profile.title || "";
     $("fEmail").value = profile.email || ""; $("fPhone").value = profile.phone || "";
@@ -338,15 +317,8 @@
       return "<tr><td><b>" + esc(m.name || m.email.split("@")[0]) + "</b>" + (m.is_me ? ' <span class="pill accent" style="margin-left:6px">you</span>' : "") +
              '<div class="mono" style="color:var(--ink-faint)">' + esc(m.email) + "</div></td>" +
              '<td><span class="pill ' + (m.role === "admin" ? "accent" : "neu") + '">' + esc(ROLE_LABEL[m.role] || m.role) + "</span></td>" +
-             "<td>" + fmtDate(m.created_at) + "</td>" +
-             '<td data-admin-only>' + (m.is_me ? "" : '<button type="button" class="btn btn-ghost btn-remove-member" style="padding:4px 10px;font-size:11.5px" data-id="' + esc(m.user_id) + '">Remove</button>') + "</td></tr>";
+             "<td>" + fmtDate(m.created_at) + "</td></tr>";
     }).join("");
-    Array.prototype.forEach.call(document.querySelectorAll(".btn-remove-member"), function (b) {
-      b.addEventListener("click", function () {
-        fetch("/api/v1/auth/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "remove", user_id: b.dataset.id }) })
-          .then(function (r) { return r.json(); }).then(function (d) { if (d.status === "ok") { toast("Member removed"); load(); } else { toast(d.error || "Could not remove"); } });
-      });
-    });
     if (window.applyRoleVisibility) window.applyRoleVisibility();
     $("membersEmpty").hidden = members.length > 0;
 
@@ -392,16 +364,6 @@
     fetch("/api/v1/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(function () { location.href = "/login"; });
   });
   $("btnSaveWs").addEventListener("click", function () { save({ workspace: $("fWs").value }, $("wsMsg"), "Workspace saved"); });
-  $("memberForm").addEventListener("submit", function (e) {
-    e.preventDefault();
-    fetch("/api/v1/auth/users", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: $("mName").value, email: $("mEmail").value, phone: $("mPhone").value, role: $("mRole").value, password: $("mPass").value }) })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (d.status === "ok") { setMsg($("memberMsg"), "Added " + d.user.email, true); toast("Member added"); $("memberForm").reset(); load(); }
-        else { setMsg($("memberMsg"), d.error || "Could not add member", false); }
-      }).catch(function () { setMsg($("memberMsg"), "Network error", false); });
-  });
 
   var formBranding = $("formBranding");
   if (formBranding) {
