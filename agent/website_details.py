@@ -21,15 +21,15 @@ MAX_BIO = 600
 PROMPT_CHARS = 36_000
 
 # Words that place a practice description under one of the onboarding practice-area options.
-AREA_WORDS = {
-    "personal_injury": ("injury", "accident", "wrongful death", "malpractice", "slip and fall", "workers comp", "workers' comp"),
-    "family": ("family", "divorce", "custody", "child support", "alimony", "adoption", "prenup"),
-    "criminal_defense": ("criminal", "dui", "dwi", "felony", "misdemeanor", "defense of charges"),
-    "immigration": ("immigration", "visa", "green card", "citizenship", "asylum", "deportation"),
+AREA_WORDS = {   # specific areas first: "Family-based immigration" is immigration, not family law
+    "immigration": ("immigration", "visa", "green card", "citizenship", "naturalization", "asylum", "deportation", "removal"),
     "estate_planning": ("estate", "probate", "wills", "trusts", "elder law", "guardianship"),
-    "business": ("business", "corporate", "commercial", "contract", "mergers", "startup", "intellectual property"),
+    "criminal_defense": ("criminal defense", "criminal law", "dui", "dwi", "felony", "misdemeanor", "expunge"),
+    "personal_injury": ("injury", "accident", "wrongful death", "malpractice", "slip and fall", "workers comp", "workers' comp"),
     "employment": ("employment", "workplace", "wage", "discrimination", "harassment", "wrongful termination"),
-    "real_estate": ("real estate", "property", "landlord", "tenant", "closing", "zoning", "title"),
+    "real_estate": ("real estate", "property", "landlord", "tenant", "closing", "zoning"),
+    "business": ("business", "corporate", "commercial", "contract", "mergers", "startup", "intellectual property"),
+    "family": ("family", "divorce", "custody", "child support", "alimony", "adoption", "prenup", "premarital"),
 }
 # Heading words that mark a section title rather than a person's name.
 NOT_NAMES = {"our", "the", "meet", "team", "attorneys", "lawyers", "contact", "us", "today", "call", "about", "practice",
@@ -37,11 +37,14 @@ NOT_NAMES = {"our", "the", "meet", "team", "attorneys", "lawyers", "contact", "u
 TITLE_WORDS = ("partner", "associate", "attorney", "lawyer", "counsel", "founder", "principal", "shareholder", "paralegal", "esq")
 
 
-def area_key(text: str) -> str:
-    t = (text or "").lower()
-    for key, words in AREA_WORDS.items():
-        if any(w in t for w in words):
-            return key
+def area_key(name: str, description: str = "") -> str:
+    """The onboarding practice-area option for a practice: decided by its name, the description only
+    when the name says nothing recognisable."""
+    for text in (name, description):
+        t = (text or "").lower()
+        for key, words in AREA_WORDS.items():
+            if any(w in t for w in words):
+                return key
     return "other"
 
 
@@ -60,7 +63,7 @@ def _tidy(data: Dict[str, Any]) -> Dict[str, Any]:
             continue
         seen.add(name.lower())
         desc = _clean(p.get("description"), 400)
-        practices.append({"name": name, "description": desc, "area": area_key(name + " " + desc)})
+        practices.append({"name": name, "description": desc, "area": area_key(name, desc)})
     attorneys, seen = [], set()
     for a in data.get("attorneys") or []:
         name = _clean((a or {}).get("name"), 80)

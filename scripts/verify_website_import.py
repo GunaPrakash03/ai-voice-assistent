@@ -249,6 +249,11 @@ def section_details():
     check("fallback: practice areas mapped to onboarding options", d["areas"] == ["family", "personal_injury"], d["areas"])
     check("pages read and skipped are reported", len(d["pages_read"]) == 4 and d["skipped"][0]["reason"] == "error")
 
+    for name, want in (("Family-based Immigration", "immigration"), ("U Visas for Victims of Criminal Activity", "immigration"),
+                       ("Guardianship & Elder Law", "estate_planning"), ("DUI Defense", "criminal_defense"), ("Premarital Agreements", "family")):
+        check(f"practice '{name}' maps to {want}", wd.area_key(name) == want, wd.area_key(name))
+    check("the name decides before the description", wd.area_key("Asylum", "We help families stay together") == "immigration")
+
     import agent.schema_extractor as se
     real = se.gemini_json
     try:
