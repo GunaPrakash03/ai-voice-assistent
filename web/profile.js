@@ -1,57 +1,125 @@
 /*
  * Sidebar profile card & Global RBAC Navigator.
- * Injected into the ".rail-foot" WORKSPACE block on every page: avatar initials, name, email,
- * role badge and workspace. Click opens /profile.
+ * Injected into the ".rail-foot" block on every page: a compact account button (avatar, name, email)
+ * whose menu holds the workspace, role, My profile, the local role switcher and Sign out. Also gives
+ * the sidebar links their icons and adds the collapse-to-icons toggle.
  * Dynamically enforces RBAC navigation visibility for Super Admin, Product Admin, Member Admin, and Users.
  */
 (function () {
   var foot = document.querySelector(".rail-foot");
   if (!foot || document.getElementById("railProfile")) return;
 
-  // Colours come from the page theme (web/theme.css), which also styles the Super Admin nav section.
-  var css = document.createElement("style");
-  css.textContent =
-    "#railProfile{margin:0 0 12px;padding:10px;border-radius:12px;background:var(--panel);border:1px solid var(--line);cursor:pointer;transition:background .15s,border-color .15s}" +
-    "#railProfile:hover{border-color:var(--ink-faint)}" +
-    "#railProfile .rp-row{display:flex;align-items:flex-start;gap:10px}" +
-    "#railProfile .rp-avatar{width:36px;height:36px;border-radius:50%;flex:0 0 36px;display:flex;align-items:center;justify-content:center;font:700 13px/1 var(--f-ui,sans-serif);color:#fff;letter-spacing:.5px;background:linear-gradient(135deg,#F97316,#EC4899)}" +
-    "#railProfile .rp-avatar.sa{background:linear-gradient(135deg,#7C3AED,#C026D3)}" +
-    "#railProfile .rp-name{color:var(--ink);font-weight:600;font-size:13px;line-height:1.3;overflow-wrap:anywhere}" +
-    "#railProfile .rp-sub{color:var(--ink-faint);font-size:11px;line-height:1.5;overflow-wrap:anywhere}" +
-    "#railProfile .rp-role{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.02em;background:var(--accent-soft);color:var(--accent)}" +
-    "#railProfile .rp-role.sa{background:var(--sa-soft);color:var(--sa)}" +
-    "#railProfile .rp-role.ma{background:rgba(2,132,199,.12);color:#0284C7}" +
-    "#railProfile .rp-open{font-size:11px;color:var(--ink-faint);margin-top:6px}" +
-    "#railProfile .rp-open a{color:var(--accent);text-decoration:none}" +
-    "#rpRoleSwitchers{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}" +
-    "#rpRoleSwitchers .rp-sw-h{font-size:10px;letter-spacing:.04em;color:var(--ink-faint);margin-bottom:5px}" +
-    ".rp-switch-btn{font-size:11px;padding:2px 8px;border-radius:999px;text-decoration:none;border:1px solid var(--line);color:var(--ink-soft);background:var(--panel)}" +
-    ".rp-switch-btn:hover{border-color:var(--ink-faint);color:var(--ink)}";
-  document.head.appendChild(css);
+  // ── Sidebar icons (Lucide shapes, MIT) ───────────────────────────────────
+  var ICONS = {
+    overview: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+    calls: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>',
+    detail: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
+    trunks: '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8"/>',
+    market: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+    agents: '<path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/>',
+    webhooks: '<path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/>',
+    keys: '<path d="M2.59 17.41A2 2 0 0 0 2 18.83V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.17a2 2 0 0 0 1.42-.59l.81-.81a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>',
+    user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    guide: '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
+    orgs: '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4"/>',
+    users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+    softphone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h.01M12 7h.01M15 7h.01M9 11h.01M12 11h.01M15 11h.01M9 15h.01M12 15h.01M15 15h.01M12 19h.01"/>',
+    branding: '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.56-2.5 5.56-5.55C21.97 6.01 17.46 2 12 2z"/>',
+    chart: '<path d="M3 3v18h18M18 17V9M13 17V5M8 17v-3"/>',
+    cost: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/>',
+    dot: '<circle cx="12" cy="12" r="3"/>',
+    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+    chevrons: '<path d="m7 15 5 5 5-5M7 9l5-5 5 5"/>',
+    collapse: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M16 15l-3-3 3-3"/>'
+  };
+  function icon(name) {
+    return '<svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || ICONS.dot) + '</svg>';
+  }
+  var ROUTE_ICONS = { "": "overview", calls: "calls", "call-detail": "detail", "sip-trunks": "trunks", "phone-numbers": "market",
+    agents: "agents", "agent-builder": "agents", webhooks: "webhooks", "api-keys": "keys", profile: "user", "user-guide": "guide",
+    "admin-guide": "guide", organizations: "orgs", users: "users", softphone: "softphone", "competitor-analysis": "chart",
+    "cost-comparison": "cost", "live-console": "calls" };
+  function iconFor(a) {
+    var href = a.getAttribute("href") || "";
+    if (/#cardBranding/.test(href)) return "branding";
+    var path = href.split(/[?#]/)[0].replace(/^\/call-desk/, "").replace(/^\/+|\/+$/g, "");
+    return ROUTE_ICONS[path] || "dot";
+  }
+  var EMOJI = /^[\u{1F000}-\u{1FAFF}\u2600-\u27BF\uFE0F\u200D\s]+/u;
 
+  // Gives every sidebar link an icon and a label span (the collapsed sidebar hides the label and
+  // shows it as a tooltip). Safe to run again: links done before are skipped.
+  function enhanceRail() {
+    var rail = document.querySelector(".rail");
+    if (!rail) return;
+    var nav = rail.querySelector(".nav");
+    if (nav && !nav.querySelector(".nav-h")) {
+      var h = document.createElement("div");
+      h.className = "nav-h"; h.textContent = "Workspace";
+      nav.insertBefore(h, nav.firstChild);
+    }
+    Array.prototype.forEach.call(rail.querySelectorAll(".nav a, .nav button"), function (a) {
+      if (a.dataset.enh || a.classList.contains("brand-edit-btn")) return;
+      a.dataset.enh = "1";
+      var label = null;
+      var first = a.firstChild;
+      if (first && first.nodeType === 3 && first.textContent.trim()) {
+        label = document.createElement("span");
+        label.textContent = first.textContent.replace(EMOJI, "").trim();
+        a.replaceChild(label, first);
+      } else {
+        label = Array.prototype.filter.call(a.children, function (c) { return c.tagName === "SPAN" && !c.classList.contains("ct"); })[0] || null;
+        if (label) label.textContent = label.textContent.replace(EMOJI, "").trim();
+      }
+      if (label) { label.classList.add("nav-label"); if (!a.title) a.title = label.textContent; }
+      a.insertAdjacentHTML("afterbegin", icon(iconFor(a)));
+    });
+  }
+
+  // Collapse to an icon-only sidebar; remembered per browser.
+  var COLLAPSE_KEY = "rail_collapsed";
+  function setCollapsed(on) {
+    document.documentElement.classList.toggle("rail-collapsed", on);
+    try { localStorage.setItem(COLLAPSE_KEY, on ? "1" : "0"); } catch (e) {}
+  }
+  try { if (localStorage.getItem(COLLAPSE_KEY) === "1") document.documentElement.classList.add("rail-collapsed"); } catch (e) {}
+
+  // Styling lives in web/theme.css (sidebar section).
   var card = document.createElement("div");
   card.id = "railProfile";
-  card.title = "Open my profile";
   card.innerHTML =
-    '<div class="rp-row">' +
-      '<div class="rp-avatar" id="rpAvatar">…</div>' +
-      '<div style="min-width:0;flex:1">' +
-        '<div class="rp-name" id="rpName">Loading profile…</div>' +
-        '<div class="rp-sub" id="rpEmail"></div>' +
-        '<div class="rp-sub" id="rpWorkspace"></div>' +
-        '<span class="rp-role" id="rpRole" hidden></span>' +
-        '<div class="rp-open">Open profile → · <a href="#" id="rpSignOut">Sign out</a></div>' +
+    '<div class="rp-menu" id="rpMenu" role="menu" hidden>' +
+      '<div class="rp-menu-h"><div class="rp-sub" id="rpWorkspace"></div><span class="rp-role" id="rpRole" hidden></span></div>' +
+      '<a href="/profile" class="rp-item" role="menuitem">' + icon("user") + '<span>My profile</span></a>' +
+      '<div id="rpRoleSwitchers" class="rp-switch">' +
+        '<div class="rp-sw-h">Switch role · this computer only</div>' +
+        '<div class="rp-sw-row">' +
+          '<a href="/switch-role?role=super_admin" class="rp-switch-btn sa">Super</a>' +
+          '<a href="/switch-role?role=admin" class="rp-switch-btn pa">Product</a>' +
+          '<a href="/switch-role?role=member_admin" class="rp-switch-btn ma">Member</a>' +
+        '</div>' +
       '</div>' +
+      '<a href="#" class="rp-item" id="rpSignOut" role="menuitem">' + icon("logout") + '<span>Sign out</span></a>' +
     '</div>' +
-    '<div id="rpRoleSwitchers">' +
-      '<div class="rp-sw-h">Quick role switch</div>' +
-      '<div style="display:flex;gap:4px;flex-wrap:wrap">' +
-        '<a href="/switch-role?role=super_admin" class="rp-switch-btn sa">👑 Super</a>' +
-        '<a href="/switch-role?role=admin" class="rp-switch-btn pa">🛡️ Prod</a>' +
-        '<a href="/switch-role?role=member_admin" class="rp-switch-btn ma">👥 Member</a>' +
-      '</div>' +
-    '</div>';
+    '<button type="button" class="rp-trigger" id="rpTrigger" aria-haspopup="menu" aria-expanded="false" title="Account">' +
+      '<span class="rp-avatar" id="rpAvatar">…</span>' +
+      '<span class="rp-who"><span class="rp-name" id="rpName">Loading…</span><span class="rp-sub" id="rpEmail"></span></span>' +
+      '<span class="rp-chev">' + icon("chevrons") + '</span>' +
+    '</button>';
   foot.insertBefore(card, foot.firstChild);
+  var collapseBtn = document.createElement("button");
+  collapseBtn.type = "button"; collapseBtn.className = "rail-collapse"; collapseBtn.title = "Collapse sidebar";
+  collapseBtn.innerHTML = icon("collapse") + '<span class="nav-label">Collapse</span>';
+  collapseBtn.addEventListener("click", function () { setCollapsed(!document.documentElement.classList.contains("rail-collapsed")); });
+  foot.insertBefore(collapseBtn, card);
+  enhanceRail();
+
+  function setMenu(open) {
+    $("rpMenu").hidden = !open;
+    $("rpTrigger").setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  document.addEventListener("click", function (e) { if (!card.contains(e.target)) setMenu(false); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") setMenu(false); });
 
   var $ = function (id) { return document.getElementById(id); };
   // The quick role switcher is a dev tool: /switch-role only answers from localhost, so only show it there.
@@ -111,6 +179,7 @@
       '<a href="/profile#cardBranding" class="sa-link"><span>🎨 Dashboard Branding</span><span class="ct">SUPER</span></a>';
 
     nav.appendChild(sec);
+    enhanceRail();
   }
 
   window.currentRole = null;
@@ -153,7 +222,19 @@
     } else if (isSuperAdmin) {
       injectSuperAdminNav();
     }
+    hideDuplicateLinks(isSuperAdmin);
   };
+
+  // Some pages also list super-admin pages (e.g. API Keys) under Workspace; show each page once.
+  function hideDuplicateLinks(isSuperAdmin) {
+    var sec = document.getElementById("railSuperAdminSection");
+    if (!sec || !isSuperAdmin) return;
+    var inSection = {};
+    Array.prototype.forEach.call(sec.querySelectorAll("a[href]"), function (a) { inSection[a.getAttribute("href")] = true; });
+    Array.prototype.forEach.call(document.querySelectorAll(".rail .nav a[href]"), function (a) {
+      if (!sec.contains(a) && inSection[a.getAttribute("href")]) { a.hidden = true; a.style.display = "none"; }
+    });
+  }
 
   function load() {
     return fetch("/api/v1/auth/profile").then(function (r) { return r.json(); }).then(function (d) {
@@ -176,13 +257,13 @@
   }
 
   card.addEventListener("click", function (e) {
-    if (e.target && e.target.id === "rpSignOut") {
-      e.preventDefault(); e.stopPropagation();
+    if (e.target.closest("#rpSignOut")) {
+      e.preventDefault();
       fetch("/api/v1/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
         .then(function () { location.href = "/login"; }).catch(function () { location.href = "/login"; });
       return;
     }
-    if (location.pathname.indexOf("/profile") === -1) { location.href = "/profile"; }
+    if (e.target.closest("#rpTrigger")) setMenu($("rpMenu").hidden);
   });
 
   load();

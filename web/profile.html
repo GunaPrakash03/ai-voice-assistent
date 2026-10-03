@@ -36,7 +36,7 @@
   body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
   .top-app-bar{background:var(--panel);border-bottom:1px solid var(--line);height:44px;padding:0 18px;display:flex;align-items:center;justify-content:space-between}
   .app-dropdown{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:var(--ink)}
-  .app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:calc(100vh - 44px)}
+  .app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:100vh}
   .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
   .brand{padding:0 18px 18px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
   .brand b{color:var(--rail-on);font-size:15px;font-weight:700;display:block}
@@ -50,7 +50,7 @@
   .rail-foot div{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;line-height:1.7}
   .rail-foot a{color:var(--rail-ink);text-decoration:none}
   .rail-foot a:hover{color:var(--rail-on)}
-  main{padding:22px 26px 40px;max-width:1100px}
+  main{padding:22px 26px 40px}
   .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
   .crumb{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.09em;text-transform:uppercase;margin-bottom:2px}
   h1{margin:0;font-size:22px;font-weight:700}
@@ -98,18 +98,10 @@
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--ground);padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;transition:all .2s;pointer-events:none;max-width:90vw}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
-<link rel="stylesheet" href="/theme.css?v=1">
+<link rel="stylesheet" href="/theme.css?v=4">
 </head>
 <body>
 
-<header class="top-app-bar">
-  <div class="app-dropdown">
-    <span>Call Desk</span>
-    <span style="color:var(--ink-faint)">/</span>
-    <span>My Profile</span>
-  </div>
-  <div data-super-admin-only data-display="inline-block" style="display:none"><a class="btn btn-ghost" href="/api-keys">API Keys &amp; Providers</a></div>
-</header>
 
 <div class="app">
   <nav class="rail">
@@ -211,10 +203,10 @@
           <div class="card">
             <div class="card-h"><h2>Members</h2><span class="meta" id="membersMeta"></span></div>
             <div class="card-b" style="padding:0 6px 6px">
-              <table id="membersTable">
+              <div class="table-scroll"><table id="membersTable">
                 <thead><tr><th>User</th><th>Role</th><th>Since</th><th data-admin-only></th></tr></thead>
                 <tbody></tbody>
-              </table>
+              </table></div>
               <div class="empty" id="membersEmpty" hidden style="padding:12px 10px">No members yet.</div>
               <form id="memberForm" data-admin-only style="padding:12px 10px 6px;border-top:1px solid var(--line-soft);margin-top:6px">
                 <div style="font-size:11.5px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Add a member</div>
@@ -465,6 +457,6 @@
   load();
 })();
 </script>
-<script src="/profile.js"></script>
+<script src="/profile.js?v=4"></script>
 </body>
 </html>

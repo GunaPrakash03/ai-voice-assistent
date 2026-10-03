@@ -34,7 +34,7 @@
   body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
   .top-app-bar{background:var(--panel);border-bottom:1px solid var(--line);height:46px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:40}
   .app-dropdown{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--ink)}
-  .app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:calc(100vh - 46px)}
+  .app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
   .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
   .brand{padding:0 18px 18px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px}
   .brand b{color:var(--rail-on);font-size:15px;font-weight:700;display:block}
@@ -130,21 +130,10 @@
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--ground);padding:10px 18px;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:all .2s;pointer-events:none;z-index:200;box-shadow:0 6px 16px rgba(0,0,0,.2)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 </style>
-<link rel="stylesheet" href="/theme.css?v=1">
+<link rel="stylesheet" href="/theme.css?v=4">
 </head>
 <body>
 
-<header class="top-app-bar">
-  <div class="app-dropdown">
-    <span style="font-weight:700">Call Desk</span>
-    <span style="color:var(--ink-faint)">/</span>
-    <span>Webhooks &amp; Data Hub</span>
-  </div>
-  <div class="actions">
-    <button class="btn btn-ghost btn-sm" id="btnRefreshAll">🔄 Refresh Data</button>
-    <a class="btn btn-ghost btn-sm" href="/api-keys" data-super-admin-only style="display:none">API Keys &amp; Providers</a>
-  </div>
-</header>
 
 <div class="app">
   <nav class="rail">
@@ -171,6 +160,7 @@
           <h1>Webhooks &amp; Event Dispatcher</h1>
         </div>
         <div class="actions">
+          <button class="btn btn-ghost" id="btnRefreshAll">Refresh data</button>
           <button class="btn btn-primary" id="btnOpenNewEndpoint">+ New Endpoint</button>
         </div>
       </div>
@@ -1082,6 +1072,6 @@ function verifyWebhook(secret, bodyStr, timestamp, signature) {
   loadAgents();
 })();
 </script>
-<script src="/profile.js"></script>
+<script src="/profile.js?v=4"></script>
 </body>
 </html>

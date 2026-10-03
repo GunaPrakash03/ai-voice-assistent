@@ -45,7 +45,7 @@
   .app-dropdown{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;color:var(--ink)}
   
   /* Layout */
-  .app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:calc(100vh - 44px)}
+  .app{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:100vh}
   
   /* Rail */
   .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
@@ -64,7 +64,7 @@
   .rail-foot a:hover{color:var(--rail-on)}
 
   /* Main */
-  main{padding:22px 28px 60px;max-width:1160px}
+  main{padding:22px 28px 60px}
   .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
   .crumb{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.09em;text-transform:uppercase;margin-bottom:2px}
   h1{font-size:22px;font-weight:700;margin:0}
@@ -125,20 +125,10 @@
   #toast{position:fixed;bottom:24px;right:24px;background:var(--rail);color:#fff;padding:12px 18px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.3);display:none;z-index:9999}
   #toast.show{display:block}
 </style>
-<link rel="stylesheet" href="/theme.css?v=1">
+<link rel="stylesheet" href="/theme.css?v=4">
 </head>
 <body>
 
-<header class="top-app-bar">
-  <div class="app-dropdown">
-    <span>Call Desk</span>
-    <span style="color:var(--ink-faint)">/</span>
-    <span>API Keys &amp; Providers</span>
-  </div>
-  <div>
-    <button class="btn btn-primary" id="btnSaveAllTop">Save All API Keys</button>
-  </div>
-</header>
 
 <div class="app">
   <!-- Navigation Rail -->
@@ -556,7 +546,6 @@
   }
 
   $("#btnSaveAll").addEventListener("click", saveAllKeys);
-  $("#btnSaveAllTop").addEventListener("click", saveAllKeys);
   $("#btnRefreshStatus").addEventListener("click", function() {
     loadProviders();
     showToast("Refreshed provider status.");
@@ -634,6 +623,6 @@
   loadProviders();
 })();
 </script>
-<script src="/profile.js"></script>
+<script src="/profile.js?v=4"></script>
 </body>
 </html>
