@@ -11,7 +11,7 @@ Gemini free tier is enough for one onboarding at a time.
 ## Progress
 
 ```
-Overall  █████████████████░░░  10 / 12 tasks   83%
+Overall  ██████████████████░░  11 / 12 tasks   92%
 ```
 
 | Phase | Tasks | Done |
@@ -20,7 +20,7 @@ Overall  █████████████████░░░  10 / 12 t
 | B. Data & API | T4–T5 | 2 / 2 |
 | C. Onboarding screen | T6–T7 | 2 / 2 |
 | D. Using the details | T8–T9 | 2 / 2 |
-| E. Testing & ship | T10–T12 | 1 / 3 |
+| E. Testing & ship | T10–T12 | 2 / 3 |
 
 Status key: `[ ]` to do · `[~]` in progress · `[x]` done
 
@@ -70,9 +70,9 @@ Status key: `[ ]` to do · `[~]` in progress · `[x]` done
 - [x] **T10 — Automated checks** (`scripts/verify_website_import.py`, new)
   Local test website (about, attorneys, practice pages, a broken page, a slow page), refusal of private addresses
   and unsafe redirects, robots.txt, Gemini stand-in, profile validation, endpoint rules.
-- [~] **T11 — Browser check**
+- [x] **T11 — Browser check**
   Both onboarding paths (ticked / unticked), the failure path, and the Profile card, in light/dark and phone width.
-- [ ] **T12 — Commit & push**
+- [~] **T12 — Commit & push**
 
 ## Log
 
@@ -86,3 +86,4 @@ Status key: `[ ]` to do · `[~]` in progress · `[x]` done
 | 2026-10-03 | T8 | receptionist script gets a capped ABOUT THE FIRM block (description, practice areas, attorneys; no legal advice, no promising an attorney) |
 | 2026-10-03 | T9 | Profile → Firm details card: edit, Refresh from website, Save; GET/POST /api/v1/firm/details; saving rewrites only the firm block of the seeded agent's script |
 | 2026-10-03 | T10 | scripts/verify_website_import.py 74/74 (local test site, address safety, Gemini stand-in, profile fields, agent block, HTTP); other suites still pass (209, 29, 104) |
+| 2026-10-03 | T11 | browser: website path (5 pages read, details filled, step-2 areas ticked, saved, agent script updated), typed-in path (dark), unreadable site at 400px, Profile card save → agent updated; no console errors |
