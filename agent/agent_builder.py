@@ -1153,7 +1153,7 @@ class AgentBuilder:
                     system_instruction = {
                         "parts": [{
                             "text": (
-                                f"{cfg.system_prompt}\n\n"
+                                f"{call_instructions(cfg.system_prompt, cfg.workspace_id)}\n\n"
                                 f"Guidelines: Speak concisely in 1-2 natural conversational sentences suitable for a phone call. "
                                 f"Never output XML, markdown, or thought tags. "
                                 f"The conversation transcript below already contains your opening greeting as your first turn; "
@@ -1212,7 +1212,7 @@ class AgentBuilder:
                     import urllib.request
                     url = "https://api.openai.com/v1/chat/completions"
                     messages = [{"role": "system", "content": (
-                        f"{cfg.system_prompt}\n\n"
+                        f"{call_instructions(cfg.system_prompt, cfg.workspace_id)}\n\n"
                         f"Guidelines: Speak concisely in 1-2 natural conversational sentences suitable for a phone call. "
                         f"Never output XML, markdown, or thought tags. "
                         f"The conversation transcript below already contains your opening greeting as your first turn; "
@@ -1273,7 +1273,7 @@ class AgentBuilder:
                     payload = json.dumps({
                         "model": cfg.llm_model,
                         "system": (
-                            f"{cfg.system_prompt}\n\n"
+                            f"{call_instructions(cfg.system_prompt, cfg.workspace_id)}\n\n"
                             f"Guidelines: Speak concisely in 1-2 natural conversational sentences suitable for a phone call. "
                             f"Never output XML, markdown, or thought tags. "
                             f"The conversation transcript below already contains your opening greeting as your first turn; "
@@ -1555,3 +1555,5 @@ class AgentBuilder:
 
 # Module-level singleton used by the worker, REST API and acceptance tests.
 agent_builder = AgentBuilder()
+
+from agent.firm_context import call_instructions  # noqa: E402  (after AgentBuilder: firm_context imports onboarding lazily)

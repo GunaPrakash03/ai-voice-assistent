@@ -55,6 +55,7 @@ from agent.pipeline_worker import pipeline_worker
 from agent.webhook_dispatcher import webhook_dispatcher
 webhook_dispatcher.attach_to_pipeline(pipeline_worker)
 from agent.onboarding import attach_lead_notifier
+from agent.firm_context import call_instructions
 attach_lead_notifier(pipeline_worker)
 
 load_dotenv()
@@ -376,8 +377,9 @@ async def entrypoint(ctx: agents.JobContext):
 
     assistant_agent: Optional[VoiceAssistantAgent] = None
     if active_cfg:
-        llm_manager.system_instruction = active_cfg.system_prompt
-        llm_manager.context.system_instruction = active_cfg.system_prompt
+        live_prompt = call_instructions(active_cfg.system_prompt, active_cfg.workspace_id)   # + Firm details from the DB, no legal advice
+        llm_manager.system_instruction = live_prompt
+        llm_manager.context.system_instruction = live_prompt
         llm_manager.temperature = active_cfg.temperature
         llm_manager.enabled_tools = set(active_cfg.tools or [])
     log.info("Dialogue backend: %s (%s)", llm_manager.backend, llm_manager.model)
@@ -1491,8 +1493,9 @@ async def entrypoint(ctx: agents.JobContext):
             else:
                 # Swap the live persona: prompt and sampling on the dialogue
                 # manager, voice on the TTS stream, for the next turn onwards.
-                llm_manager.system_instruction = cfg.system_prompt
-                llm_manager.context.system_instruction = cfg.system_prompt
+                live_prompt = call_instructions(cfg.system_prompt, cfg.workspace_id)
+                llm_manager.system_instruction = live_prompt
+                llm_manager.context.system_instruction = live_prompt
                 llm_manager.temperature = cfg.temperature
                 target_model = cfg.llm_model if cfg.llm_model else LLM_MODEL
                 llm_manager.configure_backend(model=target_model)

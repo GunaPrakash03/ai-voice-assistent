@@ -343,6 +343,40 @@ def section_agent():
     check("exactly one firm block", new.count(ob.KNOWLEDGE_START) == 1 and new.count(ob.KNOWLEDGE_END) == 1)
     check("no change, no update", ob.refresh_agent_knowledge(FakeAuth(), b, "ws") is False and len(b.updates) == 1)
 
+    print("\n5b. Call-time instructions (global rules first, firm details from the database)")
+    import agent.firm_context as fc
+    real_profile = fc.firm_profile
+    try:
+        fc.firm_profile = lambda w: {"about_firm": "NOW: also serving Dallas.", "attorneys": [{"name": "Jane Roe", "title": "Partner"}]} if w == "ws-a" else {}
+        stored = f"You are Maya.\n\n{ob.KNOWLEDGE_START} old\nOLD about\n{ob.KNOWLEDGE_END}\nAdmin rule: mention parking."
+        r = fc.call_instructions(stored, "ws-a")
+        check("global instructions come first", r.startswith(fc.GLOBAL_MARK))
+        check("then the agent prompt, then the firm details", r.index(fc.GLOBAL_MARK) < r.index("You are Maya") < r.index(ob.KNOWLEDGE_START))
+        check("no-legal-advice rule present", fc.NO_LEGAL_ADVICE_MARK in r)
+        check("stored firm block replaced by the saved details", "OLD about" not in r and "NOW: also serving Dallas." in r and r.count(ob.KNOWLEDGE_START) == 1)
+        check("admin's own prompt lines kept", "mention parking" in r)
+        check("agent without a firm block gets the saved details", "NOW: also serving Dallas." in fc.call_instructions("You are Maya.", "ws-a"))
+        r0 = fc.call_instructions("You are Maya.", "ws-none")
+        check("no saved details: global rules + prompt only", fc.GLOBAL_MARK in r0 and ob.KNOWLEDGE_START not in r0)
+        check("never added twice", fc.call_instructions(r, "ws-a").count(fc.GLOBAL_MARK) == 1)
+    finally:
+        fc.firm_profile = real_profile
+    with tempfile.TemporaryDirectory() as td:
+        store = os.path.join(td, "auth_store.json")
+        json.dump({"workspaces": [{"workspace_id": "ws-f", "metadata": {"firm_profile": {"about_firm": "From the store."}}}]}, open(store, "w"))
+        old_path, fc.AUTH_STORE_PATH = fc.AUTH_STORE_PATH, store
+        fc.forget()
+        try:
+            check("firm details read from the saved store", fc.firm_profile("ws-f").get("about_firm") == "From the store.")
+            json.dump({"workspaces": [{"workspace_id": "ws-f", "metadata": {"firm_profile": {"about_firm": "Changed."}}}]}, open(store, "w"))
+            check("cached for a short while", fc.firm_profile("ws-f").get("about_firm") == "From the store.")
+            fc.forget("ws-f")
+            check("forget() picks up a save at once", fc.firm_profile("ws-f").get("about_firm") == "Changed.")
+            check("unknown workspace: no details", fc.firm_profile("ws-missing") == {})
+        finally:
+            fc.AUTH_STORE_PATH = old_path
+            fc.forget()
+
 
 # ── 6. HTTP ───────────────────────────────────────────────────────────────────
 class Client:
