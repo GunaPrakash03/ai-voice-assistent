@@ -108,6 +108,49 @@ def offline():
     check("unassign_everywhere reports changed cases", cm.unassign_everywhere("u-3") == 2)
     check("removed member gone from all cases", all("u-3" not in c["assigned_staff"] for c in cm.list_cases("ws-a")))
 
+    print("\n1b. Registering cases from finished calls")
+    gem = lambda **v: {"engine": "gemini", "values": v}
+    c = cm.register_from_call("call-ai", {
+        "agent_extraction": gem(full_name="Guna Prakash", callback_phone="+919345996500", email_address="guna@example.com",
+                                matter_summary="Bought a phone that broke within a week."),
+        "crm_payloads": {"legal_intake": {"client_name": "Maya, an AI", "case_type": "with us, or is this"}},
+        "summary": {"executive_summary": "Caller asks about a refund."}, "ended_at": day("2026-09-15") + 100})
+    check("AI fields win over the regex extractor", c and (c.client_name, c.phone, c.email) == ("Guna Prakash", "+919345996500", "guna@example.com"),
+          c and c.to_dict())
+    check("AI matter summary used", c and c.summary.startswith("Bought a phone"))
+    check("phrase captured as case type is dropped", c and c.case_type == "")
+    check("source is call, registered at call end, default workspace",
+          c and (c.source, c.registered_at, c.workspace_id) == ("call", day("2026-09-15") + 100, "ws-default"))
+    check("second run for the same call returns the same case",
+          cm.register_from_call("call-ai", {"agent_extraction": gem(full_name="Someone Else")}).case_id == c.case_id)
+
+    c = cm.register_from_call("call-rx", {"crm_payloads": {"legal_intake": {"client_name": "Arthur Dent and", "case_type": "contract"}},
+                                          "summary": {"executive_summary": "Contract dispute with a supplier."}})
+    check("regex name trimmed to the person", c and c.client_name == "Arthur Dent", c and c.client_name)
+    check("regex enum case type labelled", c and c.case_type == "Contract")
+    check("call summary used when no matter summary", c and c.summary == "Contract dispute with a supplier.")
+    for label, raw in (("agent greeting", "Maya, an AI"), ("phrase", "not an employee"), ("single word", "Priya"),
+                       ("spelled-out", "spelled G-u-n-a")):
+        check(f"regex {label} is not a caller name",
+              cm.register_from_call(f"call-bad-{label}", {"agent_name": "Maya", "crm_payloads": {"legal_intake": {"client_name": raw}}}) is None)
+    check("regex extractor (not gemini) agent values ignored",
+          cm.register_from_call("call-regex-agent", {"agent_extraction": {"engine": "regex", "values": {"full_name": "Maya"}}}) is None)
+    c = cm.register_from_call("call-phone", {"agent_extraction": gem(callback_phone="+15550001111"), "from_number": "+15559998888"})
+    check("phone alone opens an 'Unknown caller' case", c and (c.client_name, c.phone) == ("Unknown caller", "+15550001111"))
+    c = cm.register_from_call("call-from", {"agent_extraction": gem(full_name="Ana Ruiz"), "from_number": "+15552223333"})
+    check("caller ID fills a missing phone", c and c.phone == "+15552223333")
+    check("caller ID alone does not open a case", cm.register_from_call("call-wrong-number", {"from_number": "+15554445555"}) is None)
+    c = cm.register_from_call("call-clio", {"agent_extraction": gem(full_name="Peter Parker"),
+                                            "clio_manage_sync": {"matter": {"status": "success", "matter_id": 9911}}})
+    check("Clio matter id kept", c and c.clio_matter_id == "9911")
+
+    print("\n1c. Two processes sharing one store")
+    other = CaseManager(path)
+    made = other.create("ws-c", {"client_name": "Made Elsewhere"})
+    check("a case written by another process is visible", cm.get(made.case_id) is not None)
+    cm.set_status(made.case_id, "on_hold")
+    check("and a write here does not drop it", CaseManager(path).get(made.case_id).status == "on_hold")
+
     reloaded = CaseManager(path)
     check("reload restores every case", {c["case_id"] for c in reloaded.list_cases("ws-a")} == {a1.case_id, a2.case_id}
           and reloaded.get(b1.case_id) is not None)

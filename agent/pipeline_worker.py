@@ -634,6 +634,16 @@ class PostCallPipelineWorker:
             except Exception as clio_err:
                 log.warning("Clio sync encountered non-blocking error for %s: %s", job.call_id, clio_err)
 
+            # Register the case for the dashboard's case list (once per call, see agent/case_manager.py).
+            try:
+                from agent.case_manager import case_manager
+                case = case_manager.register_from_call(job.call_id, job.metadata)
+                if case:
+                    job.metadata["case_id"] = case.case_id
+                    log.info("Case %s registered for call %s (%s)", case.case_id, job.call_id, case.workspace_id)
+            except Exception as case_err:
+                log.warning("Case registration failed for %s: %s", job.call_id, case_err)
+
             # -------------------------------------------------------------
             # Stage 6: Storage Archive Verification & Metadata Manifest
             # -------------------------------------------------------------
