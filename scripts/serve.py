@@ -63,6 +63,7 @@ from agent.agent_builder import agent_builder
 from agent.call_history import call_history
 from agent.auth_manager import auth_manager, ApiScope, UserRole, PendingVerification
 from agent import onboarding
+from agent.case_manager import case_manager, STATUSES as CASE_STATUSES
 amd_manager = AMDManager()
 
 
@@ -415,7 +416,7 @@ class Handler(SimpleHTTPRequestHandler):
     ADMIN_GET_PREFIXES = ("/api/v1/users", "/api/v1/workspaces")
     ADMIN_POST_PREFIXES = ("/api/v1/users", "/api/v1/workspaces",
                            "/api/v1/auth/users", "/api/agents", "/api/telephony", "/api/webhooks",
-                           "/api/v1/calls/dispatch")
+                           "/api/v1/calls/dispatch", "/api/v1/cases")
     ADMIN_PAGES = ("/admin-guide", "/cost-comparison", "/agent-builder", "/webhooks",
                    "/competitor-analysis", "/user-guide", "/agents", "/sip-trunks", "/phone-numbers",
                    "/call-desk/agents", "/call-desk/sip-trunks", "/call-desk/phone-numbers")
@@ -477,6 +478,50 @@ class Handler(SimpleHTTPRequestHandler):
             return False
 
         return True
+
+    # ── Cases ────────────────────────────────────────────────────────────────
+    # Everyone works inside their own workspace; a Super Admin may pass ?workspace_id= to look at
+    # another firm. Member Admins only see the cases they are assigned to. Writes (create, assign,
+    # status) are admin-only through ADMIN_POST_PREFIXES.
+    def _case_viewer(self) -> Tuple[Dict[str, Any], str]:
+        v = self._viewer()
+        u = v["user"]
+        ws = u.workspace_id if u else (auth_manager.get_profile().get("workspace_id") or "ws-default")
+        return v, ws
+
+    def _case_for_viewer(self, case_id: str):
+        """The case if this viewer may see it, else sends 404 and returns None."""
+        v, ws = self._case_viewer()
+        case = case_manager.get(case_id)
+        visible = bool(case) and (v["is_super_admin"] or case.workspace_id == ws)
+        if visible and not v["is_admin"]:
+            visible = bool(v["user"]) and v["user"].user_id in case.assigned_staff
+        if not visible:
+            self._send_json({"status": "error", "error": "Case not found"}, 404)
+            return None
+        return case
+
+    @staticmethod
+    def _staff_card(u) -> Dict[str, Any]:
+        return {"user_id": u.user_id, "name": u.name or u.email, "email": u.email, "role": u.role}
+
+    def _case_out(self, case) -> Dict[str, Any]:
+        d = case.to_dict()
+        staff = []
+        for uid in case.assigned_staff:
+            u = auth_manager.get_user(uid)
+            staff.append(self._staff_card(u) if u and u.active else {"user_id": uid, "name": "Removed user", "email": "", "role": ""})
+        d["staff"] = staff
+        return d
+
+    @staticmethod
+    def _day_start(value: str) -> Optional[float]:
+        """'2026-10-03' → local midnight as epoch seconds; '' → None. Raises ValueError."""
+        value = (value or "").strip()
+        if not value:
+            return None
+        import datetime as _dt
+        return time.mktime(_dt.date.fromisoformat(value).timetuple())
 
     def _agent_allowed(self, agent_id: str) -> bool:
         v = self._viewer()
@@ -1392,6 +1437,43 @@ class Handler(SimpleHTTPRequestHandler):
             ws_id = requested_ws if (ctx.get("role") == "super_admin" and requested_ws) else ctx["workspace_id"]
             self._send_json({"status": "ok", "users": auth_manager.list_users(workspace_id=ws_id)})
             return
+        elif parsed.path == "/api/v1/cases":
+            v, ws = self._case_viewer()
+            q = parse_qs(parsed.query)
+            arg = lambda k: (q.get(k) or [""])[0].strip()
+            if arg("workspace_id") and v["is_super_admin"]:
+                ws = arg("workspace_id")
+            status = arg("status")
+            if status and status not in CASE_STATUSES:
+                self._send_json({"status": "error", "error": f"status must be one of: {', '.join(CASE_STATUSES)}"}, 400)
+                return
+            try:
+                reg_from = self._day_start(arg("from"))
+                reg_to = self._day_start(arg("to"))
+            except ValueError:
+                self._send_json({"status": "error", "error": "from/to must be dates like 2026-10-03"}, 400)
+                return
+            if reg_to is not None:
+                reg_to += 86400   # make the end date inclusive
+            if v["is_admin"]:
+                assigned_to = arg("assigned_to") or None
+            else:
+                assigned_to = v["user"].user_id if v["user"] else ""
+            cases = case_manager.list_cases(ws, assigned_to=assigned_to, status=status or None,
+                                            registered_from=reg_from, registered_to=reg_to)
+            body = {"status": "ok", "workspace_id": ws, "statuses": list(CASE_STATUSES),
+                    "cases": [self._case_out(case_manager.get(c["case_id"])) for c in cases]}
+            if v["is_admin"]:
+                workload = case_manager.staff_workload(ws)
+                members = [auth_manager.get_user(u["user_id"]) for u in auth_manager.list_users(workspace_id=ws)]
+                body["staff"] = [dict(self._staff_card(u), open_cases=workload.get(u.user_id, 0)) for u in members if u]
+            self._send_json(body)
+            return
+        elif parsed.path.startswith("/api/v1/cases/"):
+            case = self._case_for_viewer(parsed.path[len("/api/v1/cases/"):])
+            if case:
+                self._send_json({"status": "ok", "case": self._case_out(case)})
+            return
         elif parsed.path == "/api/v1/calls":
             ok, ctx, err = auth_manager.authenticate_request(self._extract_headers(), required_scope=ApiScope.CALLS_READ.value)
             if not ok:
@@ -1841,12 +1923,57 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": str(e)}, 400)
                 return
 
+        if parsed.path == "/api/v1/cases":
+            v, ws = self._case_viewer()
+            if payload.get("workspace_id") and v["is_super_admin"]:
+                ws = str(payload["workspace_id"])
+            if not auth_manager.get_workspace(ws):
+                self._send_json({"status": "error", "error": "Workspace not found"}, 404)
+                return
+            try:
+                case = case_manager.create(ws, payload, created_by=v["user"].user_id if v["user"] else "")
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            except RuntimeError as e:
+                self._send_json({"status": "error", "error": str(e)}, 503)
+                return
+            self._send_json({"status": "ok", "case": self._case_out(case)}, 201)
+            return
+        if parsed.path in ("/api/v1/cases/assign", "/api/v1/cases/status"):
+            case = self._case_for_viewer(str(payload.get("case_id") or ""))
+            if not case:
+                return
+            try:
+                if parsed.path.endswith("/assign"):
+                    ids = payload.get("user_ids")
+                    if not isinstance(ids, list):
+                        raise ValueError("user_ids must be a list")
+                    mode = str(payload.get("mode") or "add")
+                    if mode != "remove":
+                        for uid in ids:
+                            u = auth_manager.get_user(str(uid))
+                            if not u or not u.active or u.workspace_id != case.workspace_id:
+                                raise ValueError(f"{uid} is not a member of this workspace")
+                    case = case_manager.assign(case.case_id, [str(x) for x in ids], mode)
+                else:
+                    case = case_manager.set_status(case.case_id, str(payload.get("status") or ""))
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            except RuntimeError as e:
+                self._send_json({"status": "error", "error": str(e)}, 503)
+                return
+            self._send_json({"status": "ok", "case": self._case_out(case)})
+            return
         if parsed.path == "/api/v1/auth/users":
             v = self._viewer()
             action = str(payload.get("action") or "create")
             try:
                 if action == "remove":
                     ok = auth_manager.deactivate_user(str(payload.get("user_id") or ""), v["user"].user_id if v["user"] else None)
+                    if ok:
+                        case_manager.unassign_everywhere(str(payload.get("user_id") or ""))
                     self._send_json({"status": "ok" if ok else "error", "removed": ok}, 200 if ok else 404)
                     return
 
