@@ -1710,9 +1710,9 @@ class Handler(SimpleHTTPRequestHandler):
             except (ValueError, KeyError) as e:
                 self._send_json({"status": "error", "error": str(e)}, 400)
                 return
-            agent_updated = ob.refresh_agent_knowledge(auth_manager, agent_builder, ws)
             from agent import firm_context
-            firm_context.forget(ws)          # calls handled by this process pick the new details up at once
+            firm_context.forget(ws)          # calls read the details at call time; this process sees them at once
+            agent_updated = True
             fp = auth_manager.get_workspace(ws).metadata.get("firm_profile") or {}
             self._send_json({"status": "ok", "agent_updated": agent_updated, "details": {k: fp.get(k) for k in allowed | {"website"}}})
             return
@@ -3465,6 +3465,12 @@ print(f"Signalling: {WS_URL}")
 print("Ctrl+C to stop\n")
 
 from agent.auth_manager import SlidingWindowRateLimiter  # noqa: E402
+try:
+    _n = onboarding.strip_firm_blocks(agent_builder)   # firm details live in the backend now, not in prompts
+    if _n:
+        log.info("Removed the stored firm-details block from %d agent prompt(s)", _n)
+except Exception as _e:
+    log.warning("Firm-details prompt cleanup skipped: %s", _e)
 Handler.WEBSITE_DRAFT_LIMITER = SlidingWindowRateLimiter(default_limit=5, window_seconds=600)
 
 import signal

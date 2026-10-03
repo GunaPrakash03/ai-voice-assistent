@@ -120,26 +120,31 @@ def firm_knowledge(profile: Dict[str, Any]) -> List[str]:
     return kept + [KNOWLEDGE_END]
 
 
-def refresh_agent_knowledge(auth_manager, agent_builder, workspace_id: str) -> bool:
-    """After the firm details change (Profile page), rewrite only the firm-details block of the firm's
-    seeded agent so its other instructions, including the admin's own edits, stay as they are."""
-    ws = auth_manager.get_workspace(workspace_id)
-    agent_id = ((ws.metadata.get("onboarding") or {}).get("agent_id") if ws else "") or ""
-    agent = agent_builder.get_agent(agent_id) if agent_id else None
-    if not agent:
-        return False
-    prompt = agent.system_prompt or ""
-    block = "\n".join(firm_knowledge(ws.metadata.get("firm_profile") or {})).strip()
+def strip_firm_block(prompt: str) -> str:
+    """The prompt without a firm-details block (KNOWLEDGE_START … KNOWLEDGE_END). Firm details and the
+    global rules are added at call time (agent/firm_context.py) and are never kept in the agent's prompt."""
+    prompt = prompt or ""
     start = prompt.find(KNOWLEDGE_START)
-    end = prompt.find(KNOWLEDGE_END, start)
-    if start >= 0 and end >= 0:
-        new = (prompt[:start].rstrip() + ("\n\n" + block if block else "") + "\n" + prompt[end + len(KNOWLEDGE_END):].lstrip("\n")).strip()
-    else:
-        new = (prompt.rstrip() + ("\n\n" + block if block else "")).strip()
-    if new == prompt.strip():
-        return False
-    agent_builder.update_agent(agent_id, {"system_prompt": new}, note="Firm details updated")
-    return True
+    end = prompt.find(KNOWLEDGE_END, start) if start >= 0 else -1
+    if start < 0 or end < 0:
+        return prompt
+    return (prompt[:start].rstrip() + "\n" + prompt[end + len(KNOWLEDGE_END):].lstrip("\n")).strip()
+
+
+def strip_firm_blocks(agent_builder) -> int:
+    """One-time cleanup: agents seeded before firm details moved to call time carry the block in their
+    prompt (and so in Agent Builder). Remove it. Returns how many agents changed."""
+    changed = 0
+    for a in agent_builder.list_agents():
+        prompt = a.get("system_prompt") or ""
+        if KNOWLEDGE_START in prompt and KNOWLEDGE_END in prompt:
+            try:
+                agent_builder.update_agent(a["agent_id"], {"system_prompt": strip_firm_block(prompt)},
+                                           note="Firm details now added at call time")
+                changed += 1
+            except Exception as e:
+                log.warning("Could not remove the firm-details block from agent %s: %s", a.get("agent_id"), e)
+    return changed
 
 
 def describe_hours(hours: Dict[str, Any]) -> str:
@@ -207,7 +212,6 @@ def build_agent_config(firm_name: str, profile: Dict[str, Any], available_tools:
         "Do not recap what the caller just said.",
         "Ask one question at a time.",
         "Never read case numbers, URLs or email addresses aloud unless asked.",
-        "You are not a lawyer. Never give legal advice or predict an outcome; say an attorney will review the matter.",
         "",
         "For a new matter, collect the caller's full name, the best number to call them back, their email "
         "address, and a short description of what happened.",
@@ -234,7 +238,6 @@ def build_agent_config(firm_name: str, profile: Dict[str, Any], available_tools:
         lines.append(f"If asked, the office number is {office_phone}.")
     if len(languages) > 1:
         lines.append(f"You can speak {_join(language_names(languages))}. Answer in the language the caller uses.")
-    lines += firm_knowledge(profile)
 
     fields = [
         {"name": "caller_name", "type": "string", "description": "Caller's full name", "required": True},

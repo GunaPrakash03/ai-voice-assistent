@@ -779,6 +779,7 @@ class AgentBuilder:
 
     # ── CRUD ─────────────────────────────────────────────────────────────────
     def create_agent(self, name: str, first_message: str, system_prompt: str, **kwargs) -> AgentConfig:
+        system_prompt = _without_firm_block(system_prompt)   # added at call time, never stored
         first_msg_clean = (first_message or "").strip()
         if not first_msg_clean:
             first_msg_clean = self.derive_first_message(system_prompt, name)
@@ -853,6 +854,8 @@ class AgentBuilder:
         proposed = cfg.to_dict()
         editable = {k: v for k, v in changes.items()
                     if k in proposed and k not in ("agent_id", "revision", "created_at", "updated_at", "owner_id", "workspace_id", "active")}
+        if "system_prompt" in editable:
+            editable["system_prompt"] = _without_firm_block(editable["system_prompt"])   # added at call time, never stored
         
         if "first_message" in editable and not (editable["first_message"] or "").strip():
             p = editable.get("system_prompt") or cfg.system_prompt
@@ -1557,3 +1560,8 @@ class AgentBuilder:
 agent_builder = AgentBuilder()
 
 from agent.firm_context import call_instructions  # noqa: E402  (after AgentBuilder: firm_context imports onboarding lazily)
+
+
+def _without_firm_block(prompt: str) -> str:
+    from agent.onboarding import strip_firm_block
+    return strip_firm_block(prompt)

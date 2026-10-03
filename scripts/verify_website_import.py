@@ -312,36 +312,26 @@ def section_agent():
     many = {"attorneys": [{"name": f"Person Number{i}", "bio": "b " * 70} for i in range(40)]}
     check("block capped", sum(len(l) for l in ob.firm_knowledge(many)) <= ob.FIRM_KNOWLEDGE_CHARS + 200)
     cfg = ob.build_agent_config("Roe & Park", prof, None)
-    check("seeded agent's script includes the firm block", ob.KNOWLEDGE_START in cfg["system_prompt"] and "Jane Roe" in cfg["system_prompt"])
-
-    class FakeWs:
-        metadata = {"onboarding": {"agent_id": "ag-1"}, "firm_profile": dict(prof, about_firm="Now in Dallas too.")}
-
-    class FakeAuth:
-        def get_workspace(self, _):
-            return FakeWs()
-
-    class FakeAgent:
-        system_prompt = cfg["system_prompt"] + "\nAdmin's own rule: always mention free parking."
+    check("seeded agent's stored prompt has no firm block (added at call time)", ob.KNOWLEDGE_START not in cfg["system_prompt"] and "Jane Roe" not in cfg["system_prompt"])
+    check("seeded agent's stored prompt has no legal-advice line (global rule)", "legal advice" not in cfg["system_prompt"].lower())
+    stored = f"You are Maya.\n\n{ob.KNOWLEDGE_START} x\nOld details\n{ob.KNOWLEDGE_END}\nAdmin rule: mention parking."
+    clean = ob.strip_firm_block(stored)
+    check("strip removes a stored block, keeps the admin's lines", ob.KNOWLEDGE_START not in clean and "Old details" not in clean and "mention parking" in clean and clean.startswith("You are Maya."))
+    check("strip leaves prompts without a block alone", ob.strip_firm_block("You are Maya.") == "You are Maya.")
 
     class FakeBuilder:
-        agent = FakeAgent()
-        updates = []
+        def __init__(self):
+            self.agents = [{"agent_id": "a1", "system_prompt": stored}, {"agent_id": "a2", "system_prompt": "Plain."}]
+            self.updates = []
 
-        def get_agent(self, _):
-            return self.agent
+        def list_agents(self):
+            return self.agents
 
         def update_agent(self, agent_id, changes, note=""):
-            self.updates.append(changes)
-            self.agent.system_prompt = changes["system_prompt"]
+            self.updates.append((agent_id, changes["system_prompt"]))
 
-    b = FakeBuilder()
-    check("refresh rewrites the block", ob.refresh_agent_knowledge(FakeAuth(), b, "ws") is True)
-    new = b.agent.system_prompt
-    check("new details in, old details out", "Now in Dallas too." in new and "helps families" not in new)
-    check("admin's own edits kept", "always mention free parking" in new)
-    check("exactly one firm block", new.count(ob.KNOWLEDGE_START) == 1 and new.count(ob.KNOWLEDGE_END) == 1)
-    check("no change, no update", ob.refresh_agent_knowledge(FakeAuth(), b, "ws") is False and len(b.updates) == 1)
+    fb = FakeBuilder()
+    check("one-time cleanup touches only agents with a block", ob.strip_firm_blocks(fb) == 1 and fb.updates[0][0] == "a1" and "Old details" not in fb.updates[0][1])
 
     print("\n5b. Call-time instructions (global rules first, firm details from the database)")
     import agent.firm_context as fc

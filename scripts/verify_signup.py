@@ -521,7 +521,10 @@ def test_onboarding():
     check("daytime escalation to office phone", "transfer them to +15551234567 using transfer_call" in prompt)
     check("languages listed", "You can speak English, Spanish and Portuguese." in prompt)
     check("practice-area questions added", "For an injury" in prompt and "For a family matter" in prompt and "For a criminal" not in prompt)
-    check("no legal advice line", "Never give legal advice" in prompt)
+    from agent.firm_context import call_instructions, GLOBAL_MARK
+    check("legal-advice rule kept out of the stored prompt (backend global rule)", "legal advice" not in prompt.lower())
+    check("legal-advice rule added first at call time", call_instructions(prompt).startswith(GLOBAL_MARK)
+          and "Never give legal advice" in call_instructions(prompt))
     names = [f["name"] for f in cfg["extraction_fields"]]
     check("intake fields + practice fields", names[:4] == ["caller_name", "callback_number", "email", "case_summary"]
           and "incident_date" in names and "family_matter_type" in names and "charge" not in names, names)
