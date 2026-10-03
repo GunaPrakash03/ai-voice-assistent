@@ -1496,7 +1496,8 @@ class Handler(SimpleHTTPRequestHandler):
                     "can_remove": d["user_id"] != me and (v["is_super_admin"] or d["role"] != "super_admin"),
                 })
             creator_ws = v["user"].workspace_id if v["user"] else ws
-            roles = [r for r in ("member_admin", "admin") if can_create_role(v["role"], creator_ws, r, ws)[0]]
+            roles = [r for r in ("member_admin", "admin") if can_create_role(v["role"], creator_ws, r, ws)[0]
+                     and not auth_manager.admin_slot_holder(r, ws)]   # one Product Admin per organization
             from agent.clio_connector import clio_connector
             self._send_json({"status": "ok", "workspace_id": ws, "workspace": workspace.name if workspace else "",
                              "members": members, "can_add_roles": roles,
@@ -1973,7 +1974,7 @@ class Handler(SimpleHTTPRequestHandler):
                 elif action == "role":
                     user_id = str(payload.get("user_id") or "")
                     new_role = str(payload.get("role") or "member_admin")
-                    user = auth_manager.update_user_global(user_id, {"role": new_role})
+                    user = auth_manager.update_user_global(user_id, {"role": new_role, "replace_current": bool(payload.get("replace_current"))})
                     self._send_json({"status": "ok", "user": user})
                     return
                 elif action == "reassign":

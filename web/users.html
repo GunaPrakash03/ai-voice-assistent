@@ -313,7 +313,12 @@
             <option value="admin">Product Admin</option>
             <option value="super_admin">Super Admin</option>
           </select>
+          <div class="hint">There is one Super Admin for the platform and one Product Admin per organization.</div>
         </div>
+        <label id="crReplaceWrap" style="display:none;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="crReplace" style="margin-top:3px">
+          <span id="crReplaceText">Hand over the role: the current holder becomes a Member Admin.</span>
+        </label>
       </div>
       <div class="modal-f">
         <button type="button" class="btn ghost" onclick="closeModals()">Cancel</button>
@@ -555,6 +560,7 @@ function openRoleModal(userId) {
   document.getElementById('crUserId').value = u.user_id;
   document.getElementById('crUserInfo').textContent = `${u.name} (${u.email})`;
   document.getElementById('crTargetRole').value = u.role;
+  document.getElementById('crTargetRole').dispatchEvent(new Event('change'));
   document.getElementById('modalChangeRole').classList.add('show');
 }
 
@@ -638,12 +644,13 @@ document.getElementById('formChangeRole').addEventListener('submit', async (e) =
   e.preventDefault();
   const userId = document.getElementById('crUserId').value;
   const newRole = document.getElementById('crTargetRole').value;
+  const replace = newRole !== 'member_admin' && document.getElementById('crReplace').checked;
 
   try {
     const res = await fetch('/api/v1/system/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'role', user_id: userId, role: newRole })
+      body: JSON.stringify({ action: 'role', user_id: userId, role: newRole, replace_current: replace })
     });
     const d = await res.json();
     if (d.status === 'ok') {
@@ -656,6 +663,16 @@ document.getElementById('formChangeRole').addEventListener('submit', async (e) =
   } catch (e) {
     alert('Network error while changing role');
   }
+});
+
+// Promoting to Super Admin / Product Admin replaces the single holder only when this box is ticked.
+document.getElementById('crTargetRole').addEventListener('change', () => {
+  const r = document.getElementById('crTargetRole').value;
+  document.getElementById('crReplaceWrap').style.display = r === 'member_admin' ? 'none' : 'flex';
+  document.getElementById('crReplace').checked = false;
+  document.getElementById('crReplaceText').textContent = r === 'super_admin'
+    ? 'Hand over Super Admin: the current Super Admin (possibly you) becomes a Member Admin.'
+    : "Hand over Product Admin: this organization's current Product Admin becomes a Member Admin.";
 });
 
 document.getElementById('formReassign').addEventListener('submit', async (e) => {

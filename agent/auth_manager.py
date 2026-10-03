@@ -336,9 +336,19 @@ class AuthManager:
         password = os.getenv("SUPER_ADMIN_PASSWORD", "")
         reset = os.getenv("SUPER_ADMIN_RESET_PASSWORD", "").strip().lower() in ("1", "true", "yes")
         changed = False
+        if len(emails) > 1:
+            log.error("SUPER_ADMIN_EMAIL lists %d addresses; only one Super Admin is allowed, using %s", len(emails), emails[0])
+            emails = emails[:1]
         for email in emails:
             user = self._find_user_by_email(email) or next(
                 (u for u in self._users.values() if u.email.lower() == email), None)
+            holder = self.admin_slot_holder(UserRole.SUPER_ADMIN.value, "", exclude_user_id=user.user_id if user else None)
+            if holder and holder.user_id == "usr-admin-01" and not holder.password_hash:
+                holder.active = False       # the built-in placeholder never signed in: the named owner replaces it
+                changed = True
+            elif holder:
+                log.error("SUPER_ADMIN_EMAIL=%s ignored: %s is already the Super Admin (only one is allowed)", email, holder.email)
+                continue
             if user:
                 if user.role != UserRole.SUPER_ADMIN.value or not user.active:
                     user.role = UserRole.SUPER_ADMIN.value
@@ -588,12 +598,37 @@ class AuthManager:
 
     # ── User & RBAC Operations ──────────────────────────────────────────────
 
+    # One Super Admin for the whole platform, one Product Admin per organization. Every path that
+    # creates, promotes, moves or reactivates an account checks the slot first.
+    def admin_slot_holder(self, role: str, workspace_id: str, exclude_user_id: Optional[str] = None) -> Optional["AuthUser"]:
+        """The active account already holding the single Super Admin / Product Admin slot, if any."""
+        role = normalize_role(role)
+        for u in sorted(self._users.values(), key=lambda x: x.created_at):
+            if not u.active or u.user_id == exclude_user_id or u.role != role:
+                continue
+            if role == UserRole.SUPER_ADMIN.value:
+                return u
+            if role == UserRole.ADMIN.value and u.workspace_id == workspace_id:
+                return u
+        return None
+
+    def require_admin_slot(self, role: str, workspace_id: str, exclude_user_id: Optional[str] = None) -> None:
+        holder = self.admin_slot_holder(role, workspace_id, exclude_user_id)
+        if not holder:
+            return
+        if normalize_role(role) == UserRole.SUPER_ADMIN.value:
+            raise ValueError(f"There can be only one Super Admin, and {holder.email} already is. Transfer the role instead.")
+        ws = self._workspaces.get(workspace_id)
+        raise ValueError(f"{ws.name if ws else 'This organization'} already has a Product Admin ({holder.email}). "
+                         "Each organization has exactly one; transfer the role instead.")
+
     def create_user(self, workspace_id: str, email: str, role: str) -> AuthUser:
         if workspace_id not in self._workspaces:
             raise KeyError(f"Workspace '{workspace_id}' not found")
         role = normalize_role(role)
         if role not in [r.value for r in UserRole]:
             raise ValueError(f"Invalid role '{role}'. Allowed: {[r.value for r in UserRole]}")
+        self.require_admin_slot(role, workspace_id)
 
         user_id = f"usr-{secrets.token_hex(4)}"
         user = AuthUser(user_id=user_id, workspace_id=workspace_id, email=email, role=role)
@@ -1445,27 +1480,32 @@ class AuthManager:
         if not user:
             raise KeyError(f"User '{user_id}' not found")
 
-        if "role" in changes and changes["role"] is not None:
-            new_role = normalize_role(str(changes["role"]))
-            if user.role == UserRole.SUPER_ADMIN.value and new_role != UserRole.SUPER_ADMIN.value:
-                super_admins = [u for u in self._users.values() if u.active and u.role == UserRole.SUPER_ADMIN.value and u.user_id != user.user_id]
-                if not super_admins:
-                    raise ValueError("Cannot demote the only active Super Admin")
-            user.role = new_role
-
-        if "workspace_id" in changes and changes["workspace_id"] is not None:
-            new_ws_id = str(changes["workspace_id"]).strip()
-            if new_ws_id not in self._workspaces:
-                raise KeyError(f"Workspace '{new_ws_id}' not found")
-            user.workspace_id = new_ws_id
-
-        if "active" in changes and changes["active"] is not None:
-            new_active = bool(changes["active"])
-            if user.role == UserRole.SUPER_ADMIN.value and not new_active:
-                super_admins = [u for u in self._users.values() if u.active and u.role == UserRole.SUPER_ADMIN.value and u.user_id != user.user_id]
-                if not super_admins:
-                    raise ValueError("Cannot deactivate the only active Super Admin")
-            user.active = new_active
+        # Work out the account's role / workspace / active state after this change, check the single
+        # Super Admin and one-Product-Admin-per-organization rules against it, then apply.
+        new_role = normalize_role(str(changes["role"])) if changes.get("role") is not None else user.role
+        new_ws_id = str(changes["workspace_id"]).strip() if changes.get("workspace_id") is not None else user.workspace_id
+        new_active = bool(changes["active"]) if changes.get("active") is not None else user.active
+        if new_ws_id not in self._workspaces:
+            raise KeyError(f"Workspace '{new_ws_id}' not found")
+        if user.role == UserRole.SUPER_ADMIN.value and user.active and (new_role != UserRole.SUPER_ADMIN.value or not new_active):
+            raise ValueError("The platform needs its Super Admin. Make someone else Super Admin (transfer) first.")
+        if user.role == UserRole.ADMIN.value and user.active and (new_role != UserRole.ADMIN.value or not new_active or new_ws_id != user.workspace_id):
+            others = [u for u in self._users.values() if u.active and u.role == UserRole.ADMIN.value
+                      and u.workspace_id == user.workspace_id and u.user_id != user.user_id]
+            if not others:
+                raise ValueError("This organization needs its Product Admin. Make someone else Product Admin (transfer) first.")
+        displaced = None
+        entering = new_role != user.role or new_ws_id != user.workspace_id or (new_active and not user.active)
+        if entering and new_active and new_role in (UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value):
+            holder = self.admin_slot_holder(new_role, new_ws_id, exclude_user_id=user.user_id)
+            if holder and changes.get("replace_current"):
+                displaced = holder      # transfer: the current holder becomes a Member Admin
+            else:
+                self.require_admin_slot(new_role, new_ws_id, exclude_user_id=user.user_id)
+        user.role, user.workspace_id, user.active = new_role, new_ws_id, new_active
+        if displaced:
+            displaced.role = UserRole.MEMBER_ADMIN.value
+            log.info("%s handed over to %s; %s is now a Member Admin", new_role, user.email, displaced.email)
 
         for key in ("name", "email", "phone", "title"):
             if key in changes and changes[key] is not None:
