@@ -2,8 +2,8 @@
 """scripts/enforce_admin_slots.py — bring existing accounts in line with the admin rule:
 one Super Admin for the whole platform, one Product Admin per organization.
 
-Extra admins are demoted to Member Admin (nothing is deleted or deactivated, so it can be undone from
-the Users Registry). You choose which account stays Super Admin; in each organization the oldest
+Extra admins are demoted to Member Admin, or with --deactivate switched off (signed out, hidden from
+the Team page, unable to sign in). Nothing is deleted; either can be undone from the Users Registry. You choose which account stays Super Admin; in each organization the oldest
 active Product Admin stays unless --keep-admin names another.
 
 Dry run by default: prints the plan. Add --apply to write it.
@@ -26,6 +26,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--keep-super", required=True, help="email of the account that stays Super Admin")
     ap.add_argument("--keep-admin", action="append", default=[], help="email of a Product Admin to keep in their organization (repeatable)")
+    ap.add_argument("--deactivate", action="store_true", help="deactivate extra admins instead of demoting them")
     ap.add_argument("--apply", action="store_true", help="write the changes (default: dry run)")
     args = ap.parse_args()
     os.environ["SUPER_ADMIN_EMAIL"] = ""           # the env owner rule must not fire while we reorganise
@@ -65,7 +66,8 @@ def main():
     no_admin = [w for w in am._workspaces.values() if w.active and w.workspace_id not in by_ws]
 
     print(f"Super Admin kept: {keep.email} ({ws_name(keep.workspace_id)}, {keep.user_id})")
-    print(f"\n{len(plan)} account(s) to demote to Member Admin:")
+    verb = "deactivate" if args.deactivate else "demote to Member Admin"
+    print(f"\n{len(plan)} account(s) to {verb}:")
     for u, role, why in plan:
         print(f"  {u.email:<45} {ws_name(u.workspace_id)[:28]:<28} {u.user_id}  {why}")
     if no_admin:
@@ -74,13 +76,19 @@ def main():
             print(f"  {w.name[:40]:<40} {w.workspace_id}")
 
     if not args.apply:
-        print("\nDry run: nothing changed. Add --apply to demote the accounts above.")
+        print(f"\nDry run: nothing changed. Add --apply to {verb} the accounts above.")
         return
+    gone = {u.user_id for u, _, _ in plan}
     for u, _, _ in plan:
         u.role = "member_admin"
+        if args.deactivate:
+            u.active = False
+    if args.deactivate:
+        for h in [h for h, sdoc in am._sessions.items() if sdoc.get("user_id") in gone]:
+            am._sessions.pop(h, None)
     if am._save_store() is False:
         sys.exit("Save failed; no changes were written.")
-    print(f"\nDone: {len(plan)} account(s) are now Member Admins.")
+    print(f"\nDone: {len(plan)} account(s) " + ("deactivated and signed out." if args.deactivate else "are now Member Admins."))
 
 
 if __name__ == "__main__":
