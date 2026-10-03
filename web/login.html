@@ -6,144 +6,129 @@
 <title>Sign in — Call Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap">
-<style>
-  :root{
-    --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
-    --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
-    --line:#DDE0E9; --line-soft:#EBEDF3;
-    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
-    --pos:#2F7A4F; --pos-soft:#E6F2EA; --neg:#A32F26; --neg-soft:#FAEAE8;
-    --f-ui:"Archivo",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
-    --f-mono:"DM Mono","SF Mono",Menlo,Consolas,monospace;
-  }
-  @media (prefers-color-scheme:dark){
-    :root:not([data-theme="light"]){
-      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
-      --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
-      --line:#262B3A; --line-soft:#1C2130;
-      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
-      --pos:#5FBF88; --pos-soft:#12251A; --neg:#E0776C; --neg-soft:#2A1513;
-    }
-  }
-  *{box-sizing:border-box}
-  body{margin:0;min-height:100vh;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-  @media (max-width:860px){body{grid-template-columns:1fr}.side{display:none}}
-  .side{background:var(--rail);color:#fff;padding:48px 52px;display:flex;flex-direction:column;justify-content:space-between}
-  .brand b{font-size:22px;font-weight:700;display:block}
-  .brand span{color:#A8AEC4;font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
-  .side h2{font-size:26px;line-height:1.25;margin:0 0 12px;font-weight:700;max-width:420px}
-  .side p{color:#A8AEC4;max-width:420px;margin:0 0 18px}
-  .side ul{list-style:none;padding:0;margin:0;color:#D5D8E4;display:grid;gap:10px;max-width:420px}
-  .side li{display:flex;gap:10px;align-items:flex-start}
-  .side li b{color:#F3B27A;font-family:var(--f-mono);font-size:12px;min-width:22px}
-  .side .foot{color:#767D96;font-family:var(--f-mono);font-size:11px}
-  .wrap{display:flex;align-items:center;justify-content:center;padding:32px 20px}
-  .card{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:30px 30px 26px;box-shadow:0 12px 40px rgba(19,23,37,.08)}
-  .crumb{font-family:var(--f-mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.09em;text-transform:uppercase;margin-bottom:4px}
-  h1{margin:0 0 6px;font-size:22px;font-weight:700}
-  .sub{color:var(--ink-soft);font-size:13px;margin:0 0 20px}
-  .field{margin-bottom:14px}
-  .field label{display:block;font-size:11.5px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
-  .field input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:14px;font-family:var(--f-ui)}
-  .field input:focus{outline:none;border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft)}
-  .field input.code{font-family:var(--f-mono);font-size:24px;letter-spacing:.35em;text-align:center;padding:12px}
-  .field .hint{font-size:11.5px;color:var(--ink-faint);margin-top:5px}
-  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 16px;font-size:12.5px;color:var(--ink-soft)}
-  .row label{display:flex;align-items:center;gap:6px;cursor:pointer}
-  .btn{width:100%;display:inline-flex;align-items:center;justify-content:center;padding:11px 16px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s;font-family:var(--f-ui)}
-  .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-  .btn-primary:hover{opacity:.92}
-  .btn-primary:disabled{opacity:.6;cursor:wait}
-  .btn-ghost{background:transparent;color:var(--ink-soft);border-color:var(--line);margin-top:8px}
-  .btn-ghost:hover{background:var(--sunk);color:var(--ink)}
-  .msg{min-height:20px;font-size:12.5px;margin:10px 0 0}
-  .msg.err{color:var(--neg)} .msg.ok{color:var(--pos)}
-  .step{display:none}
-  .step.on{display:block}
-  .stepper{display:flex;gap:6px;margin-bottom:18px}
-  .stepper span{flex:1;height:4px;border-radius:2px;background:var(--sunk)}
-  .stepper span.done{background:var(--accent)}
-  .link{background:none;border:none;color:var(--accent);cursor:pointer;font-size:12.5px;padding:0;font-family:var(--f-ui)}
-  .link:disabled{color:var(--ink-faint);cursor:default}
-  .phone-chip{display:inline-block;font-family:var(--f-mono);background:var(--sunk);padding:2px 8px;border-radius:6px}
-</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/auth.css">
 </head>
 <body>
-  <aside class="side">
-    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
-    <div>
-      <h2>Sign in to your workspace</h2>
-      <p>Two quick steps keep the intake line safe: your password, then a one-time code sent by SMS to the phone on your account.</p>
-      <ul>
-        <li><b>01</b><span>Enter your email and password.</span></li>
-        <li><b>02</b><span>We text a 6-digit code to your phone. Type it in and you're in.</span></li>
-        <li><b>—</b><span>No phone on the account yet? Password alone signs you in; add one on your profile to turn the code step on.</span></li>
-      </ul>
+  <div class="pane">
+    <header class="topbar">
+      <a class="brand" href="/login">
+        <i class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg></i>
+        <div><b>Call Desk</b><span>AI Assistant Voice</span></div>
+      </a>
+      <div class="aside" id="signupAside" hidden>New here? <a class="btn btn-ghost btn-sm" href="/signup">Create an account</a></div>
+    </header>
+
+    <main class="main">
+      <div class="form-wrap">
+        <div class="progress" id="progress">
+          <div class="stepper" aria-hidden="true"><span id="dot1" class="done"></span><span id="dot2"></span></div>
+          <div class="stepper-labels" aria-hidden="true"><span id="lab1" class="on">Password</span><span id="lab2">Code</span></div>
+        </div>
+
+        <!-- First run: create the admin password -->
+        <section class="step" id="stepSetup">
+          <span class="eyebrow">First run</span>
+          <h1>Create your admin sign-in</h1>
+          <p class="sub">No password exists yet. Set the email and password for the workspace administrator.</p>
+          <form id="setupForm" novalidate>
+            <div class="field"><div class="control float" data-icon="user"><input id="suName" autocomplete="name" maxlength="120" placeholder=" "><label for="suName">Your name</label></div></div>
+            <div class="field"><div class="control float" data-icon="mail"><input id="suEmail" type="email" autocomplete="username" placeholder=" " required><label for="suEmail">Email</label></div></div>
+            <div class="field"><div class="control float" data-icon="lock"><input id="suPass" type="password" autocomplete="new-password" minlength="8" placeholder=" " required><label for="suPass">Password · 8+ characters</label><button class="reveal" type="button" data-for="suPass" aria-label="Show password">Show</button></div></div>
+            <div class="field"><div class="control float" data-icon="lock"><input id="suPass2" type="password" autocomplete="new-password" placeholder=" " required><label for="suPass2">Confirm password</label></div></div>
+            <button class="btn btn-primary btn-block" id="suBtn" type="submit">Create &amp; sign in</button>
+            <div class="msg" id="suMsg" role="alert"></div>
+          </form>
+        </section>
+
+        <!-- Step 1: password -->
+        <section class="step" id="stepPassword">
+          <span class="eyebrow">Welcome back</span>
+          <h1>Sign in</h1>
+          <p class="sub">Use the email and password for your workspace account.</p>
+          <div id="loginSocial" hidden>
+            <div class="social">
+              <a class="btn btn-social" data-provider="google" href="/api/v1/auth/oauth/google/start?intent=login" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.2-2.1 3.5-5.1 3.5-8.7z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9h-4v3.1A12 12 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.4 14.4a7.2 7.2 0 0 1 0-4.7V6.6h-4a12 12 0 0 0 0 10.9l4-3.1z"/><path fill="#EA4335" d="M12 4.8c1.7 0 3.3.6 4.5 1.8l3.4-3.4A12 12 0 0 0 1.4 6.6l4 3.1C6.3 6.9 8.9 4.8 12 4.8z"/></svg> Continue with Google</a>
+              <a class="btn btn-social" data-provider="microsoft" href="/api/v1/auth/oauth/microsoft/start?intent=login" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#F25022" d="M1 1h10.5v10.5H1z"/><path fill="#7FBA00" d="M12.5 1H23v10.5H12.5z"/><path fill="#00A4EF" d="M1 12.5h10.5V23H1z"/><path fill="#FFB900" d="M12.5 12.5H23V23H12.5z"/></svg> Continue with Microsoft</a>
+            </div>
+            <div class="divider"><span>or sign in with email</span></div>
+          </div>
+          <form id="loginForm" novalidate>
+            <div class="field"><div class="control float" data-icon="mail"><input id="email" type="email" autocomplete="username" placeholder=" " required autofocus><label for="email">Work email</label></div></div>
+            <div class="field"><div class="control float" data-icon="lock"><input id="password" type="password" autocomplete="current-password" placeholder=" " required><label for="password">Password</label><button class="reveal" type="button" data-for="password" aria-label="Show password">Show</button></div></div>
+            <div class="check-row"><label><input type="checkbox" id="remember"> Keep me signed in for 30 days</label><button class="link" type="button" id="forgotLink">Forgot password?</button></div>
+            <button class="btn btn-primary btn-block" id="loginBtn" type="submit">Continue <span aria-hidden="true">→</span></button>
+            <div class="msg" id="loginMsg" role="alert"></div>
+          </form>
+          <ul class="perks" id="signupLink" hidden>
+            <li>New to Call Desk? <a class="link" href="/signup">Create an account</a></li>
+          </ul>
+        </section>
+
+        <!-- Forgot password: email a reset link -->
+        <section class="step" id="stepForgot">
+          <span class="eyebrow">Password help</span>
+          <h1>Reset your password</h1>
+          <p class="sub">Enter your account email and we'll send a link to choose a new password.</p>
+          <form id="forgotForm" novalidate>
+            <div class="field"><div class="control float" data-icon="mail"><input id="fpEmail" type="email" autocomplete="username" placeholder=" " required><label for="fpEmail">Work email</label></div></div>
+            <div class="actions"><button class="btn btn-ghost" type="button" id="fpBack">Back</button><button class="btn btn-primary" id="fpBtn" type="submit">Email me a reset link</button></div>
+            <div class="msg" id="fpMsg" role="alert"></div>
+          </form>
+        </section>
+
+        <!-- Step 2: SMS code -->
+        <section class="step" id="stepCode">
+          <span class="eyebrow">Last step</span>
+          <h1>Enter the code we texted you</h1>
+          <p class="sub">We sent a 6-digit code to <span class="phone-chip" id="phoneMasked">•••</span>. It expires in <span id="countdown">5:00</span>.</p>
+          <form id="codeForm">
+            <div class="otp" id="otpBoxes" role="group" aria-label="6-digit verification code">
+              <input class="otp-box" inputmode="numeric" autocomplete="one-time-code" aria-label="Digit 1">
+              <input class="otp-box" inputmode="numeric" aria-label="Digit 2">
+              <input class="otp-box" inputmode="numeric" aria-label="Digit 3">
+              <span class="otp-sep" aria-hidden="true"></span>
+              <input class="otp-box" inputmode="numeric" aria-label="Digit 4">
+              <input class="otp-box" inputmode="numeric" aria-label="Digit 5">
+              <input class="otp-box" inputmode="numeric" aria-label="Digit 6">
+            </div>
+            <input type="hidden" id="code">
+            <button class="btn btn-primary btn-block" id="codeBtn" type="submit">Verify &amp; sign in</button>
+            <div class="row"><button class="link" type="button" id="resendBtn" disabled>Resend code (30s)</button><button class="link" type="button" id="backBtn">Use a different account</button></div>
+            <div class="msg" id="codeMsg" role="alert"></div>
+          </form>
+        </section>
+      </div>
+    </main>
+    <footer class="legal">Sessions are secure cookies · codes expire in 5 minutes.</footer>
+  </div>
+
+  <!-- Same receptionist preview as the sign-up page -->
+  <aside class="preview" aria-label="Preview of your AI receptionist">
+    <div class="preview-inner">
+      <span class="pv-eyebrow">● Your receptionist</span>
+      <h2 class="pv-title">Your <span class="grad">AI receptionist</span> is on the line</h2>
+      <p class="pv-sub">Sign in to see today's calls, leads and bookings.</p>
+      <div class="stage">
+      <div class="float-card f1"><div class="ico" aria-hidden="true">✓</div><div><b>New lead captured</b><span>Sent to your inbox</span></div></div>
+      <div class="float-card f2"><div class="ico" aria-hidden="true">◷</div><div><b>Consultation booked</b><span>Tue 10:30am · 15-min call</span></div></div>
+      <div class="call-card">
+        <div class="call-head">
+          <div class="avatar">AI</div>
+          <div class="call-meta"><b>Your firm</b><span>Incoming call · main line</span></div>
+          <span class="live" id="pvTimer">00:08</span>
+        </div>
+        <div class="wave" id="pvWave" aria-hidden="true"></div>
+        <div class="thread">
+          <div class="bubble agent" id="pvB1"><small>Receptionist</small><span>Thanks for calling your firm. I'm an AI assistant. How can I help you today?</span></div>
+          <div class="bubble caller" id="pvB2"><small>Caller</small><span>I was rear-ended on the highway last week and my neck still hurts.</span></div>
+          <div class="typing" id="pvTyping" hidden><i></i><i></i><i></i></div>
+          <div class="bubble agent" id="pvB3"><small>Receptionist</small><span>I'm sorry to hear that. When did the accident happen, and have you seen a doctor yet?</span></div>
+        </div>
+      </div>
+      </div>
     </div>
-    <div class="foot">Voice Agent Service · sessions are HttpOnly cookies, codes expire in 5 minutes</div>
   </aside>
-
-  <main class="wrap">
-    <div class="card">
-      <div class="stepper"><span id="dot1" class="done"></span><span id="dot2"></span></div>
-
-      <!-- First run: create the admin password -->
-      <section class="step" id="stepSetup">
-        <div class="crumb">First run</div>
-        <h1>Create your admin sign-in</h1>
-        <p class="sub">No password exists yet. Set the email and password for the workspace administrator.</p>
-        <form id="setupForm">
-          <div class="field"><label for="suName">Your name</label><input id="suName" placeholder="Your name" autocomplete="name"></div>
-          <div class="field"><label for="suEmail">Email</label><input id="suEmail" type="email" placeholder="you@company.com" autocomplete="username" required></div>
-          <div class="field"><label for="suPass">Password</label><input id="suPass" type="password" autocomplete="new-password" minlength="8" required><div class="hint">At least 8 characters.</div></div>
-          <div class="field"><label for="suPass2">Confirm password</label><input id="suPass2" type="password" autocomplete="new-password" required></div>
-          <button class="btn btn-primary" id="suBtn" type="submit">Create &amp; sign in</button>
-          <div class="msg" id="suMsg"></div>
-        </form>
-      </section>
-
-      <!-- Step 1: password -->
-      <section class="step" id="stepPassword">
-        <div class="crumb">Step 1 of 2</div>
-        <h1>Sign in</h1>
-        <p class="sub">Use the email and password for your workspace account.</p>
-        <form id="loginForm">
-          <div class="field"><label for="email">Email</label><input id="email" type="email" placeholder="you@company.com" autocomplete="username" required autofocus></div>
-          <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required></div>
-          <div class="row"><label><input type="checkbox" id="remember"> Keep me signed in for 30 days</label><button class="link" type="button" id="forgotLink">Forgot password?</button></div>
-          <button class="btn btn-primary" id="loginBtn" type="submit">Continue →</button>
-          <div class="msg" id="loginMsg"></div>
-        </form>
-      </section>
-
-      <!-- Forgot password: email a reset link -->
-      <section class="step" id="stepForgot">
-        <div class="crumb">Password help</div>
-        <h1>Reset your password</h1>
-        <p class="sub">Enter your account email and we'll send a link to choose a new password. No current password needed.</p>
-        <form id="forgotForm">
-          <div class="field"><label for="fpEmail">Email</label><input id="fpEmail" type="email" placeholder="you@company.com" autocomplete="username" required></div>
-          <button class="btn btn-primary" id="fpBtn" type="submit">Email me a reset link</button>
-          <button class="btn btn-ghost" type="button" id="fpBack">← Back to sign in</button>
-          <div class="msg" id="fpMsg"></div>
-        </form>
-      </section>
-
-      <!-- Step 2: SMS code -->
-      <section class="step" id="stepCode">
-        <div class="crumb">Step 2 of 2</div>
-        <h1>Enter the code we texted you</h1>
-        <p class="sub">A 6-digit code was sent to <span class="phone-chip" id="phoneMasked">•••</span>. It expires in <span id="countdown">5:00</span>.</p>
-        <form id="codeForm">
-          <div class="field"><label for="code">SMS code</label><input id="code" class="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="••••••" autocomplete="one-time-code" required></div>
-          <button class="btn btn-primary" id="codeBtn" type="submit">Verify &amp; sign in</button>
-          <div class="row" style="margin-top:12px"><button class="link" type="button" id="resendBtn" disabled>Resend code (30s)</button><button class="link" type="button" id="backBtn">← Use a different account</button></div>
-          <div class="msg" id="codeMsg"></div>
-        </form>
-      </section>
-    </div>
-  </main>
 
 <script>
 (function () {
@@ -167,6 +152,14 @@
     }
   }).catch(function () {});
 
+  // Self-service sign-up link, only when the server has it switched on.
+  fetch("/api/v1/auth/signup/options").then(function (r) { return r.json(); }).then(function (d) {
+    if (d && d.enabled) { $("signupLink").hidden = false; $("signupAside").hidden = false; }
+    var providers = (d && d.social) || [];
+    document.querySelectorAll("#loginSocial .btn-social").forEach(function (b) { b.hidden = providers.indexOf(b.getAttribute("data-provider")) < 0; });
+    $("loginSocial").hidden = !providers.length;
+  }).catch(function () {});
+
   var nextUrl = (function () {
     try {
       var n = new URLSearchParams(location.search).get("next");
@@ -185,8 +178,11 @@
 
   function show(step) {
     ["stepSetup", "stepPassword", "stepCode", "stepForgot"].forEach(function (id) { $(id).classList.toggle("on", id === step); });
+    $("progress").hidden = step === "stepSetup" || step === "stepForgot";
     $("dot2").classList.toggle("done", step === "stepCode");
-    var first = $(step).querySelector("input"); if (first) setTimeout(function () { first.focus(); }, 50);
+    $("lab1").classList.toggle("on", step !== "stepCode"); $("lab1").classList.toggle("done", step === "stepCode");
+    $("lab2").classList.toggle("on", step === "stepCode");
+    var first = $(step).querySelector("input:not([type=hidden]):not([type=checkbox])"); if (first) setTimeout(function () { first.focus(); }, 50);
   }
   function msg(el, text, ok) { el.textContent = text || ""; el.className = "msg " + (ok ? "ok" : "err"); }
   function post(url, body) {
@@ -219,11 +215,44 @@
     ticket = d.ticket;
     $("phoneMasked").textContent = d.phone_masked || "your phone";
     $("code").value = "";
-    msg($("codeMsg"), d.dry_run_code ? "Local test mode: your code is " + d.dry_run_code : "", true);
+    otpBoxes.forEach(function (b) { b.value = ""; b.classList.remove("filled"); });
+    if (d.sms_error) msg($("codeMsg"), d.sms_error, false);
+    else msg($("codeMsg"), d.dry_run_code ? "Local test mode: your code is " + d.dry_run_code : "", true);
     show("stepCode");
     startCountdown(d.expires_in || 300);
     startResendWait(d.resend_after || 30);
   }
+
+  // ── 6-box code entry, kept in sync with the hidden #code field ───────────
+  var otpBoxes = Array.prototype.slice.call(document.querySelectorAll(".otp-box"));
+  function syncOtp() {
+    otpBoxes.forEach(function (b) { b.classList.toggle("filled", !!b.value); });
+    $("code").value = otpBoxes.map(function (b) { return b.value; }).join("");
+    $("code").dispatchEvent(new Event("input"));
+  }
+  function fillFrom(index, digits) {
+    for (var k = 0; k < digits.length && index + k < otpBoxes.length; k++) otpBoxes[index + k].value = digits[k];
+    otpBoxes[Math.min(index + digits.length, otpBoxes.length - 1)].focus();
+    syncOtp();
+  }
+  otpBoxes.forEach(function (box, i) {
+    box.addEventListener("input", function () {
+      $("otpBoxes").classList.remove("error");
+      var digits = box.value.replace(/\D/g, "");
+      box.value = "";
+      if (digits) fillFrom(i, digits); else syncOtp();      // autofill / typing can deliver several digits at once
+    });
+    box.addEventListener("keydown", function (e) {
+      if (e.key === "Backspace" && !box.value && i > 0) { otpBoxes[i - 1].value = ""; otpBoxes[i - 1].focus(); syncOtp(); e.preventDefault(); }
+      if (e.key === "ArrowLeft" && i > 0) otpBoxes[i - 1].focus();
+      if (e.key === "ArrowRight" && i < otpBoxes.length - 1) otpBoxes[i + 1].focus();
+    });
+    box.addEventListener("paste", function (e) {
+      var digits = ((e.clipboardData || window.clipboardData).getData("text") || "").replace(/\D/g, "").slice(0, 6);
+      if (digits) { e.preventDefault(); fillFrom(i, digits); }
+    });
+    box.addEventListener("focus", function () { box.select(); });
+  });
 
   // Which step to show
   var pendingOtp = null;
@@ -234,6 +263,20 @@
       sessionStorage.removeItem("pending_otp");
     }
   } catch (e) {}
+
+  // Back from Google/Microsoft: an SMS-code step arrives in the URL fragment (never sent to a server),
+  // an error in ?oauth_error. Read them, then clean the address bar.
+  var frag = new URLSearchParams(location.hash.slice(1));
+  if (frag.get("otp")) {
+    pendingOtp = { ticket: frag.get("otp"), phone_masked: frag.get("m"), expires_in: +frag.get("exp") || 300,
+                   resend_after: +frag.get("ra") || 30, dry_run_code: frag.get("code"), sms_error: frag.get("err") };
+  }
+  var oauthError = new URLSearchParams(location.search).get("oauth_error");
+  if (frag.toString() || oauthError) {
+    var keep = new URLSearchParams(location.search); keep.delete("oauth_error");
+    history.replaceState(null, "", location.pathname + (keep.toString() ? "?" + keep : ""));
+  }
+  if (oauthError) setTimeout(function () { msg($("loginMsg"), oauthError, false); }, 0);
 
   if (pendingOtp && pendingOtp.ticket) {
     enterCodeStep(pendingOtp);
@@ -271,6 +314,7 @@
 
   $("loginForm").addEventListener("submit", function (e) {
     e.preventDefault();
+    if (!$("email").value.trim() || !$("password").value) { msg($("loginMsg"), "Enter your email and password.", false); return; }
     $("loginBtn").disabled = true; msg($("loginMsg"), "Checking…", true);
     post("/api/v1/auth/login", { email: $("email").value, password: $("password").value, remember: $("remember").checked })
       .then(function (d) {
@@ -293,6 +337,7 @@
         verifying = false;
         $("codeBtn").disabled = false;
         if (d.status === "ok") { done(); return; }
+        $("otpBoxes").classList.remove("error"); void $("otpBoxes").offsetWidth; $("otpBoxes").classList.add("error");
         msg($("codeMsg"), d.error || "Could not verify", false);
         if (/start again/i.test(d.error || "")) { setTimeout(function () { show("stepPassword"); }, 1500); }
       })
@@ -308,6 +353,27 @@
     }).catch(function () { msg($("codeMsg"), "Network error", false); startResendWait(5); });
   });
   $("backBtn").addEventListener("click", function () { verifying = false; ticket = null; clearInterval(countdownTimer); clearInterval(resendTimer); $("password").value = ""; show("stepPassword"); });
+
+  // Password show/hide
+  document.querySelectorAll(".reveal").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var input = $(b.getAttribute("data-for")), showing = input.type === "password";
+      input.type = showing ? "text" : "password";
+      b.textContent = showing ? "Hide" : "Show";
+      b.setAttribute("aria-label", showing ? "Hide password" : "Show password");
+    });
+  });
+
+  // Preview panel: play the demo call once and run the call timer.
+  (function () {
+    for (var i = 0; i < 28; i++) { var b = document.createElement("i"); b.style.setProperty("--i", i); $("pvWave").appendChild(b); }
+    [["pvB1", 0], ["pvB2", 900], ["pvTyping", 1700], ["pvB3", 2700]].forEach(function (st) {
+      $(st[0]).hidden = true;
+      setTimeout(function () { $(st[0]).hidden = false; if (st[0] === "pvB3") $("pvTyping").hidden = true; }, st[1]);
+    });
+    var secs = 8;
+    setInterval(function () { secs++; $("pvTimer").textContent = ("0" + Math.floor(secs / 60)).slice(-2) + ":" + ("0" + secs % 60).slice(-2); }, 1000);
+  })();
 })();
 </script>
 </body>

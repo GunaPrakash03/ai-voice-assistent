@@ -1,0 +1,145 @@
+/* Dashboard theme: the sign-up / sign-in look (web/auth.css) applied to every signed-in page.
+ *
+ * Each dashboard page still carries its own inline <style> with the shared token names (--ground,
+ * --panel, --rail, --accent, …). This file is linked after that block, so it re-points those tokens
+ * at the auth palette and restyles the shared shell (sidebar, top bar, cards, buttons, inputs).
+ * The dark-mode block repeats the pages' own selector so it wins on specificity *and* order.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
+
+:root{
+  --ground:#FAFAF9; --panel:#FFFFFF; --sunk:#F4F4F5;
+  --rail:#FFFFFF; --rail-ink:#52525B; --rail-on:#0A0A0B;
+  --ink:#0A0A0B; --ink-soft:#52525B; --ink-faint:#8E8E98;
+  --line:#E4E4E7; --line-soft:#F1F1F3;
+  --accent:#EA580C; --accent-soft:#FFF4ED; --accent-border:#FDBA74;
+  --pos:#15803D; --pos-soft:#ECFDF3;
+  --neu:#52525B; --neu-soft:#F4F4F5;
+  --neg:#DC2626; --neg-soft:#FEF2F2;
+  --warn:#B45309; --live:#EA580C;
+  --btn:#0A0A0B; --btn-ink:#FFFFFF;
+  --ring:rgba(234,88,12,.18);
+  --mesh-1:rgba(251,146,60,.16); --mesh-2:rgba(244,114,182,.10);
+  --shadow-sm:0 1px 2px rgba(10,10,11,.04);
+  --shadow-md:0 1px 2px rgba(10,10,11,.04),0 8px 24px -12px rgba(10,10,11,.10);
+  --f-ui:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  --f-mono:"Geist Mono","SF Mono",Menlo,Consolas,monospace;
+  --sa:#6D28D9; --sa-soft:rgba(124,58,237,.10);   /* Super Admin-only items */
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#09090B; --panel:#111114; --sunk:#18181B;
+    --rail:#0C0C0F; --rail-ink:#A1A1AA; --rail-on:#FAFAFA;
+    --ink:#FAFAFA; --ink-soft:#A1A1AA; --ink-faint:#6B6B75;
+    --line:#26262B; --line-soft:#1A1A1E;
+    --accent:#FB923C; --accent-soft:rgba(251,146,60,.12); --accent-border:#C2410C;
+    --pos:#4ADE80; --pos-soft:rgba(74,222,128,.10);
+    --neu:#A1A1AA; --neu-soft:#18181B;
+    --neg:#F87171; --neg-soft:rgba(248,113,113,.10);
+    --warn:#FBBF24; --live:#FB923C;
+    --btn:#FAFAFA; --btn-ink:#09090B;
+    --ring:rgba(251,146,60,.24);
+    --mesh-1:rgba(234,88,12,.12); --mesh-2:rgba(219,39,119,.08);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow-md:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.6);
+    --sa:#C4B5FD; --sa-soft:rgba(167,139,250,.14);
+  }
+}
+
+body{font-family:var(--f-ui);background:var(--ground);font-size:14px;letter-spacing:-.003em}
+::selection{background:var(--ring)}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+.rail{background:var(--rail);border-right:1px solid var(--line)}
+.rail .brand{display:flex;flex-direction:column;justify-content:center;position:relative;min-height:36px;
+  padding:0 18px 18px 60px;border-bottom:1px solid var(--line)}
+.rail .brand::before{content:"";position:absolute;left:18px;top:0;width:32px;height:32px;border-radius:9px;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2'/%3E%3C/svg%3E") center/18px no-repeat,
+             linear-gradient(135deg,#F97316,#EC4899);
+  box-shadow:0 4px 12px -4px rgba(236,72,153,.5)}
+.rail .brand b{color:var(--ink);font-size:15px;font-weight:600;letter-spacing:-.01em}
+.rail .brand span{color:var(--ink-faint);font-family:var(--f-ui);font-size:11.5px;letter-spacing:0;text-transform:none}
+.rail .nav{gap:2px}
+.rail .nav button,.rail .nav a{border-radius:8px;color:var(--rail-ink);padding:8px 12px}
+.rail .nav button:hover,.rail .nav a:hover{background:var(--sunk);color:var(--ink)}
+.rail .nav [aria-selected="true"],.rail .nav a.active,.rail .nav .active{background:var(--btn);color:var(--btn-ink);font-weight:600}
+.rail .nav [data-v="market"]{color:var(--accent)}
+.rail .nav [data-v="market"] .ct{background:var(--accent-soft);color:var(--accent);border-radius:999px}
+.rail .nav [data-v="market"][aria-selected="true"]{background:var(--btn) !important;color:var(--btn-ink) !important}
+.rail .nav .ct{font-family:var(--f-mono)}
+.rail .nav [aria-selected="true"] .ct,.rail .nav a.active .ct{opacity:.7}
+.rail .brand-edit-btn{background:var(--sa-soft);color:var(--sa);border:1px solid transparent;border-radius:999px;font-family:var(--f-ui)}
+.rail .brand-edit-btn:hover{background:var(--sa);color:#fff}
+.sa-nav-section{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);flex-direction:column;gap:2px}
+.sa-nav-section:not([style*="display"]){display:flex}
+.sa-nav-section .sa-h{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--sa);padding:4px 12px 6px;font-weight:600}
+.sa-link{all:unset;cursor:pointer;padding:8px 12px;border-radius:8px;color:var(--rail-ink);font-size:13.5px;font-weight:500;
+  display:flex;justify-content:space-between;align-items:center;transition:background .15s}
+.sa-link:hover{background:var(--sa-soft);color:var(--ink)}
+.sa-nav-section .ct{background:var(--sa-soft);color:var(--sa);padding:2px 7px;border-radius:999px;font-weight:600;font-size:10px;opacity:1}
+.rail .nav .sa-nav-section a.active .ct{background:rgba(255,255,255,.2);color:inherit}
+.rail-foot{border-top:1px solid var(--line)}
+.rail-foot #railProfile div{font-family:var(--f-ui);line-height:1.45}
+.rail-foot div,.rail-foot a{color:var(--ink-faint)}
+.rail-foot a:hover{color:var(--ink)}
+
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+.top{background:color-mix(in srgb,var(--panel) 82%,transparent);backdrop-filter:saturate(1.4) blur(10px);
+  -webkit-backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+h1{font-weight:650;letter-spacing:-.02em}
+.crumb{font-family:var(--f-ui);letter-spacing:.02em;text-transform:none;font-size:12px;color:var(--ink-faint)}
+.livechip{border-radius:999px;font-family:var(--f-mono)}
+
+/* ── Surfaces ────────────────────────────────────────────────────────── */
+.card,.stat{border-radius:14px;border-color:var(--line);box-shadow:var(--shadow-md);background:var(--panel)}
+.card-h{border-bottom-color:var(--line-soft)}
+.card-h h2,.card h2{font-weight:600;letter-spacing:-.01em}
+.stat dt,.stat .k{font-family:var(--f-ui);letter-spacing:.02em;text-transform:none}
+.stat dd,.stat .v{letter-spacing:-.02em}
+.meta{font-family:var(--f-ui)}
+table th{font-family:var(--f-ui);letter-spacing:.02em}
+.empty{color:var(--ink-faint)}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+.btn{border-radius:10px;font-family:var(--f-ui);font-weight:600;background:var(--btn);color:var(--btn-ink);
+  border:1px solid var(--btn);box-shadow:var(--shadow-sm);transition:transform .15s,opacity .15s,background .15s,border-color .15s}
+.btn:hover{opacity:.88}
+.btn.ghost,.btn-ghost,.btn.btn-outline,.btn-outline{background:var(--panel);color:var(--ink);border-color:var(--line);box-shadow:var(--shadow-sm)}
+.btn.ghost:hover,.btn-ghost:hover,.btn-outline:hover{background:var(--sunk);border-color:var(--ink-faint);opacity:1}
+.btn.btn-primary,.btn-primary{background:var(--btn);color:var(--btn-ink);border-color:var(--btn)}
+.btn.btn-danger,.btn-danger{background:var(--panel);color:var(--neg);border-color:var(--line)}
+.btn.btn-danger:hover,.btn-danger:hover{background:var(--neg-soft);border-color:var(--neg)}
+.btn.pos{background:var(--pos);border-color:var(--pos);color:#fff}
+.btn.accent,.btn-accent{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ── Form controls ───────────────────────────────────────────────────── */
+input[type=text],input[type=email],input[type=password],input[type=search],input[type=tel],input[type=url],
+input[type=number],input[type=time],input[type=date],input:not([type]),select,textarea{
+  border-radius:10px;border-color:var(--line);font-family:var(--f-ui);background:var(--panel);color:var(--ink)}
+textarea{font-family:var(--f-mono)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent) !important;box-shadow:0 0 0 4px var(--ring)}
+input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
+
+/* ── Pills, badges, chips ────────────────────────────────────────────── */
+.pill,.badge,.tag,.chip{border-radius:999px}
+
+/* ── Modals ──────────────────────────────────────────────────────────── */
+.modal,.modal-card,.dialog{border-radius:16px}
+
+/* ── Phones: the sidebar becomes a top strip so content gets the full width ── */
+@media (max-width:860px){
+  .app{grid-template-columns:minmax(0,1fr) !important}
+  .rail{flex-direction:row;align-items:center;gap:8px;padding:10px 12px;border-right:0;border-bottom:1px solid var(--line);
+    overflow-x:auto;position:sticky;top:0;z-index:30}
+  .rail .brand{border-bottom:0;padding:0 8px 0 44px;margin:0;flex:none;min-height:32px}
+  .rail .brand::before{left:4px;top:0}
+  .rail .brand span,.rail .brand-edit-btn{display:none !important}
+  .rail .nav{flex-direction:row;padding:0;flex:none}
+  .rail .nav button,.rail .nav a{white-space:nowrap;padding:7px 10px}
+  .rail .nav .ct{display:none}
+  .rail .sa-nav-section{flex-direction:row;margin:0;padding:0 0 0 8px;border-top:0;border-left:1px solid var(--line)}
+  .rail .sa-nav-section .sa-h,.rail .sa-link .ct{display:none}
+  .rail .sa-link{white-space:nowrap;padding:7px 10px}
+  .rail-foot{display:none}
+  .top{position:static}
+}

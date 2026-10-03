@@ -8,20 +8,25 @@
   var foot = document.querySelector(".rail-foot");
   if (!foot || document.getElementById("railProfile")) return;
 
+  // Colours come from the page theme (web/theme.css), which also styles the Super Admin nav section.
   var css = document.createElement("style");
   css.textContent =
-    "#railProfile{margin:0 0 12px;padding:10px 10px 10px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);cursor:pointer;transition:background .15s}" +
-    "#railProfile:hover{background:rgba(255,255,255,.09)}" +
+    "#railProfile{margin:0 0 12px;padding:10px;border-radius:12px;background:var(--panel);border:1px solid var(--line);cursor:pointer;transition:background .15s,border-color .15s}" +
+    "#railProfile:hover{border-color:var(--ink-faint)}" +
     "#railProfile .rp-row{display:flex;align-items:flex-start;gap:10px}" +
-    "#railProfile .rp-avatar{width:36px;height:36px;border-radius:50%;flex:0 0 36px;display:flex;align-items:center;justify-content:center;font:700 13px/1 var(--f-mono,monospace);color:#fff;letter-spacing:.5px;background:linear-gradient(135deg,#C2560F,#E08A3C)}" +
-    "#railProfile .rp-avatar.sa{background:linear-gradient(135deg,#7c3aed,#9333ea)}" +
-    "#railProfile .rp-name{color:var(--rail-on,#fff);font-weight:600;font-size:13px;line-height:1.3;font-family:inherit;overflow-wrap:anywhere}" +
-    "#railProfile .rp-sub{color:var(--rail-ink,#aaa);font-size:10.5px;line-height:1.5;overflow-wrap:anywhere}" +
-    "#railProfile .rp-role{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:9px;font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:rgba(194,86,15,.25);color:#F3B27A}" +
-    "#railProfile .rp-role.sa{background:rgba(124,58,237,.3);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)}" +
-    "#railProfile .rp-role.ma{background:rgba(2,132,199,.25);color:#7dd3fc;border:1px solid rgba(56,189,248,.3)}" +
-    "#railProfile .rp-open{font-size:10px;color:var(--rail-ink,#aaa);margin-top:6px}" +
-    ".sa-link:hover{background:rgba(124,58,237,.22) !important;color:#fff !important}";
+    "#railProfile .rp-avatar{width:36px;height:36px;border-radius:50%;flex:0 0 36px;display:flex;align-items:center;justify-content:center;font:700 13px/1 var(--f-ui,sans-serif);color:#fff;letter-spacing:.5px;background:linear-gradient(135deg,#F97316,#EC4899)}" +
+    "#railProfile .rp-avatar.sa{background:linear-gradient(135deg,#7C3AED,#C026D3)}" +
+    "#railProfile .rp-name{color:var(--ink);font-weight:600;font-size:13px;line-height:1.3;overflow-wrap:anywhere}" +
+    "#railProfile .rp-sub{color:var(--ink-faint);font-size:11px;line-height:1.5;overflow-wrap:anywhere}" +
+    "#railProfile .rp-role{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.02em;background:var(--accent-soft);color:var(--accent)}" +
+    "#railProfile .rp-role.sa{background:var(--sa-soft);color:var(--sa)}" +
+    "#railProfile .rp-role.ma{background:rgba(2,132,199,.12);color:#0284C7}" +
+    "#railProfile .rp-open{font-size:11px;color:var(--ink-faint);margin-top:6px}" +
+    "#railProfile .rp-open a{color:var(--accent);text-decoration:none}" +
+    "#rpRoleSwitchers{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}" +
+    "#rpRoleSwitchers .rp-sw-h{font-size:10px;letter-spacing:.04em;color:var(--ink-faint);margin-bottom:5px}" +
+    ".rp-switch-btn{font-size:11px;padding:2px 8px;border-radius:999px;text-decoration:none;border:1px solid var(--line);color:var(--ink-soft);background:var(--panel)}" +
+    ".rp-switch-btn:hover{border-color:var(--ink-faint);color:var(--ink)}";
   document.head.appendChild(css);
 
   var card = document.createElement("div");
@@ -35,15 +40,15 @@
         '<div class="rp-sub" id="rpEmail"></div>' +
         '<div class="rp-sub" id="rpWorkspace"></div>' +
         '<span class="rp-role" id="rpRole" hidden></span>' +
-        '<div class="rp-open">Open profile → · <a href="#" id="rpSignOut" style="color:#F3B27A">Sign out</a></div>' +
+        '<div class="rp-open">Open profile → · <a href="#" id="rpSignOut">Sign out</a></div>' +
       '</div>' +
     '</div>' +
-    '<div id="rpRoleSwitchers" style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)">' +
-      '<div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.5);margin-bottom:5px;font-family:var(--f-mono,monospace)">Quick Role Switch:</div>' +
+    '<div id="rpRoleSwitchers">' +
+      '<div class="rp-sw-h">Quick role switch</div>' +
       '<div style="display:flex;gap:4px;flex-wrap:wrap">' +
-        '<a href="/switch-role?role=super_admin" class="rp-switch-btn sa" style="font-size:10.5px;padding:2px 7px;border-radius:4px;text-decoration:none;background:rgba(124,58,237,.25);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)">👑 Super</a>' +
-        '<a href="/switch-role?role=admin" class="rp-switch-btn pa" style="font-size:10.5px;padding:2px 7px;border-radius:4px;text-decoration:none;background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.25)">🛡️ Prod</a>' +
-        '<a href="/switch-role?role=member_admin" class="rp-switch-btn ma" style="font-size:10.5px;padding:2px 7px;border-radius:4px;text-decoration:none;background:rgba(2,132,199,.15);color:#7dd3fc;border:1px solid rgba(56,189,248,.25)">👥 Member</a>' +
+        '<a href="/switch-role?role=super_admin" class="rp-switch-btn sa">👑 Super</a>' +
+        '<a href="/switch-role?role=admin" class="rp-switch-btn pa">🛡️ Prod</a>' +
+        '<a href="/switch-role?role=member_admin" class="rp-switch-btn ma">👥 Member</a>' +
       '</div>' +
     '</div>';
   foot.insertBefore(card, foot.firstChild);
@@ -97,25 +102,13 @@
     sec.id = "railSuperAdminSection";
     sec.className = "sa-nav-section";
     sec.setAttribute("data-super-admin-only", "");
-    sec.style.cssText = "margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;gap:1px";
-
     sec.innerHTML =
-      '<div style="font-family:var(--f-mono,monospace);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#c084fc;padding:4px 12px 6px;font-weight:700">👑 Overall System</div>' +
-      '<a href="/organizations" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">' +
-        '<span>🏢 Organizations</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">ALL</span>' +
-      '</a>' +
-      '<a href="/users" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">' +
-        '<span>👥 Users Registry</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">ALL</span>' +
-      '</a>' +
-      '<a href="/api-keys" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">' +
-        '<span>🔑 API Keys & Providers</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>' +
-      '</a>' +
-      '<a href="/softphone" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">' +
-        '<span>📞 Softphone Dialer</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>' +
-      '</a>' +
-      '<a href="/profile#cardBranding" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">' +
-        '<span>🎨 Dashboard Branding</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>' +
-      '</a>';
+      '<div class="sa-h">Overall system</div>' +
+      '<a href="/organizations" class="sa-link"><span>🏢 Organizations</span><span class="ct">ALL</span></a>' +
+      '<a href="/users" class="sa-link"><span>👥 Users Registry</span><span class="ct">ALL</span></a>' +
+      '<a href="/api-keys" class="sa-link"><span>🔑 API Keys & Providers</span><span class="ct">SUPER</span></a>' +
+      '<a href="/softphone" class="sa-link"><span>📞 Softphone Dialer</span><span class="ct">SUPER</span></a>' +
+      '<a href="/profile#cardBranding" class="sa-link"><span>🎨 Dashboard Branding</span><span class="ct">SUPER</span></a>';
 
     nav.appendChild(sec);
   }

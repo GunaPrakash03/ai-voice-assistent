@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Create your account — Call Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/auth.css">
+</head>
+<body>
+  <div class="pane">
+    <header class="topbar">
+      <a class="brand" href="/login">
+        <i class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg></i>
+        <div><b>Call Desk</b><span>AI Assistant Voice</span></div>
+      </a>
+      <div class="aside">Have an account? <a class="btn btn-ghost btn-sm" href="/login">Sign in</a></div>
+    </header>
+
+    <main class="main">
+      <div class="form-wrap">
+        <div class="progress" id="progress" hidden>
+          <div class="stepper" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="stepper-labels" aria-hidden="true"><span>Account</span><span>Verify</span><span>Your firm</span></div>
+        </div>
+
+        <!-- Loading / closed -->
+        <section class="step on" id="stepLoading"><p class="sub">Loading…</p></section>
+        <section class="step" id="stepClosed">
+          <span class="eyebrow">Sign-up</span>
+          <h1>Sign-up isn't open yet</h1>
+          <p class="sub">New accounts are created by our team at the moment. Contact us to get started, or sign in if you already have an account.</p>
+          <a class="btn btn-primary btn-block" href="/login">Go to sign in</a>
+        </section>
+
+        <!-- Step 1: account -->
+        <section class="step" id="step1">
+          <span class="eyebrow">Free to start · about 1 minute</span>
+          <h1>Create your account</h1>
+          <p class="sub">You'll be the administrator of your firm's workspace. Your firm's details come next, after you verify your phone.</p>
+          <div id="socialBlock" hidden>
+          <div class="social">
+            <button class="btn btn-social" type="button" data-provider="Google">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.2-2.1 3.5-5.1 3.5-8.7z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9h-4v3.1A12 12 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.4 14.4a7.2 7.2 0 0 1 0-4.7V6.6h-4a12 12 0 0 0 0 10.9l4-3.1z"/><path fill="#EA4335" d="M12 4.8c1.7 0 3.3.6 4.5 1.8l3.4-3.4A12 12 0 0 0 1.4 6.6l4 3.1C6.3 6.9 8.9 4.8 12 4.8z"/></svg>
+              Continue with Google</button>
+            <button class="btn btn-social" type="button" data-provider="Microsoft">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#F25022" d="M1 1h10.5v10.5H1z"/><path fill="#7FBA00" d="M12.5 1H23v10.5H12.5z"/><path fill="#00A4EF" d="M1 12.5h10.5V23H1z"/><path fill="#FFB900" d="M12.5 12.5H23V23H12.5z"/></svg>
+              Continue with Microsoft</button>
+          </div>
+          <div class="divider"><span>or sign up with email</span></div>
+          </div>
+          <div class="social-badge" id="socialBadge" hidden><span id="socialBadgeText"></span><a class="link" href="/signup" id="socialReset">Use a different account</a></div>
+          <form id="form1" novalidate>
+            <div class="field"><div class="control float" data-icon="user"><input id="name" autocomplete="name" maxlength="120" placeholder=" " required><label for="name">Your name</label></div></div>
+            <div class="field"><div class="control float" data-icon="mail"><input id="email" type="email" autocomplete="username" placeholder=" " maxlength="254" required><label for="email">Work email</label></div><div class="hint" id="emailHint"></div></div>
+            <div class="field" id="passwordField"><div class="control float" data-icon="lock"><input id="password" type="password" autocomplete="new-password" minlength="8" maxlength="256" placeholder=" " required><label for="password">Password</label><button class="reveal" type="button" data-for="password" aria-label="Show password">Show</button></div><div class="strength" id="pwStrength" data-score="0"><i></i><i></i><i></i><i></i><span id="pwLabel">8+ characters</span></div></div>
+            <div class="field"><div class="phone-row"><div class="control cc"><select id="phoneCc" class="cc-select" aria-label="Mobile country code"></select></div><div class="control float" data-icon="phone"><input id="phone" type="tel" autocomplete="tel-national" placeholder=" " maxlength="30" required><label for="phone">Mobile phone</label></div></div><div class="hint">We'll text a 6-digit code here to verify your account.</div></div>
+            <label class="check"><input type="checkbox" id="agreeTerms"> <span>I agree to the Terms of Service and Privacy Policy.</span></label>
+            <div class="actions"><button class="btn btn-primary" type="submit" id="createBtn">Create account <span aria-hidden="true">→</span></button></div>
+            <div class="msg" id="msg1" role="alert"></div>
+          </form>
+          <ul class="perks">
+            <li>Answers every call, day and night</li>
+            <li>Captures and qualifies new leads for your team</li>
+          </ul>
+        </section>
+
+        <!-- Step 2: SMS code -->
+        <section class="step" id="stepCode">
+          <span class="eyebrow">Almost there</span>
+          <h1>Verify your phone</h1>
+          <p class="sub">We texted a 6-digit code to <span class="phone-chip" id="phoneMasked">•••</span>. It expires in <span id="countdown">5:00</span>.</p>
+          <form id="codeForm">
+            <div class="otp" id="otpBoxes" role="group" aria-label="6-digit verification code">
+              <input class="otp-box" inputmode="numeric" autocomplete="one-time-code" aria-label="Digit 1">
+              <input class="otp-box" inputmode="numeric" aria-label="Digit 2">
+              <input class="otp-box" inputmode="numeric" aria-label="Digit 3">
+              <span class="otp-sep" aria-hidden="true"></span>
+              <input class="otp-box" inputmode="numeric" aria-label="Digit 4">
+              <input class="otp-box" inputmode="numeric" aria-label="Digit 5">
+              <input class="otp-box" inputmode="numeric" aria-label="Digit 6">
+            </div>
+            <input type="hidden" id="code">
+            <button class="btn btn-primary btn-block" id="codeBtn" type="submit">Verify &amp; continue</button>
+            <div class="row"><button class="link" type="button" id="resendBtn" disabled>Resend code (30s)</button><a class="link" href="/login">Wrong number? Sign in later</a></div>
+            <div class="msg" id="codeMsg" role="alert"></div>
+          </form>
+        </section>
+
+        <!-- Waiting for approval (server has no SMS) -->
+        <section class="step" id="stepPending">
+          <span class="eyebrow">All set</span>
+          <h1>Thanks — we're reviewing your account</h1>
+          <div class="notice" id="pendingMsg">Your account is waiting for approval. We'll be in touch once it's activated.</div>
+          <div class="actions"><a class="btn btn-ghost btn-block" href="/login">Back to sign in</a></div>
+        </section>
+      </div>
+    </main>
+    <footer class="legal">Your details stay in your workspace.</footer>
+  </div>
+
+  <!-- Live preview of the receptionist, driven by the form -->
+  <aside class="preview" aria-label="Preview of your AI receptionist">
+    <div class="preview-inner">
+      <span class="pv-eyebrow">● Live preview</span>
+      <h2 class="pv-title" id="pvTitle">Meet your AI receptionist</h2>
+      <p class="pv-sub">This is how it will answer your firm's calls.</p>
+      <div class="stage">
+      <div class="float-card f1"><div class="ico" aria-hidden="true">✓</div><div><b>New lead captured</b><span id="pvLeadTo">Sent to your inbox</span></div></div>
+      <div class="float-card f2"><div class="ico" aria-hidden="true">◷</div><div><b>Consultation booked</b><span>Tue 10:30am · 15-min call</span></div></div>
+      <div class="call-card">
+        <div class="call-head">
+          <div class="avatar" id="pvInitials">AI</div>
+          <div class="call-meta"><b id="pvFirm">Your firm</b><span id="pvLine">Incoming call · main line</span></div>
+          <span class="live" id="pvTimer">00:08</span>
+        </div>
+        <div class="wave" id="pvWave" aria-hidden="true"></div>
+        <div class="thread">
+          <div class="bubble agent" id="pvB1"><small>Receptionist</small><span id="pvGreeting"></span></div>
+          <div class="bubble caller" id="pvB2"><small>Caller</small><span id="pvCaller"></span></div>
+          <div class="typing" id="pvTyping" hidden><i></i><i></i><i></i></div>
+          <div class="bubble agent" id="pvB3"><small>Receptionist</small><span id="pvFollow"></span></div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </aside>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var DRAFT_KEY = "signup_draft";
+  var FREE_MAIL = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "aol.com", "icloud.com", "live.com", "msn.com", "proton.me", "protonmail.com", "me.com"];
+  var LANGUAGES = [["en", "English"], ["es", "Spanish"], ["zh", "Chinese"], ["vi", "Vietnamese"], ["ko", "Korean"], ["tl", "Tagalog"],
+                   ["ru", "Russian"], ["ar", "Arabic"], ["fr", "French"], ["pt", "Portuguese"], ["ht", "Haitian Creole"], ["hi", "Hindi"]];
+  var DAY_NAMES = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
+  var options = null, ticket = null, countdownTimer = null, resendTimer = null, current = 0;
+
+  fetch("/api/v1/system/branding").then(function (r) { return r.json(); }).then(function (d) {
+    if (d && d.branding && d.branding.dashboard_name) {
+      document.querySelector(".brand b").textContent = d.branding.dashboard_name;
+      document.title = document.title.replace(/Call Desk/g, d.branding.dashboard_name);
+    }
+    if (d && d.branding && d.branding.tagline) document.querySelector(".brand span").textContent = d.branding.tagline;
+  }).catch(function () {});
+
+  function msg(el, text, ok) { el.textContent = text || ""; el.className = "msg " + (ok ? "ok" : "err"); }
+  function post(url, body) {
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) })
+      .then(function (r) { return r.json().then(function (d) { d._http = r.status; return d; }); });
+  }
+  function el(tag, attrs, text) {
+    var e = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function val(id) { return $(id).value.trim(); }
+
+  // ── Steps ────────────────────────────────────────────────────────────────
+  var SECTIONS = ["stepLoading", "stepClosed", "step1", "stepCode", "stepPending"];
+  function show(id) {
+    SECTIONS.forEach(function (s) { $(s).classList.toggle("on", s === id); });
+    var n = { step1: 1, stepCode: 2, stepPending: 2 }[id] || 0;
+    current = n;
+    $("progress").hidden = n === 0 || id === "stepPending";
+    document.querySelectorAll(".stepper span").forEach(function (s, i) { s.classList.toggle("done", i < n); });
+    document.querySelectorAll(".stepper-labels span").forEach(function (s, i) { s.classList.toggle("on", i === n - 1); s.classList.toggle("done", i < n - 1); });
+    var first = $(id).querySelector("[data-first]") || $(id).querySelector("input:not([type=checkbox]):not([type=radio]):not([type=hidden]),select");
+    if (first) setTimeout(function () { first.focus(); }, 50);
+    window.scrollTo(0, 0);
+  }
+
+  // Editing a step clears its error so a fixed mistake doesn't keep showing.
+  (function () {
+    var clear = function (e) { e.target.removeAttribute("aria-invalid"); if ($("msg1").classList.contains("err")) msg($("msg1"), "", true); };
+    $("form1").addEventListener("input", clear); $("form1").addEventListener("change", clear);
+  })();
+
+  // ── Live hints ───────────────────────────────────────────────────────────
+  $("email").addEventListener("input", function () {
+    var domain = (this.value.split("@")[1] || "").toLowerCase().trim();
+    var h = $("emailHint");
+    if (FREE_MAIL.indexOf(domain) >= 0) { h.textContent = "Tip: use your firm's email address so teammates recognise it."; h.className = "hint warn"; }
+    else { h.textContent = ""; h.className = "hint"; }
+  });
+
+  // ── Validation (server re-checks everything) ─────────────────────────────
+  var EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  function fail(stepMsg, id, text) {
+    document.querySelectorAll("[aria-invalid]").forEach(function (e) { e.removeAttribute("aria-invalid"); });
+    if (id) { $(id).setAttribute("aria-invalid", "true"); $(id).focus(); }
+    msg($(stepMsg), text, false);
+    return false;
+  }
+  function digits(s) { return (s || "").replace(/\D/g, "").length; }
+  function phoneOk(s) { var n = digits(s); return n >= 8 && n <= 15; }
+  function validate1() {
+    if (!val("name")) return fail("msg1", "name", "Enter your name.");
+    if (!EMAIL_RE.test(val("email"))) return fail("msg1", "email", "Enter a valid email address.");
+    if (!social && $("password").value.length < (options.password_min || 8)) return fail("msg1", "password", "Password must be at least " + (options.password_min || 8) + " characters.");
+    if (!social && $("password").value.trim().toLowerCase() === val("email").toLowerCase()) return fail("msg1", "password", "Password must not be your email address.");
+    if (!phoneOk(phoneValue("phone"))) return fail("msg1", "phone", "Enter your mobile number so we can text your code.");
+    if (!$("agreeTerms").checked) return fail("msg1", "agreeTerms", "Please agree to the Terms of Service and Privacy Policy.");
+    return fail("msg1", null, "") || true;
+  }
+  $("form1").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!validate1()) return;
+    var body = { name: val("name"), email: val("email"), phone: phoneValue("phone") };
+    if (social) body.social_token = social.token; else body.password = $("password").value;
+    $("createBtn").disabled = true; msg($("msg1"), "Creating your account…", true);
+    post("/api/v1/auth/signup", body).then(function (d) {
+      $("createBtn").disabled = false;
+      if (d.status !== "ok") { msg($("msg1"), d.error || "Could not create your account", false); return; }
+      clearDraft(); clearSocial();
+      $("password").value = "";
+      if (d.step === "otp") { enterCodeStep(d); return; }
+      if (d.message) $("pendingMsg").textContent = d.message;
+      show("stepPending");
+    }).catch(function () { $("createBtn").disabled = false; msg($("msg1"), "Network error. Check your connection and try again.", false); });
+  });
+
+  // ── SMS code (same behaviour as the sign-in page) ────────────────────────
+  function startCountdown(seconds) {
+    clearInterval(countdownTimer);
+    var end = Date.now() + seconds * 1000;
+    function tick() {
+      var left = Math.max(0, Math.round((end - Date.now()) / 1000));
+      $("countdown").textContent = Math.floor(left / 60) + ":" + ("0" + (left % 60)).slice(-2);
+      if (left <= 0) { clearInterval(countdownTimer); msg($("codeMsg"), "The code has expired. Resend to get a new one.", false); }
+    }
+    tick(); countdownTimer = setInterval(tick, 1000);
+  }
+  function startResendWait(seconds) {
+    clearInterval(resendTimer);
+    var end = Date.now() + seconds * 1000, btn = $("resendBtn");
+    function tick() {
+      var left = Math.max(0, Math.round((end - Date.now()) / 1000));
+      btn.disabled = left > 0; btn.textContent = left > 0 ? "Resend code (" + left + "s)" : "Resend code";
+      if (left <= 0) clearInterval(resendTimer);
+    }
+    tick(); resendTimer = setInterval(tick, 1000);
+  }
+  function enterCodeStep(d) {
+    ticket = d.ticket;
+    $("phoneMasked").textContent = d.phone_masked || "your phone";
+    $("code").value = "";
+    otpBoxes.forEach(function (b) { b.value = ""; b.classList.remove("filled"); });
+    if (d.sms_error) msg($("codeMsg"), d.sms_error, false);
+    else msg($("codeMsg"), d.dry_run_code ? "Local test mode: your code is " + d.dry_run_code : "", true);
+    show("stepCode");
+    startCountdown(d.expires_in || 300);
+    startResendWait(d.resend_after || 30);
+  }
+  var verifying = false;
+  $("codeForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (verifying) return;
+    verifying = true;
+    $("codeBtn").disabled = true; msg($("codeMsg"), "Verifying…", true);
+    post("/api/v1/auth/otp/verify", { ticket: ticket, code: $("code").value.replace(/\D/g, "") }).then(function (d) {
+      verifying = false; $("codeBtn").disabled = false;
+      if (d.status === "ok") { location.href = "/onboarding"; return; }
+      $("otpBoxes").classList.remove("error"); void $("otpBoxes").offsetWidth; $("otpBoxes").classList.add("error");
+      msg($("codeMsg"), (d.error || "Could not verify") + (/start again/i.test(d.error || "") ? " Sign in with your email and password to get a new code." : ""), false);
+    }).catch(function () { verifying = false; $("codeBtn").disabled = false; msg($("codeMsg"), "Network error", false); });
+  });
+  $("code").addEventListener("input", function () { if (!verifying && this.value.replace(/\D/g, "").length === 6) $("codeForm").requestSubmit(); });
+  $("resendBtn").addEventListener("click", function () {
+    $("resendBtn").disabled = true;
+    post("/api/v1/auth/otp/resend", { ticket: ticket }).then(function (d) {
+      if (d.status === "ok") { msg($("codeMsg"), "A new code was sent" + (d.dry_run_code ? " (local test mode: " + d.dry_run_code + ")" : ""), true); startCountdown(d.expires_in || 300); startResendWait(30); }
+      else { msg($("codeMsg"), d.error || "Could not resend", false); startResendWait(5); }
+    }).catch(function () { msg($("codeMsg"), "Network error", false); startResendWait(5); });
+  });
+
+  // ── Draft (never includes passwords) ─────────────────────────────────────
+  var DRAFT_FIELDS = ["name", "email", "phone", "phoneCc"];
+  function saveDraft() {
+    var d = { fields: {} };
+    DRAFT_FIELDS.forEach(function (id) { d.fields[id] = $(id).value; });
+    try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch (e) {}
+  }
+  function loadDraft() {
+    var d = null;
+    try { d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "null"); } catch (e) {}
+    if (!d) return;
+    Object.keys(d.fields || {}).forEach(function (id) { if ($(id) && d.fields[id]) $(id).value = d.fields[id]; });
+  }
+  function clearDraft() { try { sessionStorage.removeItem(DRAFT_KEY); } catch (e) {} }
+  document.addEventListener("input", function (e) { if (options && e.target.type !== "password" && current === 1) saveDraft(); });
+  document.addEventListener("change", function (e) { if (options && e.target.type !== "password" && current === 1) saveDraft(); });
+
+  // ── Phone numbers: country code + national number -> E.164 ───────────────
+  var COUNTRIES = [["US", "🇺🇸", "1"], ["CA", "🇨🇦", "1"], ["GB", "🇬🇧", "44"], ["IN", "🇮🇳", "91"], ["AU", "🇦🇺", "61"], ["NZ", "🇳🇿", "64"],
+                   ["IE", "🇮🇪", "353"], ["MX", "🇲🇽", "52"], ["PH", "🇵🇭", "63"], ["SG", "🇸🇬", "65"], ["AE", "🇦🇪", "971"], ["ZA", "🇿🇦", "27"],
+                   ["NG", "🇳🇬", "234"], ["PK", "🇵🇰", "92"], ["DE", "🇩🇪", "49"], ["FR", "🇫🇷", "33"], ["ES", "🇪🇸", "34"], ["IT", "🇮🇹", "39"],
+                   ["NL", "🇳🇱", "31"], ["BR", "🇧🇷", "55"]];
+  var TZ_COUNTRY = { "Asia/Calcutta": "IN", "Asia/Kolkata": "IN", "Europe/London": "GB", "Europe/Dublin": "IE", "Pacific/Auckland": "NZ",
+                     "Asia/Singapore": "SG", "Asia/Dubai": "AE", "Asia/Manila": "PH", "America/Mexico_City": "MX", "Africa/Johannesburg": "ZA",
+                     "Africa/Lagos": "NG", "Asia/Karachi": "PK", "Europe/Berlin": "DE", "Europe/Paris": "FR", "Europe/Madrid": "ES",
+                     "Europe/Rome": "IT", "Europe/Amsterdam": "NL", "America/Sao_Paulo": "BR", "America/Toronto": "CA", "America/Vancouver": "CA" };
+  function guessCountry() {
+    var tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
+    if (TZ_COUNTRY[tz]) return TZ_COUNTRY[tz];
+    if (/^Australia\//.test(tz)) return "AU";
+    var region = ((navigator.language || "").split("-")[1] || "").toUpperCase();
+    return COUNTRIES.some(function (c) { return c[0] === region; }) ? region : "US";
+  }
+  function dialCode(id) { var c = COUNTRIES.filter(function (x) { return x[0] === $(id + "Cc").value; })[0]; return c ? c[2] : "1"; }
+  function phoneValue(id) {
+    var raw = val(id), digits = raw.replace(/\D/g, "");
+    if (!digits) return "";
+    if (raw.charAt(0) === "+") return "+" + digits;          // typed in full international form
+    return "+" + dialCode(id) + digits.replace(/^0+/, "");   // drop the national trunk 0 (UK, India, …)
+  }
+  function buildCountryPickers() {
+    var home = guessCountry();
+    document.querySelectorAll(".cc-select").forEach(function (sel) {
+      COUNTRIES.forEach(function (c) { sel.appendChild(el("option", { value: c[0] }, c[1] + " " + c[0] + " +" + c[2])); });
+      sel.value = home;
+    });
+  }
+
+  // ── Sign up with Google / Microsoft (agent/oauth.py) ─────────────────────
+  var SOCIAL_KEY = "signup_social", social = null;   // {token, provider_name, email, name}
+  document.querySelectorAll(".btn-social").forEach(function (b) {
+    b.addEventListener("click", function () {
+      saveDraft();
+      b.disabled = true;
+      location.href = "/api/v1/auth/oauth/" + b.getAttribute("data-provider").toLowerCase() + "/start?intent=signup";
+    });
+  });
+  function applySocial(s) {
+    social = s;
+    $("socialBlock").hidden = true;
+    $("socialBadge").hidden = false;
+    $("socialBadgeText").textContent = "Signed in with " + s.provider_name + " as " + s.email;
+    $("email").value = s.email; $("email").readOnly = true;
+    if (!val("name") && s.name) $("name").value = s.name;
+    $("passwordField").hidden = true;
+  }
+  function loadSocial() {
+    // Coming back from Google/Microsoft: /signup#social=<token>. Keep the token for this tab only.
+    var token = new URLSearchParams(location.hash.slice(1)).get("social");
+    if (token) { try { sessionStorage.setItem(SOCIAL_KEY, token); } catch (e) {} history.replaceState(null, "", location.pathname); }
+    if (!token) { try { token = sessionStorage.getItem(SOCIAL_KEY); } catch (e) {} }
+    if (!token) return Promise.resolve();
+    return fetch("/api/v1/auth/oauth/signup?token=" + encodeURIComponent(token)).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.status === "ok") applySocial({ token: token, provider_name: d.provider_name, email: d.email, name: d.name });
+      else { clearSocial(); msg($("msg1"), d.error, false); }
+    }).catch(function () {});
+  }
+  function clearSocial() { social = null; try { sessionStorage.removeItem(SOCIAL_KEY); } catch (e) {} }
+  $("socialReset").addEventListener("click", function () { clearSocial(); });
+
+  // ── 6-box code entry, kept in sync with the hidden #code field ───────────
+  var otpBoxes = Array.prototype.slice.call(document.querySelectorAll(".otp-box"));
+  function syncOtp() {
+    otpBoxes.forEach(function (b) { b.classList.toggle("filled", !!b.value); });
+    $("code").value = otpBoxes.map(function (b) { return b.value; }).join("");
+    $("code").dispatchEvent(new Event("input"));
+  }
+  function fillFrom(index, digits) {
+    for (var k = 0; k < digits.length && index + k < otpBoxes.length; k++) otpBoxes[index + k].value = digits[k];
+    var next = Math.min(index + digits.length, otpBoxes.length - 1);
+    otpBoxes[next].focus();
+    syncOtp();
+  }
+  otpBoxes.forEach(function (box, i) {
+    box.addEventListener("input", function () {
+      $("otpBoxes").classList.remove("error");
+      var digits = box.value.replace(/\D/g, "");
+      box.value = "";
+      if (digits) fillFrom(i, digits); else syncOtp();      // autofill / typing can deliver several digits at once
+    });
+    box.addEventListener("keydown", function (e) {
+      if (e.key === "Backspace" && !box.value && i > 0) { otpBoxes[i - 1].value = ""; otpBoxes[i - 1].focus(); syncOtp(); e.preventDefault(); }
+      if (e.key === "ArrowLeft" && i > 0) otpBoxes[i - 1].focus();
+      if (e.key === "ArrowRight" && i < otpBoxes.length - 1) otpBoxes[i + 1].focus();
+    });
+    box.addEventListener("paste", function (e) {
+      var digits = ((e.clipboardData || window.clipboardData).getData("text") || "").replace(/\D/g, "").slice(0, 6);
+      if (digits) { e.preventDefault(); fillFrom(i, digits); }
+    });
+    box.addEventListener("focus", function () { box.select(); });
+  });
+
+  // ── Preview (right panel): a demo call; the firm's own details come in onboarding ──
+  $("pvGreeting").textContent = "Thanks for calling your firm. I'm an AI assistant. How can I help you today?";
+  $("pvCaller").textContent = "I was rear-ended on the highway last week and my neck still hurts.";
+  $("pvFollow").textContent = "I'm sorry to hear that. When did the accident happen, and have you seen a doctor yet?";
+  (function playThread() {
+    var steps = [["pvB1", 0], ["pvB2", 900], ["pvTyping", 1700], ["pvB3", 2700]];
+    ["pvB1", "pvB2", "pvTyping", "pvB3"].forEach(function (id) { $(id).hidden = true; });
+    steps.forEach(function (st) {
+      setTimeout(function () { $(st[0]).hidden = false; if (st[0] === "pvB3") $("pvTyping").hidden = true; }, st[1]);
+    });
+  })();
+
+  // Password: show/hide and a strength hint
+  document.querySelectorAll(".reveal").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var input = $(b.getAttribute("data-for")), show = input.type === "password";
+      input.type = show ? "text" : "password";
+      b.textContent = show ? "Hide" : "Show";
+      b.setAttribute("aria-label", show ? "Hide password" : "Show password");
+    });
+  });
+  $("password").addEventListener("input", function () {
+    var v = this.value, score = 0;
+    if (v.length >= 8) {
+      score = 1;
+      if (v.length >= 12) score++;
+      if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score++;
+      if (/\d/.test(v) && /[^A-Za-z0-9]/.test(v)) score++;
+    }
+    $("pwStrength").setAttribute("data-score", v ? Math.max(score, 1) : 0);
+    $("pwLabel").textContent = !v ? "8+ characters" : v.length < 8 ? "Too short" : ["", "Weak", "Fair", "Good", "Strong"][score];
+  });
+
+  (function () {
+    for (var i = 0; i < 28; i++) { var b = el("i"); b.style.setProperty("--i", i); $("pvWave").appendChild(b); }
+    var secs = 8;
+    setInterval(function () { secs++; $("pvTimer").textContent = ("0" + Math.floor(secs / 60)).slice(-2) + ":" + ("0" + secs % 60).slice(-2); }, 1000);
+  })();
+
+  // ── Start ────────────────────────────────────────────────────────────────
+  fetch("/api/v1/auth/session").then(function (r) { return r.json(); }).then(function (s) {
+    if (s.authenticated) { location.href = "/"; return; }
+    return fetch("/api/v1/auth/signup/options").then(function (r) { return r.json(); }).then(function (o) {
+      options = o;
+      if (!o.enabled) { show("stepClosed"); return; }
+      buildCountryPickers();
+      loadDraft();
+      var providers = o.social || [];
+      document.querySelectorAll(".btn-social").forEach(function (b) { b.hidden = providers.indexOf(b.getAttribute("data-provider").toLowerCase()) < 0; });
+      $("socialBlock").hidden = !providers.length;
+      var err = new URLSearchParams(location.search).get("oauth_error");
+      if (err) { msg($("msg1"), err, false); history.replaceState(null, "", location.pathname + location.hash); }
+      return loadSocial();
+    }).then(function () {
+      if (!options || !options.enabled) return;
+      show("step1");
+    });
+  }).catch(function () { show("stepClosed"); });
+})();
+</script>
+</body>
+</html>

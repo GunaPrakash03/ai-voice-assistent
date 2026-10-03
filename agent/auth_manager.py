@@ -25,6 +25,8 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from agent.firm_profile import SIGNUP_REQUIRED_FIELDS, normalize_firm_profile, normalize_phone as normalize_firm_phone
+
 log = logging.getLogger("voice-agent.auth")
 if not log.handlers:
     logging.basicConfig(level=logging.INFO)
@@ -206,6 +208,8 @@ class AuthUser:
     password_hash: str = ""
     password_salt: str = ""
     last_login_at: Optional[float] = None
+    # Linked Google / Microsoft accounts ("google:<sub>", "microsoft:<tid>:<oid>"), see agent/oauth.py.
+    identities: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -273,6 +277,16 @@ class SlidingWindowRateLimiter:
             self._history.clear()
 
 
+class PendingVerification(ValueError):
+    """Correct password, but the account's self-service sign-up has not been verified yet.
+    A ValueError so callers that only show the message keep working; the login endpoint catches it
+    to send a fresh verification code instead."""
+
+    def __init__(self, message: str, user: "AuthUser"):
+        super().__init__(message)
+        self.user = user
+
+
 # ---------------------------------------------------------------------------
 # Auth & Tenant Manager
 # ---------------------------------------------------------------------------
@@ -289,6 +303,7 @@ class AuthManager:
         self._sessions: Dict[str, Dict[str, Any]] = {}  # sha256(session token) -> session doc
         self._users: Dict[str, AuthUser] = {}          # user_id -> AuthUser
         self.rate_limiter = SlidingWindowRateLimiter(default_limit=120, window_seconds=60)
+        self.signup_limiter = SlidingWindowRateLimiter(default_limit=self.SIGNUP_ATTEMPTS_PER_IP_PER_HOUR, window_seconds=3600)
         self._init_defaults()
         self._load_store()
         self._fold_retired_roles()
@@ -695,6 +710,8 @@ class AuthManager:
             raise ValueError("Incorrect email or password")
         ws = self.get_workspace(user.workspace_id)
         if ws and not ws.active:
+            if ws.metadata.get("signup", {}).get("status") == self.SIGNUP_PENDING:
+                raise PendingVerification("This account has not been verified yet. Finish verifying your phone number to sign in.", user)
             raise ValueError("This organization has been suspended. Please contact your administrator.")
         return user
 
@@ -812,6 +829,8 @@ class AuthManager:
     OTP_RESEND_AFTER = 30  # seconds before another code may be sent for the same login
     OTP_MAX_ATTEMPTS = 5
     TICKET_TTL = 600       # seconds a password-verified login may wait for its code
+    SIGNUP_TICKET_TTL = 1800  # a new sign-up may take longer to find its phone
+    TICKET_PURPOSES = ("login", "signup")
 
     @staticmethod
     def normalize_phone(raw: str) -> str:
@@ -831,21 +850,34 @@ class AuthManager:
             self._login_tickets.pop(k, None)
         return self._login_tickets
 
-    def begin_two_step(self, user: AuthUser, remember: bool, user_agent: str = "") -> Dict[str, Any]:
-        """After a correct password: issue a pending ticket and a fresh SMS code for the user's phone."""
+    def begin_two_step(self, user: AuthUser, remember: bool, user_agent: str = "", purpose: str = "login") -> Dict[str, Any]:
+        """After a correct password (or a new sign-up): issue a pending ticket and a fresh SMS code for
+        the user's phone. purpose="signup" makes complete_two_step activate the pending workspace."""
+        if purpose not in self.TICKET_PURPOSES:
+            raise ValueError(f"Unknown verification purpose '{purpose}'")
         phone = self.normalize_phone(user.phone)
         if not phone:
             raise ValueError("No phone number on this account")
+        if purpose == "signup" and not self.is_signup_pending(user.workspace_id):
+            raise ValueError("This account does not need verification")
         ticket = secrets.token_urlsafe(24)
         code = f"{secrets.randbelow(1_000_000):06d}"
         salt = secrets.token_hex(8)
         now = time.time()
         self._tickets()[hashlib.sha256(ticket.encode()).hexdigest()] = {
             "user_id": user.user_id, "phone": phone, "remember": bool(remember), "user_agent": (user_agent or "")[:200],
-            "code_hash": hashlib.sha256((salt + code).encode()).hexdigest(), "salt": salt,
-            "sent_at": now, "code_expires_at": now + self.OTP_TTL, "expires_at": now + self.TICKET_TTL, "attempts": 0,
+            "code_hash": hashlib.sha256((salt + code).encode()).hexdigest(), "salt": salt, "purpose": purpose,
+            "sent_at": now, "code_expires_at": now + self.OTP_TTL, "attempts": 0,
+            "expires_at": now + (self.SIGNUP_TICKET_TTL if purpose == "signup" else self.TICKET_TTL),
         }
-        return {"ticket": ticket, "code": code, "phone": phone, "phone_masked": self.mask_phone(phone)}
+        return {"ticket": ticket, "code": code, "phone": phone, "phone_masked": self.mask_phone(phone),
+                "purpose": purpose, "expires_in": self.OTP_TTL}
+
+    @staticmethod
+    def otp_message(purpose: str, code: str) -> str:
+        if purpose == "signup":
+            return f"Your Call Desk verification code is {code}. It expires in 5 minutes."
+        return f"Your Call Desk sign-in code is {code}. It expires in 5 minutes."
 
     def resend_code(self, ticket: str) -> Dict[str, Any]:
         rec = self._tickets().get(hashlib.sha256((ticket or "").encode()).hexdigest())
@@ -860,7 +892,8 @@ class AuthManager:
         ticket_exp = max(float(rec.get("expires_at", 0)), code_exp)
         rec.update(code_hash=hashlib.sha256((salt + code).encode()).hexdigest(), salt=salt, sent_at=now,
                    code_expires_at=code_exp, expires_at=ticket_exp, attempts=0)
-        return {"code": code, "phone": rec["phone"], "phone_masked": self.mask_phone(rec["phone"]), "expires_in": self.OTP_TTL}
+        return {"code": code, "phone": rec["phone"], "phone_masked": self.mask_phone(rec["phone"]), "expires_in": self.OTP_TTL,
+                "purpose": rec.get("purpose", "login")}
 
     def complete_two_step(self, ticket: str, code: str) -> Tuple[str, Dict[str, Any]]:
         key = hashlib.sha256((ticket or "").encode()).hexdigest()
@@ -880,6 +913,11 @@ class AuthManager:
         user = self._users.get(rec["user_id"])
         if not user or not user.active:
             raise ValueError("Account is not active")
+        if rec.get("purpose") == "signup":
+            if not self.is_signup_pending(user.workspace_id):
+                raise ValueError("This account can no longer be verified. Contact support.")
+            self.activate_signup(user.workspace_id, via="sms")
+            return self.create_session(user, remember=rec["remember"], user_agent=rec["user_agent"], method="signup+sms")
         return self.create_session(user, remember=rec["remember"], user_agent=rec["user_agent"], method="password+sms")
 
     # ── Current profile (sidebar) ────────────────────────────────────────────
@@ -1039,6 +1077,8 @@ class AuthManager:
                 "admin_count": admins,
                 "member_admin_count": member_admins,
                 "active_api_keys": active_keys,
+                "firm_profile": ws.metadata.get("firm_profile", {}),
+                "signup": ws.metadata.get("signup"),
             })
         return result
 
@@ -1050,11 +1090,20 @@ class AuthManager:
         admin_email: Optional[str] = None,
         admin_password: Optional[str] = None,
         admin_name: Optional[str] = None,
+        firm_profile: Optional[Dict[str, Any]] = None,
+        admin_phone: str = "",
+        active: bool = True,
+        signup: Optional[Dict[str, Any]] = None,
+        onboarding: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Creates a new workspace/organization, optionally seeding an initial Product Admin."""
+        """Creates a new workspace/organization, optionally seeding an initial Product Admin.
+        ``firm_profile`` is the law firm's details (see agent/firm_profile.py). Self-service sign-up
+        passes ``active=False`` plus a ``signup`` record so the workspace is stored pending from the
+        first save (never briefly active)."""
         name = (name or "").strip()
         if not name:
             raise ValueError("Organization name is required")
+        profile = normalize_firm_profile(firm_profile)
 
         if (admin_email and not admin_password) or (admin_password and not admin_email):
             raise ValueError("Both admin_email and admin_password must be provided together")
@@ -1085,7 +1134,8 @@ class AuthManager:
             slug=slug,
             rate_limit_rpm=max(10, int(rate_limit_rpm or 120)),
             created_at=time.time(),
-            active=True,
+            active=bool(active),
+            metadata={k: v for k, v in (("firm_profile", profile), ("signup", signup), ("onboarding", onboarding)) if v},
         )
         self._workspaces[ws_id] = ws
 
@@ -1098,21 +1148,225 @@ class AuthManager:
                     password=admin_password,
                     role=UserRole.ADMIN.value,
                     name=admin_name or f"{name} Admin",
+                    phone=admin_phone,
                 )
-            self._save_store()
+            if self._save_store() is False:
+                raise RuntimeError("Could not save the new organization. Please try again.")
         except Exception:
+            # Undo everything this call added, including an admin created before the failure, so the
+            # email is not left claimed by a user whose workspace no longer exists.
             self._workspaces.pop(ws_id, None)
+            for uid in [u.user_id for u in self._users.values() if u.workspace_id == ws_id]:
+                self._users.pop(uid, None)
             raise
 
         res = ws.to_dict()
         res["admin"] = created_admin.to_dict() if created_admin else None
         return res
 
-    def update_organization(self, workspace_id: str, changes: Dict[str, Any]) -> Dict[str, Any]:
-        """Updates organization settings (name, rate_limit_rpm, active toggle)."""
+    # ── Self-service sign-up (Task 5.2) ─────────────────────────────────────
+    SIGNUP_PENDING = "pending_verification"
+    SIGNUP_ATTEMPTS_PER_IP_PER_HOUR = 20
+    SIGNUP_FIELDS = ("name", "email", "password", "phone", "firm_name", "firm_profile", "social_token")
+
+    def find_user_by_identity(self, identity: str) -> Optional[AuthUser]:
+        for u in self._users.values():
+            if u.active and identity in (u.identities or []):
+                return u
+        return None
+
+    def link_identity(self, user: AuthUser, identity: str) -> None:
+        other = self.find_user_by_identity(identity)
+        if other and other.user_id != user.user_id:
+            raise ValueError("That account is already linked to another user")
+        if identity not in user.identities:
+            user.identities = [*user.identities, identity]
+            if self._save_store() is False:
+                user.identities = [i for i in user.identities if i != identity]
+                raise RuntimeError("Could not link the account. Please try again.")
+
+    def signup(self, payload: Dict[str, Any], source_ip: str = "", social: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """A law firm creates its own workspace plus its first Product Admin.
+
+        ``social`` is a verified Google/Microsoft identity (agent/oauth.py): the email must match it and
+        no password is asked for (a random one is set; "Forgot password" can set a real one later).
+        Everything is validated before anything is created. The workspace starts inactive with
+        metadata.signup.status = "pending_verification"; the admin cannot sign in until the phone
+        number is verified (Task 5.3) or a super admin approves it. Firm name and details are
+        optional here: the admin fills them in on /onboarding after the first sign-in
+        (``complete_onboarding``), until then the workspace is named "<name>'s firm".
+        """
+        if not isinstance(payload, dict):
+            raise ValueError("Request body must be an object")
+        unknown = sorted(set(payload) - set(self.SIGNUP_FIELDS))
+        if unknown:
+            raise ValueError(f"Unknown sign-up field: {', '.join(unknown)}")
+        if social:
+            payload = {**payload, "password": secrets.token_urlsafe(24)}
+
+        def text(key: str, label: str, max_len: int) -> str:
+            val = payload.get(key)
+            if val is not None and not isinstance(val, str):
+                raise ValueError(f"{label} must be text")
+            val = re.sub(r"\s+", " ", val or "").strip()
+            if not val:
+                raise ValueError(f"{label} is required")
+            if len(val) > max_len:
+                raise ValueError(f"{label} must be at most {max_len} characters")
+            return val
+
+        name = text("name", "Your name", 120)
+        # The firm's details normally come later, during onboarding; API clients may still send them.
+        named = bool(payload.get("firm_name"))
+        firm_name = text("firm_name", "Law firm name", 100) if named else f"{name}'s firm"[:100]
+        email = text("email", "Work email", 254)
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            raise ValueError("Enter a valid email address")
+        password = payload.get("password")
+        if not isinstance(password, str) or len(password) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if len(password) > 256:
+            raise ValueError("Password must be at most 256 characters")
+        if password.strip().lower() == email.lower():
+            raise ValueError("Password must not be your email address")
+        phone = normalize_firm_phone(text("phone", "Mobile phone", 40), "Mobile phone")
+        profile = normalize_firm_profile(payload.get("firm_profile"))
+        if social:
+            if email.lower() != str(social.get("email", "")).lower():
+                raise ValueError("Work email must match the account you signed up with")
+            if self.find_user_by_identity(social["identity"]):
+                raise ValueError("An account with this email already exists. Sign in or reset your password instead.")
+        if self._find_user_by_email(email):
+            raise ValueError("An account with this email already exists. Sign in or reset your password instead.")
+
+        org = self.create_organization(
+            name=firm_name,
+            admin_email=email,
+            admin_password=password,
+            admin_name=name,
+            admin_phone=phone,
+            firm_profile=profile,
+            active=False,
+            signup={"status": self.SIGNUP_PENDING, "created_at": time.time(), "source_ip": source_ip[:64],
+                    "method": social["provider"] if social else "password"},
+            onboarding={"status": self.ONBOARDING_PENDING, "named": named},
+        )
+        if social:
+            try:
+                self.link_identity(self._users[org["admin"]["user_id"]], social["identity"])
+            except Exception:
+                # Don't leave a workspace whose owner can't sign in with the account they used.
+                self._workspaces.pop(org["workspace_id"], None)
+                self._users.pop(org["admin"]["user_id"], None)
+                self._save_store()
+                raise
+        log.info("Self-service sign-up: %s (%s) by %s, pending verification", firm_name, org["workspace_id"], email)
+        return {
+            "workspace_id": org["workspace_id"],
+            "slug": org["slug"],
+            "firm_name": org["name"],
+            "user_id": org["admin"]["user_id"],
+            "email": email,
+            "phone_masked": self.mask_phone(phone),
+            "status": self.SIGNUP_PENDING,
+        }
+
+    def is_signup_pending(self, workspace_id: str) -> bool:
+        ws = self._workspaces.get(workspace_id)
+        return bool(ws and not ws.active and ws.metadata.get("signup", {}).get("status") == self.SIGNUP_PENDING)
+
+    def _close_signup(self, ws: Workspace, status: str, via: str) -> None:
+        """Move a pending sign-up to its final state (in memory; caller saves)."""
+        ws.metadata = {**ws.metadata, "signup": {**ws.metadata.get("signup", {}), "status": status,
+                                                 "resolved_at": time.time(), "resolved_via": via}}
+
+    def activate_signup(self, workspace_id: str, via: str) -> Dict[str, Any]:
+        """Pending sign-up -> active workspace (phone verified, or approved by a super admin)."""
+        if not self.is_signup_pending(workspace_id):
+            raise ValueError("This organization is not waiting for verification")
+        ws = self._workspaces[workspace_id]
+        before = (ws.active, ws.metadata)
+        ws.active = True
+        self._close_signup(ws, "active", via)
+        if self._save_store() is False:
+            ws.active, ws.metadata = before
+            raise RuntimeError("Could not activate the account. Please try again.")
+        log.info("Sign-up %s (%s) activated via %s", ws.name, workspace_id, via)
+        return ws.to_dict()
+
+    def workspace_owner(self, workspace_id: str) -> Optional[AuthUser]:
+        """The workspace's first Product Admin (the person who signed up)."""
+        admins = [u for u in self._users.values() if u.workspace_id == workspace_id and u.active
+                  and normalize_role(u.role) == UserRole.ADMIN.value]
+        return min(admins, key=lambda u: u.created_at) if admins else None
+
+    ONBOARDING_PENDING = "pending"
+    ONBOARDING_COMPLETE = "complete"
+    ONBOARDING_FIELDS = ("status", "named", "completed_at", "agent_id", "seeded_at", "logo_url", "clio_selected", "dismissed")
+
+    def onboarding_pending(self, workspace_id: str) -> bool:
+        ws = self._workspaces.get(workspace_id)
+        return bool(ws and (ws.metadata.get("onboarding") or {}).get("status") == self.ONBOARDING_PENDING)
+
+    def complete_onboarding(self, workspace_id: str, firm_name: Any, firm_profile: Any) -> Dict[str, Any]:
+        """Sign-up only creates the account; the firm details arrive here, after the first sign-in.
+        Names the workspace, stores the profile (sign-up's required fields enforced now) and marks
+        onboarding complete. Firm details can't be changed through this afterwards."""
         ws = self._workspaces.get(workspace_id)
         if not ws:
             raise KeyError(f"Organization '{workspace_id}' not found")
+        if not self.onboarding_pending(workspace_id):
+            raise ValueError("Onboarding is already complete for this workspace")
+        if firm_name is not None and not isinstance(firm_name, str):
+            raise ValueError("Law firm name must be text")
+        name = re.sub(r"\s+", " ", firm_name or "").strip()
+        if not name:
+            raise ValueError("Law firm name is required")
+        if len(name) > 100:
+            raise ValueError("Law firm name must be at most 100 characters")
+        profile = normalize_firm_profile(firm_profile, ws.metadata.get("firm_profile"), required=SIGNUP_REQUIRED_FIELDS)
+
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or ws.slug
+        if any(w.slug.lower() == slug and w.workspace_id != workspace_id for w in self._workspaces.values()):
+            slug = f"{slug}-{secrets.token_hex(2)}"
+        before = (ws.name, ws.slug, ws.metadata)
+        ws.name, ws.slug = name, slug
+        ws.metadata = {**ws.metadata, "firm_profile": profile,
+                       "onboarding": {**ws.metadata.get("onboarding", {}), "status": self.ONBOARDING_COMPLETE,
+                                      "named": True, "completed_at": time.time()}}
+        if self._save_store() is False:
+            ws.name, ws.slug, ws.metadata = before
+            raise RuntimeError("Could not save your firm details. Please try again.")
+        log.info("Onboarding complete for %s (%s)", name, workspace_id)
+        return ws.to_dict()
+
+    def set_onboarding(self, workspace_id: str, changes: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge into the workspace's onboarding record (Task 5.5 first-login checklist)."""
+        ws = self._workspaces.get(workspace_id)
+        if not ws:
+            raise KeyError(f"Organization '{workspace_id}' not found")
+        unknown = set(changes) - set(self.ONBOARDING_FIELDS)
+        if unknown:
+            raise ValueError(f"Unknown onboarding field: {', '.join(sorted(unknown))}")
+        before = ws.metadata
+        record = {**ws.metadata.get("onboarding", {}), **changes}
+        ws.metadata = {**ws.metadata, "onboarding": record}
+        if self._save_store() is False:
+            ws.metadata = before
+            raise RuntimeError("Could not save onboarding state")
+        return record
+
+    def update_organization(self, workspace_id: str, changes: Dict[str, Any]) -> Dict[str, Any]:
+        """Updates organization settings (name, rate_limit_rpm, active toggle, firm_profile).
+        ``firm_profile`` is a partial update merged over the stored profile; None/"" clears a field."""
+        ws = self._workspaces.get(workspace_id)
+        if not ws:
+            raise KeyError(f"Organization '{workspace_id}' not found")
+
+        # Validate first so a bad profile leaves the other settings untouched too.
+        profile = None
+        if changes.get("firm_profile") is not None:
+            profile = normalize_firm_profile(changes["firm_profile"], ws.metadata.get("firm_profile"))
 
         if "name" in changes and changes["name"] is not None:
             name = str(changes["name"]).strip()
@@ -1128,7 +1382,16 @@ class AuthManager:
             ws.rate_limit_rpm = max(10, int(changes["rate_limit_rpm"]))
 
         if "active" in changes and changes["active"] is not None:
+            # A super admin deciding on a pending sign-up closes it either way, so a rejected
+            # sign-up cannot verify itself back to active later.
+            if self.is_signup_pending(workspace_id):
+                self._close_signup(ws, "active" if changes["active"] else "rejected", "super_admin")
             ws.active = bool(changes["active"])
+
+        if profile is not None:
+            ws.metadata = {**ws.metadata, "firm_profile": profile}
+            if not profile:
+                ws.metadata.pop("firm_profile")
 
         self._save_store()
         return ws.to_dict()

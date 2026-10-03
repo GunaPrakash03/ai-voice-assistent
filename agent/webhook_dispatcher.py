@@ -443,7 +443,15 @@ class WebhookDispatcher:
                         "updated_at": time.time(),
                     }, tf, indent=2)
                     temp_path = tf.name
+                try:
+                    os.chmod(temp_path, 0o666)
+                except Exception:
+                    pass
                 os.replace(temp_path, STATE_FILE)
+                try:
+                    os.chmod(STATE_FILE, 0o666)
+                except Exception:
+                    pass
                 self._last_state_mtime = os.path.getmtime(STATE_FILE)
             except Exception as e:
                 log.warning("Failed to save webhook state: %s", e)

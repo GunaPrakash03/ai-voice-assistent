@@ -61,7 +61,8 @@ from agent.pipeline_worker import pipeline_worker
 from agent.webhook_dispatcher import webhook_dispatcher, WebhookEvent
 from agent.agent_builder import agent_builder
 from agent.call_history import call_history
-from agent.auth_manager import auth_manager, ApiScope, UserRole
+from agent.auth_manager import auth_manager, ApiScope, UserRole, PendingVerification
+from agent import onboarding
 amd_manager = AMDManager()
 
 
@@ -105,7 +106,7 @@ class Handler(SimpleHTTPRequestHandler):
     PUBLIC_PATHS = ("/login", "/switch-role", "/api/v1/auth/switch-role", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/auth/session",
                     "/api/v1/auth/setup", "/api/v1/auth/otp/resend", "/api/v1/auth/otp/verify", "/api/v1/auth/dev-session",
                     "/reset-password", "/api/v1/auth/forgot", "/api/v1/auth/reset", "/api/v1/auth/reset/check",
-                    "/api/v1/health", "/favicon.ico")
+                    "/signup", "/api/v1/auth/signup", "/api/v1/auth/signup/options", "/api/v1/system/branding", "/api/v1/health", "/favicon.ico")
     STATIC_SUFFIXES = (".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".mp3", ".wav", ".map", ".d.ts")
     # Pages have clean URLs: /api-keys serves web/api-keys.html. Anything else (/api/..., /token, files
     # with an extension) is not a page.
@@ -138,13 +139,16 @@ class Handler(SimpleHTTPRequestHandler):
         f = os.path.join(WEB, path[1:] + ".html")
         return f if os.path.isfile(f) else None
 
-    def _session_token(self) -> str:
+    def _cookie(self, name: str) -> str:
         raw = self.headers.get("Cookie", "") or ""
         for part in raw.split(";"):
             k, _, v = part.strip().partition("=")
-            if k == self.SESSION_COOKIE:
+            if k == name:
                 return v.strip()
         return ""
+
+    def _session_token(self) -> str:
+        return self._cookie(self.SESSION_COOKIE)
 
     def _session_user(self):
         return auth_manager.session_user(self._session_token())
@@ -156,6 +160,216 @@ class Handler(SimpleHTTPRequestHandler):
             return False
         return (self.client_address[0] if self.client_address else "") in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
+    def _client_ip(self) -> str:
+        """Best-effort caller address for rate limiting. Behind a proxy (Railway) the proxy's own
+        X-Real-IP, else the last X-Forwarded-For hop it appended; leftmost hops are client-supplied."""
+        real = (self.headers.get("X-Real-IP") or "").strip()
+        if real:
+            return real
+        fwd = [h.strip() for h in (self.headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
+        if fwd:
+            return fwd[-1]
+        return self.client_address[0] if self.client_address else ""
+
+    def _redirect(self, location: str, headers: Optional[Dict[str, str]] = None) -> None:
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Cache-Control", "no-store")
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+
+    def _otp_redirect(self, body: Dict[str, Any]) -> None:
+        """Hand an SMS-code step to /login. The ticket travels in the URL fragment, which browsers never
+        send to servers or proxies; login.html reads it and removes it from the address bar."""
+        frag = {"otp": body["ticket"], "m": body.get("phone_masked", ""), "exp": body.get("expires_in", 300),
+                "ra": body.get("resend_after", 30)}
+        if body.get("dry_run_code"):
+            frag["code"] = body["dry_run_code"]
+        if body.get("sms_error"):
+            frag["err"] = body["sms_error"]
+        self._redirect("/login#" + urllib.parse.urlencode(frag))
+
+    def _clio_redirect_uri(self) -> str:
+        if "127.0.0.1" in self.headers.get("Host", "") or "localhost" in self.headers.get("Host", ""):
+            return f"http://{self.headers.get('Host')}/oauth/callback"
+        return os.getenv("CLIO_REDIRECT_URI", "https://dashboard-production-55c4.up.railway.app/oauth/callback")
+
+    def _onboarding_gate(self, parsed) -> bool:
+        """Pages redirect to /onboarding until the firm's details are in, and /onboarding redirects
+        home afterwards. APIs, assets and members (who can't fill it in) are never redirected."""
+        path = parsed.path
+        is_page = path == "/" or (not path.startswith("/api/") and self._page_file(path) is not None)
+        if not is_page or path in self.PUBLIC_PATHS:
+            return True
+        v = self._viewer()
+        pending = bool(v["user"] and v["is_admin"] and auth_manager.onboarding_pending(v["user"].workspace_id))
+        if path == "/onboarding" and not pending:
+            self._redirect("/")
+            return False
+        if pending and path != "/onboarding":
+            self._redirect("/onboarding")
+            return False
+        return True
+
+    def _onboarding_state(self) -> Optional[Dict[str, Any]]:
+        """First-login checklist for a firm created by self-service sign-up (Task 5.5); None otherwise."""
+        v = self._viewer()
+        user = v["user"]
+        if not user or not v["is_admin"]:
+            return None
+        ws = auth_manager.get_workspace(user.workspace_id)
+        rec = (ws.metadata.get("onboarding") or {}) if ws else {}
+        if not rec:
+            return None
+        if rec.get("status") == auth_manager.ONBOARDING_PENDING:
+            # What /onboarding pre-fills: anything the sign-up already sent, plus the admin's email.
+            return {"status": rec["status"], "firm_name": ws.name if rec.get("named") else "",
+                    "firm_profile": ws.metadata.get("firm_profile") or {}, "email": user.email}
+        from agent import mailer
+        agent = agent_builder.get_agent(rec.get("agent_id", ""))
+        clio_connected = bool(os.getenv("CLIO_MANAGE_ACCESS_TOKEN"))
+        connect_url = None
+        # The Clio token is server-wide today, so only a super admin may (re)connect it.
+        if rec.get("clio_selected") and not clio_connected and v["is_super_admin"]:
+            client_id = os.getenv("CLIO_MANAGE_CLIENT_ID", "")
+            if client_id:
+                connect_url = "https://app.clio.com/oauth/authorize?" + urllib.parse.urlencode(
+                    {"response_type": "code", "client_id": client_id, "redirect_uri": self._clio_redirect_uri()})
+        return {
+            "status": rec.get("status", auth_manager.ONBOARDING_COMPLETE),
+            "firm_name": ws.name,
+            "dismissed": bool(rec.get("dismissed")),
+            "logo_url": rec.get("logo_url", ""),
+            "agent": {"agent_id": agent.agent_id, "name": agent.name, "active": agent.active,
+                      "lead_emails": agent.lead_emails} if agent else None,
+            "lead_email_ready": bool(mailer.configured().get("ready")),
+            "clio": {"selected": bool(rec.get("clio_selected")), "connected": clio_connected,
+                     "connect_url": connect_url},
+        }
+
+    def _social_sign_in(self, user) -> None:
+        """Finish a Google/Microsoft sign-in for an existing account, with the same SMS step as passwords."""
+        from agent import sms
+        ws = auth_manager.get_workspace(user.workspace_id)
+        if auth_manager.is_signup_pending(user.workspace_id):
+            body = self._start_signup_verification(user)
+            if body["step"] == "pending_approval":
+                self._redirect("/login?" + urllib.parse.urlencode({"oauth_error": body["message"]}))
+            else:
+                self._otp_redirect(body)
+            return
+        if ws and not ws.active:
+            self._redirect("/login?" + urllib.parse.urlencode({"oauth_error": "This organization has been suspended. Please contact your administrator."}))
+            return
+        phone = auth_manager.normalize_phone(user.phone)
+        if phone and sms.configured().get("ready"):
+            step = auth_manager.begin_two_step(user, True, self.headers.get("User-Agent", ""))
+            result = sms.send_sms(step["phone"], auth_manager.otp_message("login", step["code"]))
+            body = {"ticket": step["ticket"], "phone_masked": step["phone_masked"], "expires_in": auth_manager.OTP_TTL,
+                    "resend_after": auth_manager.OTP_RESEND_AFTER}
+            if not result.get("ok"):
+                body["sms_error"] = "We couldn't send the code. Try 'Resend code' in a moment."
+            elif result.get("dry_run"):
+                body["dry_run_code"] = step["code"]
+            self._otp_redirect(body)
+            return
+        token, doc = auth_manager.create_session(user, remember=True, user_agent=self.headers.get("User-Agent", ""), method="oauth")
+        self._redirect("/", self._set_session_cookie(token, doc["expires_at"] - time.time()))
+
+    def _handle_oauth(self, parsed) -> bool:
+        """/api/v1/auth/oauth/<provider>/start|callback and /api/v1/auth/oauth/signup (Task 5.2b)."""
+        from agent.oauth import oauth_manager, OAuthError, STATE_COOKIE, provider_name
+        parts = parsed.path.split("/")   # ['', 'api', 'v1', 'auth', 'oauth', ...]
+        q = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+        if parts[5:] == ["signup"]:
+            ident = oauth_manager.peek_signup(q.get("token", ""))
+            if not ident:
+                self._send_json({"status": "error", "error": "This sign-up link has expired. Please start again."}, 404)
+            else:
+                self._send_json({"status": "ok", "provider": ident["provider"], "provider_name": provider_name(ident["provider"]),
+                                 "email": ident["email"], "name": ident["name"]})
+            return True
+        if len(parts) != 7 or parts[6] not in ("start", "callback"):
+            return False
+        provider, action = parts[5], parts[6]
+        redirect_uri = f"{self._public_base_url()}/api/v1/auth/oauth/{provider}/callback"
+        secure = "; Secure" if redirect_uri.startswith("https://") else ""
+        cookie_path = "/api/v1/auth/oauth/"
+        if action == "start":
+            intent = q.get("intent", "login")
+            back = "/signup" if intent == "signup" else "/login"
+            if intent == "signup" and not self._signup_enabled():
+                self._redirect("/signup")
+                return True
+            try:
+                started = oauth_manager.begin(provider, intent, redirect_uri)
+            except OAuthError as e:
+                self._redirect(back + "?" + urllib.parse.urlencode({"oauth_error": str(e)}))
+                return True
+            self._redirect(started["url"], {"Set-Cookie": f"{STATE_COOKIE}={started['browser_key']}; Path={cookie_path}; HttpOnly; SameSite=Lax; Max-Age=600{secure}"})
+            return True
+
+        # callback
+        clear = {"Set-Cookie": f"{STATE_COOKIE}=; Path={cookie_path}; HttpOnly; SameSite=Lax; Max-Age=0{secure}"}
+        def fail(msg, page="/login"):
+            self._redirect(page + "?" + urllib.parse.urlencode({"oauth_error": msg}), clear)
+        if q.get("error"):
+            fail("Sign-in was cancelled." if q["error"] == "access_denied" else f"{provider_name(provider)} sign-in failed. Please try again.")
+            return True
+        try:
+            ident = oauth_manager.finish(provider, q.get("code", ""), q.get("state", ""), self._cookie(STATE_COOKIE))
+        except OAuthError as e:
+            fail(str(e))
+            return True
+        name = provider_name(provider)
+        user = auth_manager.find_user_by_identity(ident["identity"])
+        if not user:
+            existing = auth_manager._find_user_by_email(ident["email"])
+            if existing and ident["email_verified"]:
+                try:
+                    auth_manager.link_identity(existing, ident["identity"])   # Google verified this email
+                    user = existing
+                except (ValueError, RuntimeError) as e:
+                    fail(str(e))
+                    return True
+            elif existing:
+                fail(f"An account with {ident['email']} already exists. Sign in with your email and password.")
+                return True
+        if user:
+            log.info("%s sign-in for %s", name, user.email)
+            self._social_sign_in(user)
+            return True
+        if ident["intent"] != "signup" or not self._signup_enabled():
+            fail(f"No account found for {ident['email']}. Create one first.", "/signup" if self._signup_enabled() else "/login")
+            return True
+        token = oauth_manager.stash_signup(ident)
+        self._redirect("/signup#" + urllib.parse.urlencode({"social": token}), clear)
+        return True
+
+    @staticmethod
+    def _signup_enabled() -> bool:
+        return os.getenv("SIGNUP_ENABLED", "0").strip().lower() in ("1", "true", "yes")
+
+    def _start_signup_verification(self, user, remember: bool = True) -> Dict[str, Any]:
+        """Text a verification code to a pending sign-up's admin (Task 5.3). Returns the response body.
+        Without SMS the account waits for a super admin to approve it instead."""
+        from agent import sms
+        if not sms.configured().get("ready"):
+            return {"status": "ok", "step": "pending_approval",
+                    "message": "Your account is waiting for approval. We'll be in touch once it's activated."}
+        step = auth_manager.begin_two_step(user, remember, self.headers.get("User-Agent", ""), purpose="signup")
+        body = {"status": "ok", "step": "otp", "purpose": "signup", "ticket": step["ticket"],
+                "phone_masked": step["phone_masked"], "expires_in": step["expires_in"],
+                "resend_after": auth_manager.OTP_RESEND_AFTER}
+        result = sms.send_sms(step["phone"], auth_manager.otp_message("signup", step["code"]))
+        if not result.get("ok"):
+            log.error("Sign-up verification SMS to %s failed: %s", step["phone_masked"], result.get("error"))
+            body["sms_error"] = "We couldn't send the code. Try 'Resend code' in a moment."
+        elif result.get("dry_run"):
+            body["dry_run_code"] = step["code"]   # SMS_DRY_RUN=1 only (local testing)
+        return body
+
     def _require_session(self, parsed) -> bool:
         """Login gate. Returns True when the request may proceed (a response was sent otherwise).
 
@@ -163,7 +377,8 @@ class Handler(SimpleHTTPRequestHandler):
         suites, curl) may use the API without a session unless AUTH_TRUST_LOOPBACK=0.
         """
         path = parsed.path
-        if path in self.PUBLIC_PATHS or path.endswith(self.STATIC_SUFFIXES) or path.startswith("/audio/"):
+        if (path in self.PUBLIC_PATHS or path.endswith(self.STATIC_SUFFIXES) or path.startswith("/audio/")
+                or path.startswith("/api/v1/auth/oauth/")):
             return True
         if self._session_user():
             return True
@@ -480,10 +695,37 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
-        if not self._require_session(parsed) or not self._enforce_role(parsed, "GET"):
+        if not self._require_session(parsed) or not self._enforce_role(parsed, "GET") or not self._onboarding_gate(parsed):
             return
         if parsed.path == "/api/v1/auth/session":
             self._send_json({"status": "ok", **auth_manager.session_info(self._session_token())})
+            return
+        if parsed.path.startswith("/api/v1/auth/oauth/") and self._handle_oauth(parsed):
+            return
+        if parsed.path == "/api/v1/auth/signup/options":
+            # What the sign-up page needs to render: whether sign-up is open and the allowed choices,
+            # straight from agent/firm_profile.py so the form and the validator never drift apart.
+            from agent import sms, firm_profile as fp
+            from agent.oauth import configured_providers as oauth_configured_providers
+            pairs = lambda d: [{"value": k, "label": v} for k, v in d.items()]
+            self._send_json({
+                "status": "ok",
+                "enabled": self._signup_enabled(),
+                "verification": "sms" if sms.configured().get("ready") else "approval",
+                "social": oauth_configured_providers(),
+                "required": list(fp.SIGNUP_REQUIRED_FIELDS),
+                "password_min": 8,
+                "options": {
+                    "firm_sizes": pairs(fp.FIRM_SIZE_LABELS),
+                    "practice_areas": pairs(fp.PRACTICE_AREAS),
+                    "practice_software": pairs(fp.PRACTICE_SOFTWARE),
+                    "call_volumes": pairs(fp.CALL_VOLUME_LABELS),
+                    "after_hours": pairs(fp.AFTER_HOURS_LABELS),
+                    "weekdays": list(fp.WEEKDAYS),
+                    "max_lead_emails": fp.MAX_LEAD_EMAILS,
+                    "max_languages": fp.MAX_LANGUAGES,
+                },
+            })
             return
 
         # ── Super Admin System APIs (GET) ────────────────────────────────────
@@ -519,7 +761,16 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/v1/system/branding":
-            self._send_json({"status": "ok", "branding": auth_manager.get_branding()})
+            # Public so the sign-in and sign-up pages can show the product name; signed-out
+            # visitors only get the name and tagline (not who changed it). POST stays super-admin only.
+            branding = auth_manager.get_branding()
+            if not self._viewer()["user"] and not self._viewer()["is_super_admin"]:
+                branding = {k: branding[k] for k in ("dashboard_name", "tagline")}
+            self._send_json({"status": "ok", "branding": branding})
+            return
+
+        if parsed.path == "/api/v1/onboarding":
+            self._send_json({"status": "ok", "onboarding": self._onboarding_state()})
             return
 
         if parsed.path in ("/branding", "/dashboard-branding"):
@@ -539,9 +790,7 @@ class Handler(SimpleHTTPRequestHandler):
             if code:
                 client_id = os.getenv("CLIO_MANAGE_CLIENT_ID", "1zYn1AJ48HtBvdTZz3OOLljEqPKYhHQZKAWK11tz")
                 client_secret = os.getenv("CLIO_MANAGE_CLIENT_SECRET", "CkoI8O7UzM5XapyKEnLNxvUXvckmyJAOKSqsV1Ww")
-                redirect_uri = os.getenv("CLIO_REDIRECT_URI", "https://dashboard-production-55c4.up.railway.app/oauth/callback")
-                if "127.0.0.1" in self.headers.get("Host", "") or "localhost" in self.headers.get("Host", ""):
-                    redirect_uri = f"http://{self.headers.get('Host')}/oauth/callback"
+                redirect_uri = self._clio_redirect_uri()
 
                 token_payload = urllib.parse.urlencode({
                     "client_id": client_id,
@@ -1212,6 +1461,18 @@ class Handler(SimpleHTTPRequestHandler):
             ua = self.headers.get("User-Agent", "")
             try:
                 user = auth_manager.check_password(str(payload.get("email") or ""), str(payload.get("password") or ""))
+            except PendingVerification as e:
+                # Right password on an unverified sign-up: send a fresh code (covers a lost or expired
+                # ticket) instead of a dead end. Pending-approval accounts just get the message.
+                try:
+                    body = self._start_signup_verification(e.user, remember)
+                except ValueError as err:
+                    self._send_json({"status": "error", "error": str(err)}, 400)
+                    return
+                if body["step"] == "pending_approval":
+                    body = {"status": "error", "step": "pending_approval", "error": body["message"]}
+                self._send_json(body, 403 if body["step"] == "pending_approval" else 200)
+                return
             except ValueError as e:
                 time.sleep(0.4)  # slow down guessing
                 self._send_json({"status": "error", "error": str(e)}, 401)
@@ -1237,6 +1498,82 @@ class Handler(SimpleHTTPRequestHandler):
             info = auth_manager.session_info(token)
             info["hint"] = "Add a phone number on your profile to turn on the SMS code step." if not phone else ""
             self._send_json({"status": "ok", "step": "done", **info}, 200, self._set_session_cookie(token, doc["expires_at"] - time.time()))
+            return
+        if parsed.path == "/api/v1/onboarding/complete":
+            # Firm details from /onboarding: names the workspace, then builds the firm's agent (Task 5.5).
+            v = self._viewer()
+            if not v["user"] or not v["is_admin"]:
+                self._send_json({"status": "error", "error": "Only the firm's administrator can finish onboarding"}, 403)
+                return
+            unknown = set(payload) - {"firm_name", "firm_profile"}
+            if unknown:
+                self._send_json({"status": "error", "error": f"Unknown field: {', '.join(sorted(unknown))}"}, 400)
+                return
+            ws_id = v["user"].workspace_id
+            try:
+                auth_manager.complete_onboarding(ws_id, payload.get("firm_name"), payload.get("firm_profile"))
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            except RuntimeError as e:
+                self._send_json({"status": "error", "error": str(e)}, 503)
+                return
+            try:
+                onboarding.seed_firm_agent(auth_manager, agent_builder, ws_id)
+            except Exception as e:
+                # The firm's details are saved either way; the checklist offers the Agent Builder instead.
+                log.error("Could not build the agent for %s: %s", ws_id, e)
+            self._send_json({"status": "ok", "onboarding": self._onboarding_state()})
+            return
+        if parsed.path == "/api/v1/onboarding":
+            v = self._viewer()
+            state = self._onboarding_state() if v["user"] and v["is_admin"] else None
+            if not state or state["status"] != auth_manager.ONBOARDING_COMPLETE:
+                self._send_json({"status": "error", "error": "No onboarding checklist for this account"}, 404)
+                return
+            if set(payload) != {"dismissed"} or not isinstance(payload["dismissed"], bool):
+                self._send_json({"status": "error", "error": "Only 'dismissed' (true/false) can be changed"}, 400)
+                return
+            try:
+                auth_manager.set_onboarding(v["user"].workspace_id, {"dismissed": payload["dismissed"]})
+            except RuntimeError as e:
+                self._send_json({"status": "error", "error": str(e)}, 503)
+                return
+            self._send_json({"status": "ok", "onboarding": self._onboarding_state()})
+            return
+        if parsed.path == "/api/v1/auth/signup":
+            # Self-service sign-up (Task 5.2): creates the firm's workspace + first admin, pending
+            # verification. Off unless SIGNUP_ENABLED=1. No session is issued here.
+            if not self._signup_enabled():
+                self._send_json({"status": "error", "error": "Self-service sign-up is not enabled on this server"}, 404)
+                return
+            ip = self._client_ip()
+            rl = auth_manager.signup_limiter.check(f"signup:{ip}")
+            if not rl.allowed:
+                self._send_json({"status": "error", "error": "Too many sign-up attempts. Try again later."},
+                                429, {"Retry-After": rl.retry_after})
+                return
+            from agent.oauth import oauth_manager
+            social = None
+            if payload.get("social_token"):
+                social = oauth_manager.peek_signup(str(payload["social_token"]))
+                if not social:
+                    self._send_json({"status": "error", "error": "Your Google/Microsoft sign-in has expired. Please continue with it again."}, 400)
+                    return
+            try:
+                result = auth_manager.signup(payload, source_ip=ip, social=social)
+                if social:
+                    oauth_manager.consume_signup(str(payload["social_token"]))
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            except RuntimeError as e:
+                log.error("Sign-up could not be saved: %s", e)
+                self._send_json({"status": "error", "error": str(e)}, 503)
+                return
+            body = self._start_signup_verification(auth_manager.get_user(result["user_id"]))
+            result["account_status"] = result.pop("status")
+            self._send_json({**result, **body}, 201)
             return
         if parsed.path == "/api/v1/auth/dev-session":
             # Automated browser tests on this machine need a session cookie without a phone in the loop.
@@ -1378,7 +1715,7 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError as e:
                 self._send_json({"status": "error", "error": str(e)}, 429 if "Wait" in str(e) else 400)
                 return
-            result = sms.send_sms(step["phone"], f"Your Call Desk sign-in code is {step['code']}. It expires in 5 minutes.")
+            result = sms.send_sms(step["phone"], auth_manager.otp_message(step.get("purpose", "login"), step["code"]))
             if not result.get("ok"):
                 self._send_json({"status": "error", "error": str(result.get("error", "SMS could not be sent"))}, 502)
                 return
@@ -1393,6 +1730,9 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError as e:
                 time.sleep(0.4)
                 self._send_json({"status": "error", "error": str(e)}, 401)
+                return
+            except RuntimeError as e:
+                self._send_json({"status": "error", "error": str(e)}, 503)
                 return
             self._send_json({"status": "ok", "step": "done", **auth_manager.session_info(token)}, 200, self._set_session_cookie(token, doc["expires_at"] - time.time()))
             return
@@ -1430,6 +1770,7 @@ class Handler(SimpleHTTPRequestHandler):
                         admin_email=payload.get("admin_email"),
                         admin_password=payload.get("admin_password"),
                         admin_name=payload.get("admin_name"),
+                        firm_profile=payload.get("firm_profile"),
                     )
                     self._send_json({"status": "ok", "organization": org}, 201)
                     return
@@ -1449,6 +1790,9 @@ class Handler(SimpleHTTPRequestHandler):
                     return
             except (ValueError, KeyError) as e:
                 self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            except RuntimeError as e:
+                self._send_json({"status": "error", "error": str(e)}, 503)
                 return
 
         if parsed.path == "/api/v1/system/users":
@@ -2237,7 +2581,7 @@ class Handler(SimpleHTTPRequestHandler):
                         first_message=payload.get("first_message", "Hello, how can I help?"),
                         system_prompt=payload.get("system_prompt", "You are a helpful assistant."),
                         owner_id=(viewer["user"].user_id if viewer["user"] else ""),
-                        **{k: v for k, v in payload.items() if k not in ("name", "first_message", "system_prompt", "agent_id", "new", "activate", "note", "owner_id")},
+                        **{k: v for k, v in payload.items() if k not in ("name", "first_message", "system_prompt", "agent_id", "new", "activate", "note", "owner_id", "workspace_id")},
                     )
                     if payload.get("activate") or not agent_builder.get_active_agent():
                         agent_builder.set_active(cfg.agent_id)
@@ -2364,9 +2708,12 @@ class Handler(SimpleHTTPRequestHandler):
         elif parsed.path == "/api/agents/delete":
             if not self._agent_allowed(str(payload.get("agent_id", ""))):
                 return
-            removed = agent_builder.delete_agent(payload.get("agent_id", ""))
-            self._send_json({"status": "ok" if removed else "error", "removed": removed},
-                            200 if removed else 404)
+            try:
+                removed = agent_builder.delete_agent(payload.get("agent_id", ""))
+                self._send_json({"status": "ok" if removed else "error", "removed": removed},
+                                200 if removed else 404)
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
             return
 
         elif parsed.path == "/api/agents/activate":
@@ -2799,6 +3146,7 @@ except Exception:
 
 try:
     webhook_dispatcher.attach_to_pipeline(pipeline_worker)
+    onboarding.attach_lead_notifier(pipeline_worker)
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     while True:
         try:

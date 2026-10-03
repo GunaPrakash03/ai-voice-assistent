@@ -355,7 +355,15 @@ def restore_files() -> List[str]:
             with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, encoding="utf-8") as tf:
                 json.dump(data, tf, indent=2)
                 temp_name = tf.name
+            try:
+                os.chmod(temp_name, 0o666)
+            except Exception:
+                pass
             os.replace(temp_name, path)
+            try:
+                os.chmod(path, 0o666)
+            except Exception:
+                pass
             restored.append(os.path.relpath(path, ROOT_DIR))
         except Exception as e:
             log.warning("Could not restore %s from PostgreSQL: %s", path, e)

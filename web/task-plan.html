@@ -164,6 +164,36 @@
   .leg-item { display: flex; align-items: center; gap: 6px; }
   .leg-dot { width: 10px; height: 10px; border-radius: 2px; }
 
+  /* Per-phase task progress (computed from task status badges) */
+  .task-progress { margin: 0 20px 16px; }
+  .task-progress .progress-track { height: 16px; gap: 2px; background: transparent; border: none; border-radius: 0; }
+  .task-seg {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--panel-elevated);
+    border: 1px solid var(--panel-border);
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s ease;
+  }
+  .task-seg.done { background: var(--ok); border-color: var(--ok); }
+  .task-seg.next { background: var(--warn-bg); border-color: var(--warn); }
+  .task-seg.next::after {
+    content: "";
+    position: absolute; inset: 0;
+    width: 50%;
+    background: var(--warn);
+  }
+  .task-seg-labels { display: flex; gap: 2px; margin-top: 4px; }
+  .task-seg-labels span {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--faint);
+    text-align: center;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
   /* Filters / Tab Bar */
   .tab-bar {
     display: flex;
@@ -414,11 +444,12 @@
 
   <!-- Filter Buttons -->
   <div class="tab-bar">
-    <button class="tab-btn active" onclick="filterPhase('all', this)">All Phases (1&ndash;4)</button>
+    <button class="tab-btn active" onclick="filterPhase('all', this)">All Phases (1&ndash;5)</button>
     <button class="tab-btn" onclick="filterPhase('p1', this)">Phase 1: Real-Time Core (Done)</button>
     <button class="tab-btn" onclick="filterPhase('p2', this)">Phase 2: Telephony &amp; SIP (Done)</button>
     <button class="tab-btn" onclick="filterPhase('p3', this)">Phase 3: Post-Call Intelligence (Done)</button>
     <button class="tab-btn" onclick="filterPhase('p4', this)">Phase 4: Management Platform (Done)</button>
+    <button class="tab-btn" onclick="filterPhase('p5', this)">Phase 5: Client Sign-Up (Planned)</button>
   </div>
 
 
@@ -879,6 +910,233 @@
     </table>
   </div>
 
+  <!-- PHASE 5 -->
+  <div class="phase-box" data-phase="p5">
+    <div class="phase-header">
+      <div class="phase-title">
+                Phase 5: Client Self-Service Sign-Up &amp; Firm Onboarding
+      </div>
+      <div class="phase-meta">
+        <span class="badge planned">Planned</span> &bull; 79 Estimated Hours &bull; 10 Tasks
+      </div>
+    </div>
+    <p style="font-size:13.5px;color:var(--soft);margin:14px 20px 12px">
+      Open decision: public self-service sign-up (auto-activate after verification) vs. invite-only with super-admin approval. Plan assumes public sign-up with an optional approval gate (5.6), which supports both.
+    </p>
+    <div class="progress-section task-progress" data-progress-for="p5">
+      <div class="progress-head">
+        <div><strong>Phase 5 Progress</strong>: <span class="tp-pct">0%</span> (<span class="tp-hours">0 / 0 h</span>)</div>
+        <div class="tp-count" style="font-family:var(--font-mono);font-size:12px;color:var(--soft)"></div>
+      </div>
+      <div class="progress-track"></div>
+      <div class="task-seg-labels"></div>
+      <div class="progress-legend">
+        <div class="leg-item"><div class="leg-dot" style="background:var(--ok)"></div><span>Done</span></div>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--warn)"></div><span>In Progress (counted as 50%)</span></div>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--panel-elevated);border:1px solid var(--panel-border)"></div><span>Planned</span></div>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:50px">#</th>
+          <th style="width:240px">Task / Module</th>
+          <th style="width:90px">Status</th>
+          <th style="width:90px">Hours</th>
+          <th>Implementation Details &amp; Artifacts</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="done-row">
+          <td class="task-id">5.1</td>
+          <td>
+            <div class="task-name">Firm Profile Data Model</div>
+            <div class="task-desc">Store law firm name, website, office phone, address, time zone, firm size, practice areas, hours, languages and practice software on the workspace.</div>
+          </td>
+          <td><span class="badge done">Done</span></td>
+          <td>6 h</td>
+          <td>
+            Validated <code>firm_profile</code> block inside the existing <code>Workspace.metadata</code> (no new table). <code>normalize_firm_profile()</code> normalises website URLs (auto <code>https://</code>, rejects localhost/IPs/credentials), phones to E.164, IANA time zones, practice-area/size/software enums, business hours, languages and lead emails; rejects unknown fields; partial-merge updates. Wired into <code>create_organization()</code>, <code>update_organization()</code>, <code>list_all_organizations()</code> and the super-admin organizations API. 54/54 checks passing.
+            <div class="task-artifacts">
+              <span>verify_signup.py (54/54 checks)</span>
+              <span>agent/firm_profile.py</span>
+              <span>agent/auth_manager.py</span>
+              <span>scripts/serve.py</span>
+            </div>
+          </td>
+        </tr>
+        <tr class="done-row">
+          <td class="task-id">5.2</td>
+          <td>
+            <div class="task-name">Self-Service Sign-Up API</div>
+            <div class="task-desc">Unauthenticated <code>POST /api/v1/auth/signup</code> that creates workspace + admin user in one step.</div>
+          </td>
+          <td><span class="badge done">Done</span></td>
+          <td>10 h</td>
+          <td>
+            Public <code>POST /api/v1/auth/signup</code> (off unless <code>SIGNUP_ENABLED=1</code>) backed by <code>AuthManager.signup()</code>: validates name, email, password, mobile phone, firm name and required firm details <em>before</em> creating anything, rejects unknown fields (no role injection), then creates workspace + Product Admin with the workspace stored inactive as <code>pending_verification</code> from the first save. Pending accounts get a clear &ldquo;not verified yet&rdquo; sign-in message and no usable session. 20 attempts/hour per IP (429 + Retry-After). Fixed <code>create_organization()</code> rollback leaving an orphan admin user and treating a failed save as success (now 503). 93/93 checks passing.
+            <div class="task-artifacts">
+              <span>verify_signup.py (93/93 checks)</span>
+              <span>agent/auth_manager.py</span>
+              <span>scripts/serve.py</span>
+            </div>
+          </td>
+        </tr>
+        <tr class="done-row">
+          <td class="task-id">5.2b</td>
+          <td>
+            <div class="task-name">Google &amp; Microsoft Sign-In</div>
+            <div class="task-desc">Sign up and sign in with a Google or Microsoft account (OpenID Connect).</div>
+          </td>
+          <td><span class="badge done">Done</span></td>
+          <td>10 h</td>
+          <td>
+            Authorization-code flow with PKCE, nonce and a browser-bound single-use state; ID-token aud/exp/nonce/issuer checks; accounts matched by the provider's stable id (Google <code>sub</code>, Microsoft <code>tid:oid</code>), never by Microsoft's unverified email. Sign-up hands name + verified email to the form (no password); sign-in keeps the SMS code step. Buttons appear only for providers with <code>*_CLIENT_ID</code>/<code>*_SECRET</code> set. Tested end-to-end against a local fake provider. 158/158 suite checks.
+            <div class="task-artifacts">
+              <span>agent/oauth.py</span>
+              <span>scripts/serve.py</span>
+              <span>web/signup.html</span>
+              <span>web/login.html</span>
+            </div>
+          </td>
+        </tr>
+        <tr class="done-row">
+          <td class="task-id">5.3</td>
+          <td>
+            <div class="task-name">Phone / Email Verification</div>
+            <div class="task-desc">Verify the admin before the workspace is activated.</div>
+          </td>
+          <td><span class="badge done">Done</span></td>
+          <td>6 h</td>
+          <td>
+            Sign-up texts a 6-digit code via the existing OTP ticket flow (<code>purpose="signup"</code>, 30-min ticket, 5-min code, resend throttle, 5-attempt lockout). <code>/api/v1/auth/otp/verify</code> activates the pending workspace and signs the admin in. A lost/expired ticket is recovered by signing in with the password (fresh code instead of a dead end), so <code>login.html</code> works unchanged. Without SMS the account waits for super-admin approval; a super admin activating/deactivating a pending sign-up closes it as <code>active</code>/<code>rejected</code> so a rejected firm cannot self-verify. Verified end-to-end over HTTP on an isolated server. 127/127 checks passing.
+            <div class="task-artifacts">
+              <span>verify_signup.py (127/127 checks)</span>
+              <span>agent/auth_manager.py</span>
+              <span>scripts/serve.py</span>
+            </div>
+          </td>
+        </tr>
+        <tr class="done-row">
+          <td class="task-id">5.4</td>
+          <td>
+            <div class="task-name">Multi-Step Sign-Up Page</div>
+            <div class="task-desc"><code>signup.html</code>: 4 steps &mdash; Account, Firm Details, Practice &amp; Call Handling (skippable), Consent.</div>
+          </td>
+          <td><span class="badge done">Done</span></td>
+          <td>14 h</td>
+          <td>
+            Public <code>/signup</code> page in the <code>login.html</code> design (light/dark, phone layout): Account &rarr; Firm &rarr; Practice &amp; calls (skippable) &rarr; Review &amp; consent &rarr; SMS code or &ldquo;awaiting approval&rdquo;. Choices come from new public <code>GET /api/v1/auth/signup/options</code> (built from <code>firm_profile.py</code>, so the form and validator can't drift). Inline validation, live slug preview, free-mail hint, browser time zone preselected, draft kept in <code>sessionStorage</code> (never passwords), server errors route back to the step with the field. Login page shows &ldquo;Create an account&rdquo; only when sign-up is enabled. Fixes found while testing: legacy browser time zones (e.g. <code>Asia/Calcutta</code>) were rejected; login/sign-up side panel covered the form on phones; branding returned 401 to signed-out visitors. 28/28 browser checks, 134/134 suite checks.
+            <div class="task-artifacts">
+              <span>web/signup.html</span>
+              <span>web/login.html</span>
+              <span>scripts/serve.py</span>
+              <span>agent/firm_profile.py</span>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="task-id">5.5</td>
+          <td>
+            <div class="task-name">Onboarding Hand-Off to Agent</div>
+            <div class="task-desc">Use the sign-up data so the first agent works out of the box.</div>
+          </td>
+          <td><span class="badge planned">Planned</span></td>
+          <td>10 h</td>
+          <td>
+            Seed the default agent in Agent Builder: greeting with firm name, after-hours behaviour, languages, practice-area intake questions, lead-notification email as webhook/email target. If Clio was selected, show &ldquo;Connect Clio&rdquo; on first login. Pull website favicon as default branding logo.
+            <div class="task-artifacts">
+              <span>agent/agent_builder.py</span>
+              <span>web/agent-builder.html</span>
+              <span>web/index.html</span>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="task-id">5.6</td>
+          <td>
+            <div class="task-name">Super-Admin Review &amp; Approval</div>
+            <div class="task-desc">Super admins see and manage new sign-ups.</div>
+          </td>
+          <td><span class="badge planned">Planned</span></td>
+          <td>6 h</td>
+          <td>
+            Show firm profile columns (website, firm size, practice areas, sign-up date, verification state) in <code>organizations.html</code>; add Approve / Suspend actions and a &ldquo;Pending&rdquo; filter. Optional setting to require manual approval instead of auto-activation.
+            <div class="task-artifacts">
+              <span>web/organizations.html</span>
+              <span>scripts/serve.py</span>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="task-id">5.7</td>
+          <td>
+            <div class="task-name">Editable Firm Settings</div>
+            <div class="task-desc">Firm details can be changed after sign-up.</div>
+          </td>
+          <td><span class="badge planned">Planned</span></td>
+          <td>5 h</td>
+          <td>
+            Add a &ldquo;Firm Details&rdquo; section to the profile page backed by <code>PATCH /api/v1/workspace/profile</code> (Admin role only), re-using the 5.1 validators.
+            <div class="task-artifacts">
+              <span>web/profile.html</span>
+              <span>web/profile.js</span>
+              <span>scripts/serve.py</span>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="task-id">5.8</td>
+          <td>
+            <div class="task-name">Abuse Protection &amp; Consent Records</div>
+            <div class="task-desc">Keep bots out and record legal acceptance.</div>
+          </td>
+          <td><span class="badge planned">Planned</span></td>
+          <td>4 h</td>
+          <td>
+            Honeypot field + per-IP rate limit on sign-up and OTP. Store Terms/Privacy acceptance and call-recording consent acknowledgment with timestamp, version and IP (two-party-consent states).
+            <div class="task-artifacts">
+              <span>agent/auth_manager.py</span>
+              <span>scripts/serve.py</span>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="task-id">5.9</td>
+          <td>
+            <div class="task-name">Sign-Up Verification Suite</div>
+            <div class="task-desc">Automated acceptance tests for the full sign-up flow.</div>
+          </td>
+          <td><span class="badge planned">Planned</span></td>
+          <td>6 h</td>
+          <td>
+            Checks: field validation &amp; URL normalisation, duplicate email/slug, orphan rollback, OTP verify/expiry/lockout, pending &rarr; active transition, rate limiting, super-admin approve/suspend, agent seeding. Register in <code>run_all_tests.py</code>.
+            <div class="task-artifacts">
+              <span>scripts/verify_signup.py</span>
+              <span>scripts/run_all_tests.py</span>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td class="task-id">5.10</td>
+          <td>
+            <div class="task-name">Website Knowledge Import (Stretch)</div>
+            <div class="task-desc">Crawl the firm's website to pre-fill the agent knowledge base.</div>
+          </td>
+          <td><span class="badge planned">Planned</span></td>
+          <td>12 h</td>
+          <td>
+            Background job fetches the homepage + key pages (about, practice areas, contact, attorneys), extracts address, hours, attorney names and services, and offers them as suggested agent knowledge for the admin to approve. Respect robots.txt; page and size limits.
+            <div class="task-artifacts">
+              <span>agent/website_import.py</span>
+              <span>web/agent-builder.html</span>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
   <!-- Architecture & Verification Commands Box -->
   <div class="arch-box">
     <div class="arch-title">Regression Test Suite &amp; Verification Execution</div>
@@ -922,6 +1180,43 @@ function filterPhase(phase, btn) {
     }
   });
 }
+
+// Builds a phase progress bar from its task table: one segment per task, sized by hours,
+// coloured by the row's status badge (done / next = in progress / planned).
+function renderTaskProgress(section) {
+  var box = section.closest('.phase-box');
+  var rows = box.querySelectorAll('tbody tr');
+  var track = section.querySelector('.progress-track');
+  var labels = section.querySelector('.task-seg-labels');
+  var total = 0, earned = 0, done = 0, active = 0, tasks = [];
+  rows.forEach(function(r) {
+    var hours = parseFloat(r.cells[3].textContent) || 0;
+    var badge = r.cells[2].querySelector('.badge');
+    var status = badge.classList.contains('done') ? 'done' : badge.classList.contains('next') ? 'next' : 'planned';
+    total += hours;
+    if (status === 'done') { earned += hours; done++; }
+    if (status === 'next') { earned += hours / 2; active++; }
+    tasks.push({ id: r.cells[0].textContent.trim(), name: r.querySelector('.task-name').textContent, hours: hours, status: status });
+  });
+  track.innerHTML = '';
+  labels.innerHTML = '';
+  tasks.forEach(function(t) {
+    var seg = document.createElement('div');
+    seg.className = 'task-seg ' + t.status;
+    seg.style.flex = t.hours + ' 1 0';
+    seg.title = t.id + ' ' + t.name + ' \u2014 ' + t.hours + 'h (' + (t.status === 'next' ? 'in progress' : t.status) + ')';
+    track.appendChild(seg);
+    var lab = document.createElement('span');
+    lab.style.flex = t.hours + ' 1 0';
+    lab.textContent = t.id;
+    labels.appendChild(lab);
+  });
+  var pct = total ? (earned / total * 100) : 0;
+  section.querySelector('.tp-pct').textContent = pct.toFixed(1) + '%';
+  section.querySelector('.tp-hours').textContent = earned + ' / ' + total + ' h';
+  section.querySelector('.tp-count').textContent = done + ' done \u2022 ' + active + ' in progress \u2022 ' + (tasks.length - done - active) + ' planned';
+}
+document.querySelectorAll('.task-progress').forEach(renderTaskProgress);
 </script>
 
 </body>

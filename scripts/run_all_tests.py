@@ -70,6 +70,9 @@ TEST_SUITES = [
     ("Phase 4 - Task 4.2: Call History, Waveform & Inspector",     "scripts/verify_call_history.py", True),
     ("Phase 4 - Task 4.3: REST API & Multi-Tenant Access",        "scripts/verify_api_tenant.py", True),
     ("Phase 4 - Task 4.4: Load Testing, Security & Hardening",     "scripts/verify_hardening.py", False),
+
+    # Phase 5: Client Self-Service Sign-Up
+    ("Phase 5 - Tasks 5.1-5.4: Firm Profile, Sign-Up & Verify",   "scripts/verify_signup.py", False),
 ]
 
 

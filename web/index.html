@@ -93,6 +93,19 @@
   .btn.ghost:hover{background:var(--sunk);color:var(--ink);border-color:var(--ink-faint)}
   .btn.pos{background:var(--pos);color:#fff}
   .btn.sm{padding:4px 9px;font-size:12px}
+  /* First-login checklist for firms created by self-service sign-up (Task 5.5) */
+  .onb-h{display:flex;align-items:center;gap:12px}
+  .onb-logo{width:28px;height:28px;border-radius:6px;border:1px solid var(--line);background:var(--panel);object-fit:contain;flex:none}
+  .onb-list{list-style:none;margin:0;padding:0}
+  .onb-list li{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid var(--line-soft)}
+  .onb-list li:first-child{border-top:0;padding-top:2px}
+  .onb-dot{flex:none;width:20px;height:20px;border-radius:50%;border:2px solid var(--line);margin-top:1px;
+    display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
+  .onb-dot.done{background:var(--pos);border-color:var(--pos)}
+  .onb-txt{flex:1;min-width:0}
+  .onb-txt b{display:block;font-weight:600}
+  .onb-txt span{color:var(--ink-soft);font-size:13px}
+  @media (max-width:640px){.onb-list li{flex-wrap:wrap}.onb-list li .btn{margin-left:32px}}
 
   main{padding:22px 26px 60px}
   .view{display:none}.view.on{display:block}
@@ -240,6 +253,7 @@
     display:none;z-index:1999;align-items:center;gap:10px}
   #toast.show{display:flex}
 </style>
+<link rel="stylesheet" href="/theme.css?v=1">
 </head>
 <body>
 
@@ -259,22 +273,22 @@
       <a role="tab" href="/phone-numbers" aria-selected="false" data-v="market" data-admin-only style="display:none">Buy Phone Numbers<span class="ct">DID</span></a>
       <a role="tab" href="/agents" aria-selected="false" data-v="agents" data-admin-only style="display:none">Agents<span class="ct" id="ctAgents">…</span></a>
       <a href="/webhooks" data-admin-only data-display="flex" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:none;justify-content:space-between;align-items:center">Webhooks &amp; Data</a>
-      <div id="railSuperAdminSection" class="sa-nav-section" data-super-admin-only style="display:none;margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);flex-direction:column;gap:1px">
-        <div style="font-family:var(--f-mono,monospace);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#c084fc;padding:4px 12px 6px;font-weight:700">👑 Overall System</div>
-        <a href="/organizations" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
-          <span>🏢 Organizations</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">ALL</span>
+      <div id="railSuperAdminSection" class="sa-nav-section" data-super-admin-only style="display:none">
+        <div class="sa-h">Overall system</div>
+        <a href="/organizations" class="sa-link">
+          <span>🏢 Organizations</span><span class="ct">ALL</span>
         </a>
-        <a href="/users" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
-          <span>👥 Users Registry</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">ALL</span>
+        <a href="/users" class="sa-link">
+          <span>👥 Users Registry</span><span class="ct">ALL</span>
         </a>
-        <a href="/api-keys" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
-          <span>🔑 API Keys &amp; Providers</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>
+        <a href="/api-keys" class="sa-link">
+          <span>🔑 API Keys &amp; Providers</span><span class="ct">SUPER</span>
         </a>
-        <a href="/softphone" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
-          <span>📞 Softphone Dialer</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>
+        <a href="/softphone" class="sa-link">
+          <span>📞 Softphone Dialer</span><span class="ct">SUPER</span>
         </a>
-        <a href="/profile#cardBranding" class="sa-link" style="all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:#e9d5ff;font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center;transition:background .15s">
-          <span>🎨 Dashboard Branding</span><span class="ct" style="font-family:var(--f-mono,monospace);background:rgba(124,58,237,.3);color:#d8b4fe;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px">SUPER</span>
+        <a href="/profile#cardBranding" class="sa-link">
+          <span>🎨 Dashboard Branding</span><span class="ct">SUPER</span>
         </a>
       </div>
     </div>
@@ -323,6 +337,17 @@
             </div>
           </div>
           <div class="card-b" id="activeCallsList" style="padding:10px 16px"></div>
+        </div>
+
+        <div id="onboardingCard" class="card" style="border-left:4px solid var(--accent);margin-bottom:16px" hidden>
+          <div class="card-h" style="display:flex;justify-content:space-between;align-items:center">
+            <div class="onb-h">
+              <img id="onbLogo" class="onb-logo" alt="" referrerpolicy="no-referrer" hidden>
+              <h2 style="margin:0">Get <span id="onbFirm"></span> ready for calls</h2>
+            </div>
+            <button id="onbDismiss" class="btn sm ghost" type="button">Hide</button>
+          </div>
+          <div class="card-b"><ul class="onb-list" id="onbList"></ul></div>
         </div>
 
         <dl class="stats" id="statCards"></dl>
@@ -1897,7 +1922,8 @@
           (a.tools ? a.tools.length : 0) + " tools</code></span>" +
           '<span style="display:flex;gap:6px">' +
           (a.active ? '' : '<button class="btn ghost btn-set-live" style="padding:6px 12px" data-id="' + CI.escapeHtml(a.agent_id) + '" title="Make this agent answer live calls">Set live</button>') +
-          '<a class="btn ghost" style="padding:6px 12px" href="/agent-builder?agent=' + encodeURIComponent(a.agent_id) + '">Edit</a></span></div>';
+          '<a class="btn ghost" style="padding:6px 12px" href="/agent-builder?agent=' + encodeURIComponent(a.agent_id) + '">Edit</a>' +
+          '<button class="btn ghost btn-delete-agent" style="padding:6px 12px;color:var(--neg);border-color:rgba(239,68,68,.3)" data-id="' + CI.escapeHtml(a.agent_id) + '" data-name="' + CI.escapeHtml(a.name) + '" data-live="' + (a.active ? "1" : "0") + '" title="Delete this agent">Delete</button></span></div>';
       }).join("") : '<div class="empty">No agents configured.</div>';
       Array.prototype.forEach.call(document.querySelectorAll("#agentList .btn-set-live"), function (b) {
         b.addEventListener("click", function () {
@@ -1905,6 +1931,28 @@
             .then(function (r) { return r.json(); })
             .then(function (d) { if (d.status !== "ok") { throw new Error(d.error || "activate failed"); } return loadAgents(); })
             .catch(function (e) { $("#agentList").insertAdjacentHTML("afterbegin", '<div class="empty" style="color:var(--neg)">Could not set live: ' + CI.escapeHtml(String(e.message || e)) + '</div>'); });
+        });
+      });
+      Array.prototype.forEach.call(document.querySelectorAll("#agentList .btn-delete-agent"), function (b) {
+        b.addEventListener("click", function () {
+          var name = b.dataset.name || "this agent";
+          var isLive = b.dataset.live === "1";
+          var prompt = "Are you sure you want to delete agent '" + name + "'?" + (isLive ? "\n\nWarning: This agent is currently LIVE. If you delete it, another agent will take over answering calls." : "");
+          if (!confirm(prompt)) return;
+          fetch("/api/agents/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agent_id: b.dataset.id })
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              if (d.status !== "ok") { throw new Error(d.error || "Delete failed"); }
+              showToast("Agent '" + name + "' deleted successfully.");
+              return loadAgents();
+            })
+            .catch(function (e) {
+              showToast("Could not delete agent: " + (e.message || e));
+            });
         });
       });
     }).catch(function () {
@@ -2289,7 +2337,68 @@
   var vtPrompt = $("#vtBtnSendPrompt"); if (vtPrompt) vtPrompt.addEventListener("click", function () { sendVoicePrompt("#vtPromptInput"); });
   var vtInPrompt = $("#vtPromptInput"); if (vtInPrompt) vtInPrompt.addEventListener("keydown", function (e) { if (e.key === "Enter") sendVoicePrompt("#vtPromptInput"); });
 
+  // ── First-login checklist (Task 5.5) ─────────────────────────────────────
+  function loadOnboarding() {
+    fetch("/api/v1/onboarding", { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var o = d && d.onboarding;
+        var card = $("#onboardingCard");
+        if (!o || o.status !== "complete" || o.dismissed) { card.hidden = true; return; }
+        $("#onbFirm").textContent = o.firm_name;
+        var logo = $("#onbLogo");
+        if (o.logo_url) {
+          logo.onerror = function () { logo.hidden = true; };
+          logo.onload = function () { logo.hidden = false; };
+          logo.src = o.logo_url;
+        }
+        var esc = CI.escapeHtml, items = [];
+        function item(done, title, text, action) {
+          items.push('<li><span class="onb-dot' + (done ? ' done' : '') + '">' + (done ? '&#10003;' : '') + '</span>' +
+            '<div class="onb-txt"><b>' + esc(title) + '</b><span>' + text + '</span></div>' + (action || '') + '</li>');
+        }
+        var a = o.agent;
+        if (a) {
+          var edit = '<a class="btn sm ghost" href="/agent-builder?agent=' + encodeURIComponent(a.agent_id) + '">Review agent</a>';
+          item(true, "Your intake agent is set up",
+            esc(a.name) + " was built from your firm details: greeting, office hours, after-hours handling, languages and intake questions.", edit);
+          item(a.active, a.active ? "Agent is answering live calls" : "Put the agent on a phone number",
+            a.active ? "Calls are being answered by " + esc(a.name) + "."
+                     : "It is not answering calls yet. Assign a number to it under Phone Numbers, or test it first in the Agent Builder.",
+            a.active ? '' : '<a class="btn sm ghost" href="/call-desk/phone-numbers">Phone numbers</a>');
+          if (a.lead_emails && a.lead_emails.length) {
+            item(o.lead_email_ready, "New-lead emails",
+              (o.lead_email_ready ? "A summary of every call goes to " : "Will go to ") + esc(a.lead_emails.join(", ")) +
+              (o.lead_email_ready ? "." : " once email sending is configured on the server."));
+          }
+        } else {
+          item(false, "Intake agent", "Your agent could not be created automatically. Create one in the Agent Builder.",
+            '<a class="btn sm ghost" href="/agent-builder">Agent Builder</a>');
+        }
+        if (o.clio && o.clio.selected) {
+          item(o.clio.connected, o.clio.connected ? "Clio is connected" : "Connect Clio",
+            o.clio.connected ? "New leads can be sent to Clio." :
+              (o.clio.connect_url ? "Send new leads straight into Clio." : "Send new leads straight into Clio. Ask your platform administrator to connect it."),
+            (!o.clio.connected && o.clio.connect_url) ? '<a class="btn sm" href="' + esc(o.clio.connect_url) + '">Connect Clio</a>' : '');
+        }
+        $("#onbList").innerHTML = items.join("");
+        card.hidden = false;
+      })
+      .catch(function () { $("#onboardingCard").hidden = true; });
+  }
+  $("#onbDismiss").addEventListener("click", function () {
+    fetch("/api/v1/onboarding", { method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dismissed: true }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status !== "ok") { throw new Error(d.error || "Could not hide"); }
+        $("#onboardingCard").hidden = true;
+      })
+      .catch(function (e) { showToast("Could not hide the checklist: " + (e.message || e)); });
+  });
+
   // ── Boot ──────────────────────────────────────────────────────────────────
+  loadOnboarding();
   refreshAll();
   loadCalls();
   loadAgents();

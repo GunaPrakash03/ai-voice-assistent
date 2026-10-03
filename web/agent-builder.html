@@ -287,6 +287,7 @@
   .test-hangup-btn{background:rgba(239,68,68,0.15);color:var(--danger);border:1px solid rgba(239,68,68,0.3);border-radius:6px;padding:5px 10px;font-weight:700;font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .15s}
   .test-hangup-btn:hover{background:var(--danger);color:#fff}
 </style>
+<link rel="stylesheet" href="/theme.css?v=1">
 </head>
 <body>
 
@@ -325,6 +326,7 @@
           <button id="btnNewAgent" type="button" class="btn ghost">New agent</button>
           <button id="btnSetLive" type="button" hidden></button>
           <span id="liveStateChip" class="livechip" hidden style="background:#DCFCE7;color:#166534;border-color:#22C55E"><span class="pulse"></span><span>this agent answers live calls</span></span>
+          <button id="btnDeleteCurrentAgent" type="button" class="btn ghost" style="color:var(--neg);border-color:rgba(239,68,68,.3)" title="Delete this agent">Delete agent</button>
           <a class="btn ghost" href="/agents" title="All agents: switch, create, set live" style="text-decoration:none">All agents</a>
           <span class="livechip"><span class="pulse"></span><span id="callStatus">0 calls in progress</span></span>
         </div>
@@ -352,11 +354,10 @@
               </div>
               <select id="llmModelSelect" style="width:100%;font-weight:600;font-size:13px;padding:9px 12px;border-radius:6px;background:var(--ground);color:var(--ink)">
                 <optgroup label="Google Gemini (Recommended — Ultra-low Latency)">
-                  <option value="gemini-2.0-flash">Gemini 2.0 Flash — Ultra-fast real-time speech (Google)</option>
-                  <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite — Lowest latency &amp; high throughput (Google)</option>
-                  <option value="gemini-1.5-flash">Gemini 1.5 Flash — Fast &amp; versatile 1M context (Google)</option>
-                  <option value="gemini-nano">Gemini Nano — On-device ultra-low latency (Google)</option>
-                  <option value="gemini-1.5-pro">Gemini 1.5 Pro — Complex reasoning &amp; multi-turn logic (Google)</option>
+                  <option value="gemini-3.5-flash-lite" selected>Gemini 3.5 Flash Lite — lowest latency, best free-tier rate limit (Google)</option>
+                  <option value="gemini-3.6-flash">Gemini 3.6 Flash — smarter, only 5 req/min on the free tier (Google)</option>
+                  <option value="gemini-flash-latest">Gemini Flash Latest — always the newest Flash (Google)</option>
+                  <option value="gemini-2.5-pro">Gemini 2.5 Pro — complex reasoning &amp; multi-turn logic (Google)</option>
                 </optgroup>
                 <optgroup label="OpenAI">
                   <option value="gpt-4o-mini">GPT-4o mini — Fastest, cheapest (OpenAI)</option>
@@ -442,6 +443,17 @@
               <button class="btn btn-outline" id="btnPreviewVoice" style="width:100%;margin-top:10px">
                 Play Voice Sample
               </button>
+            </div>
+          </div>
+
+          <!-- New-lead emails (Task 5.5: pre-filled from sign-up) -->
+          <div class="card">
+            <div class="card-h"><h2>New-lead emails</h2><span class="meta">a summary of every call this agent handles</span></div>
+            <div class="card-b">
+              <div class="field">
+                <label for="leadEmails">SEND TO (comma-separated, up to 5)</label>
+                <input type="text" id="leadEmails" placeholder="intake@yourfirm.com, partner@yourfirm.com" autocomplete="off">
+              </div>
             </div>
           </div>
 
@@ -1142,7 +1154,7 @@
         allVoicesList.forEach(function (v) { voiceMap[v.voice_id] = v; });
 
         if (data.models && data.models.length > 0) {
-          var currSelModel = $("#llmModelSelect") ? $("#llmModelSelect").value : "gemini-2.0-flash";
+          var currSelModel = $("#llmModelSelect") ? $("#llmModelSelect").value : "gemini-3.5-flash-lite";
           renderModels(data.models, currSelModel);
         }
 
@@ -1823,7 +1835,7 @@
   // Save changes action
   function saveCurrentAgentForm(isAuto) {
     var selectedToolsArray = Array.from(activeTools);
-    var selectedModel = $("#llmModelSelect") ? $("#llmModelSelect").value : "gemini-2.0-flash";
+    var selectedModel = $("#llmModelSelect") ? $("#llmModelSelect").value : "gemini-3.5-flash-lite";
     var promptVal = $("#systemPrompt").value.trim();
     var firstMsgVal = $("#firstMessage").value.trim();
 
@@ -1843,6 +1855,7 @@
       llm_model: selectedModel,
       tools: selectedToolsArray,
       webhook_enabled: $("#webhookEnabled") ? $("#webhookEnabled").checked : false,
+      lead_emails: $("#leadEmails") ? $("#leadEmails").value.split(/[,;\s]+/).filter(Boolean) : [],
       extraction_fields: (typeof readExtractionFields === "function") ? readExtractionFields() : []
     };
 
@@ -2622,6 +2635,7 @@
           try { history.replaceState(null, "", "?agent=" + encodeURIComponent(currentLoadedAgentId)); } catch (e) {}
           renderAgentSwitch();
           hasLoadedInitialAgent = true;
+          window.hasLoadedInitialAgent = true;
           if (wantsNewAgent) { wantsNewAgent = false; setTimeout(createNewAgent, 300); }
           $("#agentName").value = targetAgent.name || "Intake Agent";
           $("#systemPrompt").value = targetAgent.system_prompt || "";
@@ -2639,6 +2653,7 @@
             setChosenVoice(targetAgent.voice_id);
           }
           if (typeof setExtractionState === "function") { setExtractionState(!!targetAgent.webhook_enabled, targetAgent.extraction_fields || []); }
+          if ($("#leadEmails")) { $("#leadEmails").value = (targetAgent.lead_emails || []).join(", "); }
           if (Array.isArray(targetAgent.tools) && targetAgent.tools.length > 0) {
             activeTools = new Set(targetAgent.tools);
             renderTools();
@@ -2720,6 +2735,37 @@
       }
     }).catch(function () { showToast("Network error activating agent"); });
   });
+
+  if ($("#btnDeleteCurrentAgent")) {
+    $("#btnDeleteCurrentAgent").addEventListener("click", function () {
+      if (!currentLoadedAgentId) {
+        showToast("No agent selected to delete.");
+        return;
+      }
+      var currentName = $("#agentName").value.trim() || "this agent";
+      var isLive = (currentLoadedAgentId === liveAgentId);
+      var promptMsg = "Are you sure you want to delete '" + currentName + "'?" + (isLive ? "\n\nWarning: This agent is currently LIVE. If you delete it, another agent will take over answering live calls." : "");
+      if (!confirm(promptMsg)) return;
+
+      fetch("/api/agents/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_id: currentLoadedAgentId })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.status === "ok") {
+            showToast("Agent '" + currentName + "' deleted.", 5000);
+            window.location.href = "/call-desk/agents";
+          } else {
+            showToast(data.error || "Could not delete agent", 6000);
+          }
+        })
+        .catch(function (e) {
+          showToast("Network error deleting agent: " + (e.message || e));
+        });
+    });
+  }
 
   function pollLiveStats() {
     fetch("/api/calls/stats")

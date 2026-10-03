@@ -386,6 +386,8 @@ class AgentConfig:
     max_response_words: int = 60
     speak_first: str = "ai"  # "ai" (AI speaks first) | "user" (User speaks first)
     owner_id: str = ""       # user_id of the member who owns this agent ("" = workspace/admin-owned)
+    workspace_id: str = ""   # firm workspace the agent was set up for at sign-up ("" = server-wide)
+    lead_emails: List[str] = field(default_factory=list)  # emailed a summary after every call
     # Data points to pull out of every transcript (name/type/description/required/options/question);
     # registered as extraction schema "agent:<agent_id>" and sent on the call.completed webhook.
     extraction_fields: List[Dict[str, Any]] = field(default_factory=list)
@@ -528,6 +530,10 @@ class AgentBuilder:
                     },
                     "updated_at": time.time(),
                 }, f, indent=2)
+            try:
+                os.chmod(STATE_FILE, 0o666)
+            except Exception:
+                pass
             if not self._suppress_sync:
                 _storage_sync(STATE_FILE)
         except Exception as e:
@@ -733,8 +739,20 @@ class AgentBuilder:
                     errors.append(f"unknown voice_id '{vid}'")
 
         model = cfg.get("llm_model")
-        if model and model not in {m["model"] for m in LLM_MODELS}:
-            errors.append(f"unknown llm_model '{model}'")
+        if model:
+            resolved_model = resolve_gemini_model(model)
+            if resolved_model in {m["model"] for m in LLM_MODELS}:
+                cfg["llm_model"] = resolved_model
+            else:
+                errors.append(f"unknown llm_model '{model}'")
+
+        emails = cfg.get("lead_emails") or []
+        if not isinstance(emails, list) or len(emails) > 5:
+            errors.append("lead_emails must be a list of at most 5 addresses")
+        else:
+            bad = [e for e in emails if not isinstance(e, str) or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", e)]
+            if bad:
+                errors.append(f"invalid lead email: {', '.join(map(str, bad))}")
 
         known_tools = {t["name"] for t in self.available_tools()}
         unknown = [t for t in cfg.get("tools", []) if known_tools and t not in known_tools]
@@ -834,7 +852,7 @@ class AgentBuilder:
 
         proposed = cfg.to_dict()
         editable = {k: v for k, v in changes.items()
-                    if k in proposed and k not in ("agent_id", "revision", "created_at", "updated_at", "owner_id", "active")}
+                    if k in proposed and k not in ("agent_id", "revision", "created_at", "updated_at", "owner_id", "workspace_id", "active")}
         
         if "first_message" in editable and not (editable["first_message"] or "").strip():
             p = editable.get("system_prompt") or cfg.system_prompt
@@ -875,6 +893,8 @@ class AgentBuilder:
         return self.create_agent(**data)
 
     def delete_agent(self, agent_id: str) -> bool:
+        if agent_id in self._agents and len(self._agents) <= 1:
+            raise ValueError("Cannot delete the only configured agent. At least one agent is required to answer calls.")
         removed = self._agents.pop(agent_id, None)
         if not removed:
             return False

@@ -54,6 +54,8 @@ from agent.recording_manager import recording_manager, RecordingConfig, Complian
 from agent.pipeline_worker import pipeline_worker
 from agent.webhook_dispatcher import webhook_dispatcher
 webhook_dispatcher.attach_to_pipeline(pipeline_worker)
+from agent.onboarding import attach_lead_notifier
+attach_lead_notifier(pipeline_worker)
 
 load_dotenv()
 log = logging.getLogger("dialogue-worker")
