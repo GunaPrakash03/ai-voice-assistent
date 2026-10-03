@@ -85,6 +85,16 @@
   .actions{display:flex;gap:10px;align-items:center;margin-top:6px}
   .msg{font-size:12.5px;min-height:18px}
   .msg.ok{color:var(--pos)} .msg.err{color:var(--neg)}
+  /* Firm details card */
+  .field textarea{width:100%;min-height:90px;padding:9px 11px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:13.5px/1.5 var(--f-ui);resize:vertical}
+  .fd-h{display:flex;justify-content:space-between;align-items:baseline;font-size:11.5px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 6px}
+  .fd-h button{all:unset;cursor:pointer;color:var(--accent);font-size:12px;text-transform:none;letter-spacing:0}
+  .fd-row{display:grid;gap:6px;padding:9px 34px 9px 9px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;position:relative;background:var(--panel)}
+  .fd-row .g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .fd-row input,.fd-row textarea{width:100%;min-width:0;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font:13px var(--f-ui)}
+  .fd-row textarea{min-height:46px;resize:vertical}
+  .fd-row .rm{position:absolute;top:8px;right:8px;width:22px;height:22px;border:1px solid var(--line);border-radius:5px;background:transparent;color:var(--ink-faint);cursor:pointer}
+  @media (max-width:560px){.fd-row .g2{grid-template-columns:1fr}}
   dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:8px 18px;margin:0;font-size:13px}
   dl.kv dt{color:var(--ink-faint);font-family:var(--f-mono);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;padding-top:2px}
   dl.kv dd{margin:0;color:var(--ink);overflow-wrap:anywhere}
@@ -176,6 +186,23 @@
                   <span class="msg" id="pwMsg"></span>
                 </div>
               </form>
+            </div>
+          </div>
+
+          <!-- Firm details: what the receptionist knows about the firm -->
+          <div class="card" data-admin-only id="cardFirmDetails">
+            <div class="card-h"><h2>Firm details</h2><span class="meta" id="fdMeta"></span></div>
+            <div class="card-b">
+              <div class="field"><label for="fdAbout">About the firm</label><textarea id="fdAbout" maxlength="1500" placeholder="Who you are, where you are, who you help"></textarea><div class="hint">Your receptionist uses these details when callers ask about the firm.</div></div>
+              <div class="fd-h">Practice areas <button type="button" id="fdAddPractice">+ Add</button></div>
+              <div id="fdPractices"></div>
+              <div class="fd-h">Attorneys <button type="button" id="fdAddAttorney">+ Add</button></div>
+              <div id="fdAttorneys"></div>
+              <div class="actions" style="margin-top:12px;flex-wrap:wrap">
+                <button type="button" class="btn btn-primary" id="btnSaveFirm">Save firm details</button>
+                <button type="button" class="btn btn-ghost" id="btnRefreshFirm">Refresh from website</button>
+                <span class="msg" id="fdMsg"></span>
+              </div>
             </div>
           </div>
 
@@ -364,6 +391,82 @@
     fetch("/api/v1/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(function () { location.href = "/login"; });
   });
   $("btnSaveWs").addEventListener("click", function () { save({ workspace: $("fWs").value }, $("wsMsg"), "Workspace saved"); });
+
+  // ── Firm details ───────────────────────────────────────────────────────
+  var fd = { source: "manual", readAt: null, website: "" };
+  function fdEl(tag, attrs, value) { var e = document.createElement(tag); Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); }); if (value != null) e.value = value; return e; }
+  function fdRow(box, parts) {
+    var r = document.createElement("div"); r.className = "fd-row";
+    parts.forEach(function (p) { r.appendChild(p); });
+    var rm = fdEl("button", { type: "button", "class": "rm", "aria-label": "Remove", title: "Remove" }); rm.textContent = "✕";
+    rm.addEventListener("click", function () { r.remove(); });
+    r.appendChild(rm); box.appendChild(r); return r;
+  }
+  function fdPractice(p) {
+    p = p || {};
+    return fdRow($("fdPractices"), [fdEl("input", { "class": "p-name", placeholder: "Practice area", maxlength: "80", "aria-label": "Practice area" }, p.name || ""),
+                                    fdEl("input", { "class": "p-desc", placeholder: "One sentence about it", maxlength: "400", "aria-label": "Description" }, p.description || "")]);
+  }
+  function fdAttorney(a) {
+    a = a || {};
+    var g = document.createElement("div"); g.className = "g2";
+    g.appendChild(fdEl("input", { "class": "a-name", placeholder: "Attorney name", maxlength: "80", "aria-label": "Attorney name" }, a.name || ""));
+    g.appendChild(fdEl("input", { "class": "a-title", placeholder: "Title, e.g. Partner", maxlength: "80", "aria-label": "Title" }, a.title || ""));
+    return fdRow($("fdAttorneys"), [g, fdEl("input", { "class": "a-areas", placeholder: "Practice areas, comma separated", maxlength: "300", "aria-label": "Practice areas" }, (a.practice_areas || []).join(", ")),
+                                    fdEl("textarea", { "class": "a-bio", placeholder: "Short bio (optional)", maxlength: "600", "aria-label": "Short bio" }, a.bio || "")]);
+  }
+  function fdFill(d) {
+    $("fdAbout").value = d.about_firm || d.about || "";
+    $("fdPractices").textContent = ""; $("fdAttorneys").textContent = "";
+    (d.practice_details || d.practice_areas || []).forEach(fdPractice);
+    (d.attorneys || []).forEach(fdAttorney);
+  }
+  function fdCollect() {
+    var q = function (r, c) { return (r.querySelector(c).value || "").trim(); };
+    var practices = Array.prototype.map.call($("fdPractices").children, function (r) { return { name: q(r, ".p-name"), description: q(r, ".p-desc") }; }).filter(function (p) { return p.name; });
+    var attorneys = Array.prototype.map.call($("fdAttorneys").children, function (r) {
+      return { name: q(r, ".a-name"), title: q(r, ".a-title"), bio: q(r, ".a-bio"), practice_areas: q(r, ".a-areas").split(",").map(function (x) { return x.trim(); }).filter(Boolean) };
+    }).filter(function (a) { return a.name; });
+    return { about_firm: $("fdAbout").value.trim() || null, practice_details: practices.length ? practices : null, attorneys: attorneys.length ? attorneys : null };
+  }
+  function fdMetaText(d) {
+    if (d.details_source === "website" && d.details_read_at) return "from website · " + fmtDate(d.details_read_at);
+    return d.details_source === "manual" ? "entered by hand" : "";
+  }
+  function loadFirmDetails() {
+    fetch("/api/v1/firm/details").then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (!j || j.status !== "ok") return;
+      var d = j.details || {};
+      fd.website = d.website || ""; fd.source = d.details_source || "manual"; fd.readAt = d.details_read_at || null;
+      fdFill(d);
+      $("fdMeta").textContent = fdMetaText(d);
+      $("btnRefreshFirm").hidden = !fd.website;
+    }).catch(function () {});
+  }
+  $("fdAddPractice").addEventListener("click", function () { fdPractice().querySelector("input").focus(); });
+  $("fdAddAttorney").addEventListener("click", function () { fdAttorney().querySelector("input").focus(); });
+  $("btnRefreshFirm").addEventListener("click", function () {
+    var b = this; b.disabled = true; setMsg($("fdMsg"), "Reading " + fd.website.replace(/^https?:\/\//, "") + "… up to 30 seconds", true);
+    fetch("/api/v1/onboarding/website-draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ website: fd.website }) })
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (j.status !== "ok") { setMsg($("fdMsg"), j.error || "Couldn't read the website", false); return; }
+        fdFill(j.draft); fd.source = "website"; fd.readAt = j.draft.read_at;
+        setMsg($("fdMsg"), "Read from " + j.draft.pages_read.length + " pages. Check it, then press Save.", true);
+      }).catch(function () { setMsg($("fdMsg"), "Network error", false); }).then(function () { b.disabled = false; });
+  });
+  $("btnSaveFirm").addEventListener("click", function () {
+    var b = this, body = fdCollect();
+    body.details_source = fd.source; body.details_read_at = fd.source === "website" ? fd.readAt : null;
+    b.disabled = true;
+    fetch("/api/v1/firm/details", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (j.status !== "ok") { setMsg($("fdMsg"), j.error || "Could not save", false); return; }
+        $("fdMeta").textContent = fdMetaText(j.details);
+        var t = "Firm details saved" + (j.agent_updated ? "; your receptionist now uses them" : "");
+        setMsg($("fdMsg"), t, true); toast(t);
+      }).catch(function () { setMsg($("fdMsg"), "Network error", false); }).then(function () { b.disabled = false; });
+  });
+  loadFirmDetails();
 
   var formBranding = $("formBranding");
   if (formBranding) {

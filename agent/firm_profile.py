@@ -57,7 +57,14 @@ FIELDS = (
     "practice_areas", "practice_areas_other", "business_hours", "after_hours",
     "after_hours_transfer_number", "languages", "monthly_call_volume",
     "practice_software", "practice_software_other", "lead_emails", "referral_source",
+    # Firm details for the receptionist, read from the website or typed in during onboarding.
+    "about_firm", "practice_details", "attorneys", "details_source", "details_read_at",
 )
+
+DETAILS_SOURCES = ("website", "manual")
+MAX_ABOUT_FIRM = 1500
+MAX_PRACTICE_DETAILS = 20
+MAX_ATTORNEYS = 40
 
 _HOSTNAME_RE = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -266,7 +273,64 @@ def _clean_value(field: str, raw: Any) -> Any:
         return _text(raw, field.replace("_", " ").capitalize(), 120)
     if field == "referral_source":
         return _text(raw, "Referral source", 200)
+    if field == "about_firm":
+        return _multiline(raw, "About the firm", MAX_ABOUT_FIRM)
+    if field == "practice_details":
+        return _practice_details(raw)
+    if field == "attorneys":
+        return _attorneys(raw)
+    if field == "details_source":
+        return _choice(raw, "Details source", DETAILS_SOURCES)
+    if field == "details_read_at":
+        if not isinstance(raw, (int, float)) or isinstance(raw, bool) or raw < 0:
+            raise ValueError("Details read time must be a timestamp")
+        return float(raw)
     raise ValueError(f"Unknown firm profile field: {field}")
+
+
+def _multiline(value: Any, field: str, max_len: int) -> str:
+    """Free text that keeps its paragraph breaks (at most one blank line in a row)."""
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be text")
+    lines = [re.sub(r"[ \t]+", " ", l).strip() for l in value.replace("\r", "").split("\n")]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()[:max_len]
+
+
+def _practice_details(raw: Any) -> List[Dict[str, str]]:
+    out, seen = [], set()
+    for item in _list(raw, "Practice details"):
+        if not isinstance(item, dict):
+            raise ValueError("Each practice area needs a name and a description")
+        name = _text(item.get("name") or "", "Practice area name", 80)
+        if not name or name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        out.append({"name": name, "description": _text(item.get("description") or "", "Practice area description", 400)})
+    if len(out) > MAX_PRACTICE_DETAILS:
+        raise ValueError(f"At most {MAX_PRACTICE_DETAILS} practice areas")
+    return out
+
+
+def _attorneys(raw: Any) -> List[Dict[str, Any]]:
+    out, seen = [], set()
+    for item in _list(raw, "Attorneys"):
+        if not isinstance(item, dict):
+            raise ValueError("Each attorney needs at least a name")
+        name = _text(item.get("name") or "", "Attorney name", 80)
+        if not name:
+            continue
+        if name.lower() in seen:
+            raise ValueError(f"{name} is listed twice")
+        seen.add(name.lower())
+        areas = item.get("practice_areas") or []
+        if isinstance(areas, str):
+            areas = [a for a in areas.split(",")]
+        out.append({"name": name, "title": _text(item.get("title") or "", "Attorney title", 80),
+                    "practice_areas": [a for a in (_text(x, "Attorney practice area", 60) for x in _list(areas, "Attorney practice areas")) if a][:6],
+                    "bio": _text(item.get("bio") or "", "Attorney bio", 600)})
+    if len(out) > MAX_ATTORNEYS:
+        raise ValueError(f"At most {MAX_ATTORNEYS} attorneys")
+    return out
 
 
 def _is_empty(value: Any) -> bool:

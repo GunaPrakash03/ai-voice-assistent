@@ -410,13 +410,14 @@ class Handler(SimpleHTTPRequestHandler):
     # Super Admin (Overall Admin) pages and system APIs: strictly restricted to super_admin.
     # Product Admins (admin) and Member Admins (member_admin) receive 403 / redirect for these.
     # Softphone WebRTC dialer and API Keys & Provider Secrets are strictly Super Admin only.
+    WEBSITE_DRAFT_LIMITER = None   # set below the class (needs auth_manager's limiter type)
     SUPER_ADMIN_PAGES = ("/organizations", "/users", "/softphone", "/api-keys", "/branding")
     SUPER_ADMIN_PREFIXES = ("/api/v1/system/", "/api/v1/api-keys", "/api/providers")
 
-    ADMIN_GET_PREFIXES = ("/api/v1/users", "/api/v1/workspaces", "/api/v1/team")
+    ADMIN_GET_PREFIXES = ("/api/v1/users", "/api/v1/workspaces", "/api/v1/team", "/api/v1/firm")
     ADMIN_POST_PREFIXES = ("/api/v1/users", "/api/v1/workspaces",
                            "/api/v1/auth/users", "/api/agents", "/api/telephony", "/api/webhooks",
-                           "/api/v1/calls/dispatch", "/api/v1/cases", "/api/v1/team")
+                           "/api/v1/calls/dispatch", "/api/v1/cases", "/api/v1/team", "/api/v1/firm")
     ADMIN_PAGES = ("/admin-guide", "/cost-comparison", "/agent-builder", "/webhooks",
                    "/competitor-analysis", "/user-guide", "/agents", "/sip-trunks", "/phone-numbers",
                    "/call-desk/agents", "/call-desk/sip-trunks", "/call-desk/phone-numbers", "/team")
@@ -1470,6 +1471,13 @@ class Handler(SimpleHTTPRequestHandler):
             ws_id = requested_ws if (ctx.get("role") == "super_admin" and requested_ws) else ctx["workspace_id"]
             self._send_json({"status": "ok", "users": auth_manager.list_users(workspace_id=ws_id)})
             return
+        elif parsed.path == "/api/v1/firm/details":
+            v, ws = self._case_viewer()
+            workspace = auth_manager.get_workspace(ws)
+            fp = (workspace.metadata.get("firm_profile") or {}) if workspace else {}
+            keys = ("website", "about_firm", "practice_details", "attorneys", "details_source", "details_read_at")
+            self._send_json({"status": "ok", "workspace": workspace.name if workspace else "", "details": {k: fp.get(k) for k in keys}})
+            return
         elif parsed.path == "/api/v1/team":
             # The Team page: everyone active in the viewer's workspace with their case load, and which
             # roles this viewer may add (can_create_role). Admin-only via ADMIN_GET_PREFIXES.
@@ -1647,6 +1655,59 @@ class Handler(SimpleHTTPRequestHandler):
             info = auth_manager.session_info(token)
             info["hint"] = "Add a phone number on your profile to turn on the SMS code step." if not phone else ""
             self._send_json({"status": "ok", "step": "done", **info}, 200, self._set_session_cookie(token, doc["expires_at"] - time.time()))
+            return
+        if parsed.path == "/api/v1/firm/details":
+            # Profile page: the admin edits the firm details later. Only these fields; then the seeded
+            # agent's firm-details block is rewritten to match.
+            from agent import onboarding as ob
+            v, ws = self._case_viewer()
+            allowed = {"about_firm", "practice_details", "attorneys", "details_source", "details_read_at"}
+            unknown = set(payload) - allowed
+            if unknown:
+                self._send_json({"status": "error", "error": f"Unknown field: {', '.join(sorted(unknown))}"}, 400)
+                return
+            try:
+                auth_manager.update_organization(ws, {"firm_profile": {k: payload.get(k) for k in allowed if k in payload}})
+            except (ValueError, KeyError) as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            agent_updated = ob.refresh_agent_knowledge(auth_manager, agent_builder, ws)
+            fp = auth_manager.get_workspace(ws).metadata.get("firm_profile") or {}
+            self._send_json({"status": "ok", "agent_updated": agent_updated, "details": {k: fp.get(k) for k in allowed | {"website"}}})
+            return
+        if parsed.path == "/api/v1/onboarding/website-draft":
+            # Reads the firm's website into a draft of about / practice / attorney details for the admin
+            # to review (onboarding step 1, Profile page). Saves nothing. Admin-only, a few per firm per
+            # ten minutes: each call opens up to eight pages on someone else's site and one Gemini call.
+            from agent.firm_profile import normalize_website
+            from agent.website_scraper import read_site, WebsiteReadError
+            from agent.website_details import extract_firm_details
+            v = self._viewer()
+            if not v["user"] or not v["is_admin"]:
+                self._send_json({"status": "error", "error": "Only the firm's administrator can do this"}, 403)
+                return
+            ws = v["user"].workspace_id
+            limit = self.WEBSITE_DRAFT_LIMITER.check(f"ws:{ws}")
+            if not limit.allowed:
+                self._send_json({"status": "error", "error": f"Website reading is limited to a few tries; try again in {limit.retry_after // 60 + 1} min."}, 429)
+                return
+            try:
+                url = normalize_website(payload.get("website") or "")
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            if not url:
+                self._send_json({"status": "error", "error": "Enter the firm's website first"}, 400)
+                return
+            try:
+                site = read_site(url)
+            except WebsiteReadError as e:
+                self._send_json({"status": "error", "error": str(e), "unreadable": True}, 422)
+                return
+            draft = extract_firm_details(site)
+            draft["read_at"] = time.time()
+            draft["website"] = site["url"]
+            self._send_json({"status": "ok", "draft": draft})
             return
         if parsed.path == "/api/v1/onboarding/complete":
             # Firm details from /onboarding: names the workspace, then builds the firm's agent (Task 5.5).
@@ -3360,6 +3421,9 @@ class Handler(SimpleHTTPRequestHandler):
 print(f"Test page:  http://localhost:{PORT}")
 print(f"Signalling: {WS_URL}")
 print("Ctrl+C to stop\n")
+
+from agent.auth_manager import SlidingWindowRateLimiter  # noqa: E402
+Handler.WEBSITE_DRAFT_LIMITER = SlidingWindowRateLimiter(default_limit=5, window_seconds=600)
 
 import signal
 try:

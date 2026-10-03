@@ -8,6 +8,26 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="/auth.css">
+<style>
+  /* Firm details read from the website (or typed in) — step 1 */
+  .details{border:1px solid var(--line);border-radius:12px;padding:14px 14px 4px;margin:4px 0 16px;background:var(--bg-subtle)}
+  .details h3{font-size:13px;font-weight:600;margin:14px 0 8px;color:var(--ink-2);display:flex;justify-content:space-between;align-items:baseline}
+  .details h3:first-of-type{margin-top:4px}
+  .details .src{font-size:12px;color:var(--ink-3);margin:0 0 10px}
+  .drow{display:grid;gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-bottom:8px;position:relative}
+  .drow .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .drow input,.drow textarea{width:100%;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:13.5px var(--f-ui, inherit);min-width:0}
+  .drow textarea{min-height:54px;resize:vertical}
+  .drow input:focus,.drow textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+  .drow .rm{position:absolute;top:6px;right:6px;width:24px;height:24px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink-3);cursor:pointer;line-height:1}
+  .drow .rm:focus-visible{outline:2px solid var(--accent)}
+  .drow > :first-child{padding-right:30px}
+  .reading{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink-2);padding:6px 0 10px}
+  .reading .spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.reading .spin{animation:none}}
+  @media (max-width:520px){.drow .g2{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
   <div class="pane">
@@ -36,6 +56,16 @@
           <form id="form1" novalidate>
             <div class="field"><div class="control float" data-icon="building"><input id="firmName" autocomplete="organization" maxlength="100" placeholder=" " required><label for="firmName">Law firm name</label></div><div class="hint">Workspace: <span class="slug" id="slugPreview">—</span></div></div>
             <div class="field"><div class="control float" data-icon="globe"><input id="website" type="url" inputmode="url" placeholder=" " maxlength="300" required><label for="website">Website</label></div></div>
+            <label class="check"><input type="checkbox" id="useWebsite" checked> <span>Fill in firm details from our website <span class="opt">· about the firm, practice areas and attorneys</span></span></label>
+            <div class="reading" id="readingNote" hidden role="status"><span class="spin" aria-hidden="true"></span><span>Reading your website… this can take up to 30 seconds.</span></div>
+            <div class="details" id="detailsBox" hidden>
+              <p class="src" id="detailsSrc"></p>
+              <div class="field"><div class="control float"><textarea id="aboutFirm" placeholder=" " maxlength="1500"></textarea><label for="aboutFirm">About the firm</label></div><div class="hint">Who you are, where you are, who you help. Your receptionist uses this when callers ask about the firm.</div></div>
+              <h3>Practice areas <button class="link" type="button" id="addPractice">+ Add</button></h3>
+              <div id="practiceRows"></div>
+              <h3>Attorneys <button class="link" type="button" id="addAttorney">+ Add</button></h3>
+              <div id="attorneyRows"></div>
+            </div>
             <div class="field"><div class="phone-row"><div class="control cc"><select id="officePhoneCc" class="cc-select" aria-label="Office phone country code"></select></div><div class="control float" data-icon="phone"><input id="officePhone" type="tel" autocomplete="tel-national" placeholder=" " maxlength="30" required><label for="officePhone">Main office phone</label></div></div></div>
             <div class="field"><div class="control float" data-icon="clock"><select id="timezone" required></select><label for="timezone">Time zone</label></div></div>
             <div class="field"><span class="label" id="sizeLabel">Firm size</span><div class="chips" id="firmSize" role="radiogroup" aria-labelledby="sizeLabel"></div></div>
@@ -292,7 +322,99 @@
     return fail("msg2", null, "") || true;
   }
 
-  $("form1").addEventListener("submit", function (e) { e.preventDefault(); if (validate1()) show("step2"); });
+  // ── Firm details: read from the website, or typed in ─────────────────────
+  // details.source: "" (section not shown yet) | "website" | "manual"; readFor: the website it was read from.
+  var details = { source: "", readFor: "", readAt: null };
+  function drow(container, fields) {
+    var r = el("div", { "class": "drow" });
+    fields.forEach(function (f) { r.appendChild(f); });
+    var rm = el("button", { type: "button", "class": "rm", "aria-label": "Remove", title: "Remove" }, "✕");
+    rm.addEventListener("click", function () { r.remove(); saveDraft(); });
+    r.appendChild(rm);
+    container.appendChild(r);
+    return r;
+  }
+  function input(cls, ph, value, max) { var i = el("input", { "class": cls, placeholder: ph, maxlength: String(max), "aria-label": ph }); i.value = value || ""; return i; }
+  function practiceRow(d) {
+    d = d || {};
+    return drow($("practiceRows"), [input("p-name", "Practice area, e.g. Divorce & custody", d.name, 80),
+                                    input("p-desc", "One sentence about it", d.description, 400)]);
+  }
+  function attorneyRow(d) {
+    d = d || {};
+    var g = el("div", { "class": "g2" });
+    g.appendChild(input("a-name", "Attorney name", d.name, 80));
+    g.appendChild(input("a-title", "Title, e.g. Partner", d.title, 80));
+    var bio = el("textarea", { "class": "a-bio", placeholder: "Short bio (optional)", maxlength: "600", "aria-label": "Short bio" });
+    bio.value = d.bio || "";
+    return drow($("attorneyRows"), [g, input("a-areas", "Practice areas, comma separated", (d.practice_areas || []).join(", "), 300), bio]);
+  }
+  function fillDetails(d) {
+    $("aboutFirm").value = d.about || "";
+    $("practiceRows").textContent = ""; $("attorneyRows").textContent = "";
+    (d.practice_areas || []).forEach(practiceRow);
+    (d.attorneys || []).forEach(attorneyRow);
+  }
+  function collectDetails() {
+    var q = function (r, c) { return (r.querySelector(c).value || "").trim(); };
+    return {
+      about: $("aboutFirm").value.trim(),
+      practice_areas: Array.prototype.map.call($("practiceRows").children, function (r) { return { name: q(r, ".p-name"), description: q(r, ".p-desc") }; })
+        .filter(function (p) { return p.name; }),
+      attorneys: Array.prototype.map.call($("attorneyRows").children, function (r) {
+        return { name: q(r, ".a-name"), title: q(r, ".a-title"), bio: q(r, ".a-bio"),
+                 practice_areas: q(r, ".a-areas").split(",").map(function (x) { return x.trim(); }).filter(Boolean) };
+      }).filter(function (a) { return a.name; })
+    };
+  }
+  function showManual(note) {
+    details.source = "manual";
+    $("detailsSrc").textContent = note || "Tell your receptionist about the firm. Everything here is optional and can be changed later on your Profile page.";
+    if (!$("practiceRows").children.length) practiceRow();
+    if (!$("attorneyRows").children.length) attorneyRow();
+    $("detailsBox").hidden = false;
+  }
+  function host(u) { return (u || "").replace(/^https?:\/\//i, "").split("/")[0]; }
+  function readWebsite() {
+    var btn = $("form1").querySelector("[type=submit]"), site = val("website");
+    btn.disabled = true; $("readingNote").hidden = false; msg($("msg1"), "", true);
+    post("/api/v1/onboarding/website-draft", { website: site }).then(function (d) {
+      details.readFor = site;
+      if (d.status !== "ok") {
+        showManual("We couldn't read " + host(site) + ": " + (d.error || "unknown problem") + " Fill in the details yourself, or leave them for later.");
+        msg($("msg1"), "Add the firm details below if you like, then press Continue.", true);
+        return;
+      }
+      var dr = d.draft;
+      fillDetails(dr);
+      details.source = "website"; details.readAt = dr.read_at;
+      if (!$("practiceRows").children.length) practiceRow();
+      if (!$("attorneyRows").children.length) attorneyRow();
+      (dr.areas || []).forEach(function (a) { var c = document.querySelector("input[name=areas][value='" + a + "']"); if (c) c.checked = true; });
+      $("detailsSrc").textContent = "Read from " + dr.pages_read.length + " page" + (dr.pages_read.length === 1 ? "" : "s") + " of " + host(dr.website) +
+        (dr.engine === "headings" ? " (basic reading; some details may be missing)" : "") + ". Check and edit it, then press Continue.";
+      $("detailsBox").hidden = false;
+      msg($("msg1"), "Check the firm details below, then press Continue.", true);
+      $("aboutFirm").focus();
+      saveDraft();
+    }).catch(function () {
+      details.readFor = site;
+      showManual("We couldn't reach the server to read the website. Fill in the details yourself, or leave them for later.");
+    }).then(function () { btn.disabled = false; $("readingNote").hidden = true; });
+  }
+  $("useWebsite").addEventListener("change", function () {
+    if (!this.checked) { showManual(); return; }
+    if (details.source !== "website" || details.readFor !== val("website")) { details.readFor = ""; $("detailsBox").hidden = true; details.source = ""; }
+  });
+  $("addPractice").addEventListener("click", function () { practiceRow().querySelector("input").focus(); });
+  $("addAttorney").addEventListener("click", function () { attorneyRow().querySelector("input").focus(); });
+
+  $("form1").addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (!validate1()) return;
+    if ($("useWebsite").checked && details.readFor !== val("website")) { readWebsite(); return; }
+    show("step2");
+  });
   $("form2").addEventListener("submit", function (e) { e.preventDefault(); if (validate2()) { skipped2 = false; show("step3"); } });
   $("skip2").addEventListener("click", function () { skipped2 = true; msg($("msg2"), "", true); show("step3"); });
 
@@ -319,6 +441,16 @@
       if ($("software").value === "other") fp.practice_software_other = val("softwareOther");
       if (leadEmails().length) fp.lead_emails = leadEmails();
     }
+    if (details.source) {
+      var dd = collectDetails();
+      if (dd.about) fp.about_firm = dd.about;
+      if (dd.practice_areas.length) fp.practice_details = dd.practice_areas;
+      if (dd.attorneys.length) fp.attorneys = dd.attorneys;
+      if (dd.about || dd.practice_areas.length || dd.attorneys.length) {
+        fp.details_source = details.source;
+        if (details.source === "website" && details.readAt) fp.details_read_at = details.readAt;
+      }
+    }
     return { firm_name: val("firmName"), firm_profile: fp };
   }
 
@@ -341,6 +473,12 @@
     card("Firm", 1, [["Firm", p.firm_name], ["Website", fp.website], ["Office phone", fp.office_phone],
       ["Address", [a.line1, a.line2, a.city, a.state, a.postal_code].filter(Boolean).join(", ")],
       ["Time zone", fp.timezone], ["Firm size", labelOf(o.firm_sizes, fp.firm_size)]]);
+    var about = fp.about_firm || "";
+    card("Firm details" + (fp.details_source === "website" ? " · from your website" : ""), 1, (about || fp.practice_details || fp.attorneys) ? [
+      ["About", about.length > 160 ? about.slice(0, 157) + "…" : about],
+      ["Practice areas", (fp.practice_details || []).map(function (x) { return x.name; }).join(", ")],
+      ["Attorneys", (fp.attorneys || []).map(function (x) { return x.name + (x.title ? " (" + x.title + ")" : ""); }).join(", ")]
+    ] : [["", "Not added — you can add them later on your Profile page"]]);
     if (skipped2) { card("Practice & calls", 2, [["", "Skipped — you can add this later"]]); return; }
     card("Practice & calls", 2, [
       ["Practice areas", (fp.practice_areas || []).map(function (v) { return v === "other" ? (fp.practice_areas_other || "Other") : labelOf(o.practice_areas, v); }).join(", ")],
@@ -354,6 +492,7 @@
 
   // Server errors name the field; send the admin back to the step that has it.
   function stepForError(text) {
+    if (/about the firm|attorney|practice area name|practice area description|practice details|listed twice/i.test(text)) return 1;
     if (/lead notification|practice|business hours|after-hours|transfer|language|call volume|software/i.test(text)) return 2;
     if (/law firm name|website|office phone|time zone|firm size|address|firm details/i.test(text)) return 1;
     return 3;
@@ -383,6 +522,7 @@
     DRAFT_FIELDS.forEach(function (id) { d.fields[id] = $(id).value; });
     ["firmSize", "areas", "languages", "afterHours"].forEach(function (g) { d.groups[g] = checked(g); });
     options.options.weekdays.forEach(function (w) { d.hours[w] = [$("open_" + w).checked, $("from_" + w).value, $("to_" + w).value]; });
+    d.details = { state: details, use: $("useWebsite").checked, data: collectDetails() };
     try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch (e) {}
   }
   function loadDraft() {
@@ -398,6 +538,15 @@
       $("open_" + w).checked = d.hours[w][0]; $("from_" + w).value = d.hours[w][1]; $("to_" + w).value = d.hours[w][2];
       $("from_" + w).disabled = $("to_" + w).disabled = !d.hours[w][0];
     });
+    if (d.details) {
+      $("useWebsite").checked = d.details.use !== false;
+      if (d.details.state && d.details.state.source) {
+        details = d.details.state;
+        fillDetails(d.details.data || {});
+        $("detailsSrc").textContent = details.source === "website" ? "Read from " + host(details.readFor) + ". Check and edit it, then press Continue." : "";
+        if (details.source === "manual") showManual(); else $("detailsBox").hidden = false;
+      }
+    }
   }
   function clearDraft() { try { sessionStorage.removeItem(DRAFT_KEY); } catch (e) {} }
   document.addEventListener("input", function () { if (current >= 1) saveDraft(); });
@@ -414,6 +563,15 @@
     var a = fp.address || {};
     [["addr1", a.line1], ["addr2", a.line2], ["city", a.city], ["state", a.state], ["postal", a.postal_code]].forEach(function (x) { if (x[1]) $(x[0]).value = x[1]; });
     $("leadEmails").value = (fp.lead_emails || []).join(", ") || o.email || "";
+    if (fp.about_firm || fp.practice_details || fp.attorneys) {
+      fillDetails({ about: fp.about_firm, practice_areas: fp.practice_details, attorneys: fp.attorneys });
+      details.source = fp.details_source || "manual";
+      details.readFor = details.source === "website" ? $("website").value : "";
+      details.readAt = fp.details_read_at || null;
+      $("useWebsite").checked = details.source === "website";
+      $("detailsSrc").textContent = "Saved earlier. Check and edit it, then press Continue.";
+      $("detailsBox").hidden = false;
+    }
   }
 
   // ── Phone numbers: country code + national number -> E.164 ───────────────
