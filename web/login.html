@@ -75,11 +75,11 @@
           </form>
         </section>
 
-        <!-- Step 2: SMS code -->
+        <!-- Step 2: code sent by SMS (sign-in) or email (verifying a new account) -->
         <section class="step" id="stepCode">
           <span class="eyebrow">Last step</span>
-          <h1>Enter the code we texted you</h1>
-          <p class="sub">We sent a 6-digit code to <span class="phone-chip" id="phoneMasked">•••</span>. It expires in <span id="countdown">5:00</span>.</p>
+          <h1 id="codeTitle">Enter the code we texted you</h1>
+          <p class="sub">We sent a 6-digit code to <span class="phone-chip" id="phoneMasked">•••</span>. It expires in <span id="countdown">5:00</span>.<span id="codeSpam" hidden> Not there? Check your spam folder.</span></p>
           <form id="codeForm">
             <div class="otp" id="otpBoxes" role="group" aria-label="6-digit verification code">
               <input class="otp-box" inputmode="numeric" autocomplete="one-time-code" aria-label="Digit 1">
@@ -210,7 +210,10 @@
   }
   function enterCodeStep(d) {
     ticket = d.ticket;
-    $("phoneMasked").textContent = d.phone_masked || "your phone";
+    var email = d.channel === "email";
+    $("codeTitle").textContent = email ? "Verify your email" : "Enter the code we texted you";
+    $("codeSpam").hidden = !email;
+    $("phoneMasked").textContent = d.dest_masked || d.phone_masked || (email ? "your email" : "your phone");
     $("code").value = "";
     otpBoxes.forEach(function (b) { b.value = ""; b.classList.remove("filled"); });
     if (d.sms_error) msg($("codeMsg"), d.sms_error, false);
@@ -265,7 +268,7 @@
   // an error in ?oauth_error. Read them, then clean the address bar.
   var frag = new URLSearchParams(location.hash.slice(1));
   if (frag.get("otp")) {
-    pendingOtp = { ticket: frag.get("otp"), phone_masked: frag.get("m"), expires_in: +frag.get("exp") || 300,
+    pendingOtp = { ticket: frag.get("otp"), phone_masked: frag.get("m"), channel: frag.get("c") || "sms", expires_in: +frag.get("exp") || 300,
                    resend_after: +frag.get("ra") || 30, dry_run_code: frag.get("code"), sms_error: frag.get("err") };
   }
   var oauthError = new URLSearchParams(location.search).get("oauth_error");

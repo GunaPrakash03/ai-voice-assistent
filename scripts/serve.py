@@ -183,7 +183,8 @@ class Handler(SimpleHTTPRequestHandler):
     def _otp_redirect(self, body: Dict[str, Any]) -> None:
         """Hand an SMS-code step to /login. The ticket travels in the URL fragment, which browsers never
         send to servers or proxies; login.html reads it and removes it from the address bar."""
-        frag = {"otp": body["ticket"], "m": body.get("phone_masked", ""), "exp": body.get("expires_in", 300),
+        frag = {"otp": body["ticket"], "m": body.get("dest_masked") or body.get("phone_masked", ""), "c": body.get("channel", "sms"),
+                "exp": body.get("expires_in", 300),
                 "ra": body.get("resend_after", 30)}
         if body.get("dry_run_code"):
             frag["code"] = body["dry_run_code"]
@@ -255,7 +256,7 @@ class Handler(SimpleHTTPRequestHandler):
         ws = auth_manager.get_workspace(user.workspace_id)
         if auth_manager.is_signup_pending(user.workspace_id):
             body = self._start_signup_verification(user)
-            if body["step"] == "pending_approval":
+            if body["step"] == "verification_unavailable":
                 self._redirect("/login?" + urllib.parse.urlencode({"oauth_error": body["message"]}))
             else:
                 self._otp_redirect(body)
@@ -352,23 +353,60 @@ class Handler(SimpleHTTPRequestHandler):
     def _signup_enabled() -> bool:
         return os.getenv("SIGNUP_ENABLED", "0").strip().lower() in ("1", "true", "yes")
 
+    @staticmethod
+    def _mail_dry_run() -> bool:
+        return os.getenv("MAIL_DRY_RUN", "").strip().lower() in ("1", "true", "yes")
+
+    @classmethod
+    def _signup_channel(cls, user) -> Optional[str]:
+        """How a new sign-up proves itself: an emailed code (email set up, or MAIL_DRY_RUN=1 locally),
+        else an SMS code when SMS is set up and the account has a phone. None: neither can be sent."""
+        from agent import mailer, sms
+        if mailer.configured().get("ready") or cls._mail_dry_run():
+            return "email"
+        if sms.configured().get("ready") and auth_manager.normalize_phone(user.phone):
+            return "sms"
+        return None
+
+    def _deliver_code(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Send a verification / sign-in code by the ticket's channel. {"ok", "dry_run"?, "error"?}"""
+        from agent import mailer, sms
+        purpose, code = step.get("purpose", "login"), step["code"]
+        if step.get("channel") != "email":
+            return sms.send_sms(step["phone"], auth_manager.otp_message(purpose, code))
+        if self._mail_dry_run():
+            log.warning("MAIL_DRY_RUN: verification code for %s is %s (not emailed)", step["dest_masked"], code)
+            return {"ok": True, "dry_run": True}
+        minutes = auth_manager.code_ttl("email") // 60
+        what = "confirm your email and finish creating your account" if purpose == "signup" else "finish signing in"
+        text = (f"Your Call Desk verification code is {code}\n\nEnter it on the page you signed up on to {what}. "
+                f"It expires in {minutes} minutes.\n\nIf you didn't ask for this, ignore this email.")
+        html = (f"<p>Your Call Desk verification code is</p><p style=\"font:600 28px/1.2 monospace;letter-spacing:6px;margin:8px 0 16px\">{code}</p>"
+                f"<p>Enter it on the page you signed up on to {what}. It expires in {minutes} minutes.</p>"
+                "<p style=\"color:#666;font-size:13px\">If you didn't ask for this, ignore this email.</p>")
+        res = mailer.send_email(step["dest"], f"{code} is your Call Desk verification code", text, html)
+        if not res.get("ok"):
+            log.error("Verification email to %s failed: %s", step["dest_masked"], res.get("error"))
+        return res
+
     def _start_signup_verification(self, user, remember: bool = True) -> Dict[str, Any]:
-        """Text a verification code to a pending sign-up's admin (Task 5.3). Returns the response body.
-        Without SMS the account waits for a super admin to approve it instead."""
-        from agent import sms
-        if not sms.configured().get("ready"):
-            return {"status": "ok", "step": "pending_approval",
-                    "message": "Your account is waiting for approval. We'll be in touch once it's activated."}
-        step = auth_manager.begin_two_step(user, remember, self.headers.get("User-Agent", ""), purpose="signup")
-        body = {"status": "ok", "step": "otp", "purpose": "signup", "ticket": step["ticket"],
-                "phone_masked": step["phone_masked"], "expires_in": step["expires_in"],
+        """Send a pending sign-up its verification code, by email (or SMS when email isn't set up).
+        Returns the response body for the sign-up / sign-in page."""
+        channel = self._signup_channel(user)
+        if not channel:
+            log.error("Sign-up %s cannot be verified: no email (RESEND_API_KEY / SMTP_HOST + MAIL_FROM) or SMS configured", user.email)
+            return {"status": "ok", "step": "verification_unavailable",
+                    "message": "Your account is created, but this site can't send the verification email right now. "
+                               "Please try signing in again later."}
+        step = auth_manager.begin_two_step(user, remember, self.headers.get("User-Agent", ""), purpose="signup", channel=channel)
+        body = {"status": "ok", "step": "otp", "purpose": "signup", "channel": channel, "ticket": step["ticket"],
+                "dest_masked": step["dest_masked"], "phone_masked": step["dest_masked"], "expires_in": step["expires_in"],
                 "resend_after": auth_manager.OTP_RESEND_AFTER}
-        result = sms.send_sms(step["phone"], auth_manager.otp_message("signup", step["code"]))
+        result = self._deliver_code(step)
         if not result.get("ok"):
-            log.error("Sign-up verification SMS to %s failed: %s", step["phone_masked"], result.get("error"))
-            body["sms_error"] = "We couldn't send the code. Try 'Resend code' in a moment."
+            body["sms_error"] = body["send_error"] = "We couldn't send the code. Try 'Resend code' in a moment."
         elif result.get("dry_run"):
-            body["dry_run_code"] = step["code"]   # SMS_DRY_RUN=1 only (local testing)
+            body["dry_run_code"] = step["code"]   # SMS_DRY_RUN / MAIL_DRY_RUN only (local testing)
         return body
 
     def _require_session(self, parsed) -> bool:
@@ -784,13 +822,14 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/v1/auth/signup/options":
             # What the sign-up page needs to render: whether sign-up is open and the allowed choices,
             # straight from agent/firm_profile.py so the form and the validator never drift apart.
-            from agent import sms, firm_profile as fp
+            from agent import sms, firm_profile as fp, mailer as _mailer
             from agent.oauth import configured_providers as oauth_configured_providers
             pairs = lambda d: [{"value": k, "label": v} for k, v in d.items()]
             self._send_json({
                 "status": "ok",
                 "enabled": self._signup_enabled(),
-                "verification": "sms" if sms.configured().get("ready") else "approval",
+                "verification": ("email" if (_mailer.configured().get("ready") or self._mail_dry_run())
+                                 else "sms" if sms.configured().get("ready") else "unavailable"),
                 "social": oauth_configured_providers(),
                 "required": list(fp.SIGNUP_REQUIRED_FIELDS),
                 "password_min": 8,
@@ -1626,9 +1665,9 @@ class Handler(SimpleHTTPRequestHandler):
                 except ValueError as err:
                     self._send_json({"status": "error", "error": str(err)}, 400)
                     return
-                if body["step"] == "pending_approval":
-                    body = {"status": "error", "step": "pending_approval", "error": body["message"]}
-                self._send_json(body, 403 if body["step"] == "pending_approval" else 200)
+                if body["step"] == "verification_unavailable":
+                    body = {"status": "error", "step": "verification_unavailable", "error": body["message"]}
+                self._send_json(body, 503 if body["step"] == "verification_unavailable" else 200)
                 return
             except ValueError as e:
                 time.sleep(0.4)  # slow down guessing
@@ -1919,17 +1958,18 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/v1/auth/otp/resend":
-            from agent import sms
             try:
                 step = auth_manager.resend_code(str(payload.get("ticket") or ""))
             except ValueError as e:
                 self._send_json({"status": "error", "error": str(e)}, 429 if "Wait" in str(e) else 400)
                 return
-            result = sms.send_sms(step["phone"], auth_manager.otp_message(step.get("purpose", "login"), step["code"]))
+            result = self._deliver_code(step)
             if not result.get("ok"):
-                self._send_json({"status": "error", "error": str(result.get("error", "SMS could not be sent"))}, 502)
+                what = "email" if step.get("channel") == "email" else "SMS"
+                self._send_json({"status": "error", "error": f"The {what} could not be sent. Try again in a moment."}, 502)
                 return
-            body = {"status": "ok", "phone_masked": step["phone_masked"], "expires_in": step.get("expires_in", auth_manager.OTP_TTL)}
+            body = {"status": "ok", "channel": step.get("channel", "sms"), "dest_masked": step["dest_masked"],
+                    "phone_masked": step["phone_masked"], "expires_in": step.get("expires_in", auth_manager.OTP_TTL)}
             if result.get("dry_run"):
                 body["dry_run_code"] = step["code"]
             self._send_json(body)

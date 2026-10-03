@@ -65,11 +65,11 @@
           </ul>
         </section>
 
-        <!-- Step 2: SMS code -->
+        <!-- Step 2: verification code (emailed, or texted when the server only has SMS) -->
         <section class="step" id="stepCode">
           <span class="eyebrow">Almost there</span>
-          <h1>Verify your phone</h1>
-          <p class="sub">We texted a 6-digit code to <span class="phone-chip" id="phoneMasked">•••</span>. It expires in <span id="countdown">5:00</span>.</p>
+          <h1 id="codeTitle">Verify your email</h1>
+          <p class="sub"><span id="codeHow">We emailed a 6-digit code to</span> <span class="phone-chip" id="phoneMasked">•••</span>. It expires in <span id="countdown">30:00</span>.<span id="codeSpam"> Not there? Check your spam folder.</span></p>
           <form id="codeForm">
             <div class="otp" id="otpBoxes" role="group" aria-label="6-digit verification code">
               <input class="otp-box" inputmode="numeric" autocomplete="one-time-code" aria-label="Digit 1">
@@ -82,16 +82,16 @@
             </div>
             <input type="hidden" id="code">
             <button class="btn btn-primary btn-block" id="codeBtn" type="submit">Verify &amp; continue</button>
-            <div class="row"><button class="link" type="button" id="resendBtn" disabled>Resend code (30s)</button><a class="link" href="/login">Wrong number? Sign in later</a></div>
+            <div class="row"><button class="link" type="button" id="resendBtn" disabled>Resend code (30s)</button><a class="link" href="/login" id="codeLater">Wrong address? Sign in later</a></div>
             <div class="msg" id="codeMsg" role="alert"></div>
           </form>
         </section>
 
-        <!-- Waiting for approval (server has no SMS) -->
+        <!-- Account created, but the server can't send a verification code right now -->
         <section class="step" id="stepPending">
-          <span class="eyebrow">All set</span>
-          <h1>Thanks — we're reviewing your account</h1>
-          <div class="notice" id="pendingMsg">Your account is waiting for approval. We'll be in touch once it's activated.</div>
+          <span class="eyebrow">Account created</span>
+          <h1>We couldn't send your verification email</h1>
+          <div class="notice" id="pendingMsg">Your account is created, but this site can't send the verification email right now. Please try signing in again later.</div>
           <div class="actions"><a class="btn btn-ghost btn-block" href="/login">Back to sign in</a></div>
         </section>
       </div>
@@ -243,7 +243,12 @@
   }
   function enterCodeStep(d) {
     ticket = d.ticket;
-    $("phoneMasked").textContent = d.phone_masked || "your phone";
+    var email = d.channel !== "sms";
+    $("codeTitle").textContent = email ? "Verify your email" : "Verify your phone";
+    $("codeHow").textContent = email ? "We emailed a 6-digit code to" : "We texted a 6-digit code to";
+    $("codeSpam").hidden = !email;
+    $("codeLater").textContent = email ? "Wrong address? Sign in later" : "Wrong number? Sign in later";
+    $("phoneMasked").textContent = d.dest_masked || d.phone_masked || (email ? "your email" : "your phone");
     $("code").value = "";
     otpBoxes.forEach(function (b) { b.value = ""; b.classList.remove("filled"); });
     if (d.sms_error) msg($("codeMsg"), d.sms_error, false);

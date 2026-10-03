@@ -876,12 +876,14 @@ class AuthManager:
         }
 
     # ── SMS one-time codes (step 2 after the password) ───────────────────────
-    OTP_TTL = 300          # seconds a code stays valid
+    OTP_TTL = 300          # seconds an SMS code stays valid
+    EMAIL_CODE_TTL = 1800  # an emailed code: mail can take a while to arrive
     OTP_RESEND_AFTER = 30  # seconds before another code may be sent for the same login
     OTP_MAX_ATTEMPTS = 5
     TICKET_TTL = 600       # seconds a password-verified login may wait for its code
     SIGNUP_TICKET_TTL = 1800  # a new sign-up may take longer to find its phone
     TICKET_PURPOSES = ("login", "signup")
+    CODE_CHANNELS = ("sms", "email")
 
     @staticmethod
     def normalize_phone(raw: str) -> str:
@@ -901,28 +903,52 @@ class AuthManager:
             self._login_tickets.pop(k, None)
         return self._login_tickets
 
-    def begin_two_step(self, user: AuthUser, remember: bool, user_agent: str = "", purpose: str = "login") -> Dict[str, Any]:
-        """After a correct password (or a new sign-up): issue a pending ticket and a fresh SMS code for
-        the user's phone. purpose="signup" makes complete_two_step activate the pending workspace."""
+    def begin_two_step(self, user: AuthUser, remember: bool, user_agent: str = "", purpose: str = "login",
+                       channel: str = "sms") -> Dict[str, Any]:
+        """After a correct password (or a new sign-up): issue a pending ticket and a fresh code, sent by
+        SMS to the user's phone or by email to their address (channel). purpose="signup" makes
+        complete_two_step activate the pending workspace."""
         if purpose not in self.TICKET_PURPOSES:
             raise ValueError(f"Unknown verification purpose '{purpose}'")
-        phone = self.normalize_phone(user.phone)
-        if not phone:
-            raise ValueError("No phone number on this account")
+        if channel not in self.CODE_CHANNELS:
+            raise ValueError(f"Unknown verification channel '{channel}'")
+        if channel == "email":
+            phone = ""
+            dest = (user.email or "").strip()
+            if "@" not in dest:
+                raise ValueError("No email address on this account")
+        else:
+            phone = dest = self.normalize_phone(user.phone)
+            if not phone:
+                raise ValueError("No phone number on this account")
         if purpose == "signup" and not self.is_signup_pending(user.workspace_id):
             raise ValueError("This account does not need verification")
         ticket = secrets.token_urlsafe(24)
         code = f"{secrets.randbelow(1_000_000):06d}"
         salt = secrets.token_hex(8)
         now = time.time()
+        ttl = self.code_ttl(channel)
         self._tickets()[hashlib.sha256(ticket.encode()).hexdigest()] = {
-            "user_id": user.user_id, "phone": phone, "remember": bool(remember), "user_agent": (user_agent or "")[:200],
+            "user_id": user.user_id, "phone": phone, "channel": channel, "dest": dest,
+            "remember": bool(remember), "user_agent": (user_agent or "")[:200],
             "code_hash": hashlib.sha256((salt + code).encode()).hexdigest(), "salt": salt, "purpose": purpose,
-            "sent_at": now, "code_expires_at": now + self.OTP_TTL, "attempts": 0,
-            "expires_at": now + (self.SIGNUP_TICKET_TTL if purpose == "signup" else self.TICKET_TTL),
+            "sent_at": now, "code_expires_at": now + ttl, "attempts": 0,
+            "expires_at": max(now + ttl, now + (self.SIGNUP_TICKET_TTL if purpose == "signup" else self.TICKET_TTL)),
         }
-        return {"ticket": ticket, "code": code, "phone": phone, "phone_masked": self.mask_phone(phone),
-                "purpose": purpose, "expires_in": self.OTP_TTL}
+        masked = self.mask_email(dest) if channel == "email" else self.mask_phone(dest)
+        return {"ticket": ticket, "code": code, "channel": channel, "dest": dest, "dest_masked": masked,
+                "phone": phone, "phone_masked": masked, "purpose": purpose, "expires_in": ttl}
+
+    def code_ttl(self, channel: str) -> int:
+        return self.EMAIL_CODE_TTL if channel == "email" else self.OTP_TTL
+
+    @staticmethod
+    def mask_email(email: str) -> str:
+        """'gunaprakash575@gmail.com' -> 'gu••••••••••75@gmail.com'."""
+        local, _, domain = (email or "").partition("@")
+        if len(local) <= 4:
+            return (local[:1] + "•" * max(1, len(local) - 1)) + "@" + domain
+        return local[:2] + "•" * (len(local) - 4) + local[-2:] + "@" + domain
 
     @staticmethod
     def otp_message(purpose: str, code: str) -> str:
@@ -939,12 +965,16 @@ class AuthManager:
             raise ValueError(f"Wait {int(self.OTP_RESEND_AFTER - (now - rec['sent_at']))}s before requesting another code")
         code = f"{secrets.randbelow(1_000_000):06d}"
         salt = secrets.token_hex(8)
-        code_exp = now + self.OTP_TTL
+        channel = rec.get("channel", "sms")
+        ttl = self.code_ttl(channel)
+        code_exp = now + ttl
         ticket_exp = max(float(rec.get("expires_at", 0)), code_exp)
         rec.update(code_hash=hashlib.sha256((salt + code).encode()).hexdigest(), salt=salt, sent_at=now,
                    code_expires_at=code_exp, expires_at=ticket_exp, attempts=0)
-        return {"code": code, "phone": rec["phone"], "phone_masked": self.mask_phone(rec["phone"]), "expires_in": self.OTP_TTL,
-                "purpose": rec.get("purpose", "login")}
+        dest = rec.get("dest") or rec["phone"]
+        masked = self.mask_email(dest) if channel == "email" else self.mask_phone(dest)
+        return {"code": code, "channel": channel, "dest": dest, "dest_masked": masked, "phone": rec["phone"],
+                "phone_masked": masked, "expires_in": ttl, "purpose": rec.get("purpose", "login")}
 
     def complete_two_step(self, ticket: str, code: str) -> Tuple[str, Dict[str, Any]]:
         key = hashlib.sha256((ticket or "").encode()).hexdigest()
@@ -967,8 +997,9 @@ class AuthManager:
         if rec.get("purpose") == "signup":
             if not self.is_signup_pending(user.workspace_id):
                 raise ValueError("This account can no longer be verified. Contact support.")
-            self.activate_signup(user.workspace_id, via="sms")
-            return self.create_session(user, remember=rec["remember"], user_agent=rec["user_agent"], method="signup+sms")
+            channel = rec.get("channel", "sms")
+            self.activate_signup(user.workspace_id, via=channel)
+            return self.create_session(user, remember=rec["remember"], user_agent=rec["user_agent"], method=f"signup+{channel}")
         return self.create_session(user, remember=rec["remember"], user_agent=rec["user_agent"], method="password+sms")
 
     # ── Current profile (sidebar) ────────────────────────────────────────────
