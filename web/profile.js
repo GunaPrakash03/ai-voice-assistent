@@ -25,6 +25,7 @@
     users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
     softphone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h.01M12 7h.01M15 7h.01M9 11h.01M12 11h.01M15 11h.01M9 15h.01M12 15h.01M15 15h.01M12 19h.01"/>',
     branding: '<circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.56-2.5 5.56-5.55C21.97 6.01 17.46 2 12 2z"/>',
+    cases: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
     chart: '<path d="M3 3v18h18M18 17V9M13 17V5M8 17v-3"/>',
     cost: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/>',
     dot: '<circle cx="12" cy="12" r="3"/>',
@@ -35,7 +36,7 @@
   function icon(name) {
     return '<svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || ICONS.dot) + '</svg>';
   }
-  var ROUTE_ICONS = { "": "overview", calls: "calls", "call-detail": "detail", "sip-trunks": "trunks", "phone-numbers": "market",
+  var ROUTE_ICONS = { "": "overview", calls: "calls", cases: "cases", "call-detail": "detail", "sip-trunks": "trunks", "phone-numbers": "market",
     agents: "agents", "agent-builder": "agents", webhooks: "webhooks", "api-keys": "keys", profile: "user", "user-guide": "guide",
     "admin-guide": "guide", organizations: "orgs", users: "users", softphone: "softphone", "competitor-analysis": "chart",
     "cost-comparison": "cost", "live-console": "calls" };
@@ -81,6 +82,7 @@
     { href: "/", label: "Overview", v: "overview" },
     { href: "/calls", label: "Calls", v: "calls" },
     { href: "/call-detail", label: "Call detail", v: "detail" },
+    { href: "/cases", label: "Cases" },
     { href: "/agents", label: "Agents", v: "agents", role: "admin", also: ["/agent-builder"] },
     { href: "/sip-trunks", label: "SIP Trunks & DIDs", v: "telephony", role: "admin" },
     { href: "/phone-numbers", label: "Buy Phone Numbers", v: "market", role: "admin", tag: "DID" },

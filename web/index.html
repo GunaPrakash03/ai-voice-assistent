@@ -2406,6 +2406,9 @@
   startPolling();
 
   if (window.location.hash || location.pathname.replace(BASE, "") !== "/") { applyPath(); }
+  // /call-detail?call=<id> opens that call (linked from the Cases page).
+  var linkedCall = new URLSearchParams(location.search).get("call");
+  if (linkedCall) { openCall(linkedCall); }
 })();
 </script>
 

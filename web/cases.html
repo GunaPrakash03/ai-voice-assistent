@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cases — Call Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
+    --rail-ink:#A8AEC4; --rail-on:#FFFFFF;
+    --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
+    --line:#DDE0E9; --line-soft:#EBEDF3;
+    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
+    --pos:#2F7A4F; --pos-soft:#E6F2EA;
+    --neu:#5A6480; --neu-soft:#EDEFF4;
+    --neg:#A32F26; --neg-soft:#FAEAE8;
+    --warn:#B45309; --warn-soft:#FEF6E7;
+    --info:#2563EB; --info-soft:#EFF4FF;
+    --f-ui:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    --f-mono:"Geist Mono","SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
+      --rail-ink:#767D96; --rail-on:#FFFFFF;
+      --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
+      --line:#262B3A; --line-soft:#1C2130;
+      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
+      --pos:#5FBF88; --pos-soft:#12251A;
+      --neu:#8891AB; --neu-soft:#1A1F2C;
+      --neg:#E0776C; --neg-soft:#2A1513;
+      --warn:#FBBF24; --warn-soft:rgba(251,191,36,.12);
+      --info:#93B4FF; --info-soft:rgba(147,180,255,.12);
+    }
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
+  .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
+  .brand{padding:0 18px 18px;margin-bottom:14px}
+  .brand b{color:var(--rail-on);font-size:15px;font-weight:700;display:block}
+  .brand span{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+  .nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
+  .nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
+  .nav a.active{background:var(--accent);color:#fff;font-weight:600}
+  .rail-foot{margin-top:auto;padding:14px 18px 0}
+
+  .top{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  h1{font-size:20px;font-weight:700;margin:0}
+  .crumb{font-size:12px;color:var(--ink-faint);margin-bottom:2px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 15px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;background:var(--accent);color:#fff;font-family:var(--f-ui);text-decoration:none}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-soft)}
+  .btn.sm{padding:4px 10px;font-size:12px}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn:focus-visible,.icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  main{padding:24px 28px 60px;display:flex;flex-direction:column;gap:20px}
+
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+  .kpi .k{font-size:12px;color:var(--ink-faint)}
+  .kpi .v{font-family:var(--f-mono);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:4px}
+  .kpi .s{font-size:11.5px;color:var(--ink-soft)}
+
+  .layout{display:flex;flex-direction:column;gap:20px}
+  .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px}
+  .filters .f{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .filters label{font-size:11.5px;color:var(--ink-faint)}
+  .filters input,.filters select{padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font:13px var(--f-ui)}
+  .filters .grow{flex:1 1 220px}
+  .filters .grow input{width:100%}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .card-h{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .card-h h2{font-size:14px;margin:0}
+  .card-h .meta{font-size:12px;color:var(--ink-faint)}
+  table{width:100%;border-collapse:collapse;text-align:left}
+  th{background:var(--sunk);color:var(--ink-soft);font-size:11.5px;font-weight:600;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th button{all:unset;cursor:pointer;display:inline-flex;gap:4px;align-items:center}
+  th button:focus-visible{outline:2px solid var(--accent)}
+  td{padding:11px 14px;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .sub{display:block;font-size:12px;color:var(--ink-faint)}
+  .client b{font-weight:600}
+  .summary{display:block;font-size:12px;color:var(--ink-soft);max-width:34ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+  .st-new{background:var(--info-soft);color:var(--info)}
+  .st-in_progress{background:var(--warn-soft);color:var(--warn)}
+  .st-on_hold{background:var(--neu-soft);color:var(--neu)}
+  .st-closed{background:var(--pos-soft);color:var(--pos)}
+  select.status{border:1px solid var(--line);border-radius:999px;padding:3px 8px;font:600 12px var(--f-ui);background:var(--panel);color:var(--ink)}
+
+  .staff{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:2px 8px 2px 2px;border:1px solid var(--line);border-radius:999px;font-size:12px;background:var(--panel);white-space:nowrap}
+  .av{width:20px;height:20px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;font:600 10px var(--f-mono)}
+  .unassigned{font-size:12px;color:var(--warn);font-weight:600}
+  .src a{color:var(--accent);text-decoration:none;font-weight:500}
+  .src a:hover{text-decoration:underline}
+  .empty{padding:36px 16px;text-align:center;color:var(--ink-faint)}
+
+  .load{list-style:none;margin:0;padding:6px 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+  .load li{padding:8px 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center}
+  .load .nm{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .load .ct{font-family:var(--f-mono);font-size:12px;color:var(--ink-soft)}
+  .load .bar{grid-column:1 / -1;height:5px;background:var(--sunk);border-radius:99px;overflow:hidden}
+  .load .bar i{display:block;height:100%;background:var(--accent)}
+  .load .hint{grid-column:1 / -1;padding:8px 16px 12px;font-size:12px;color:var(--ink-faint);display:block}
+
+  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(19,23,37,.55);align-items:center;justify-content:center;z-index:9999;padding:16px}
+  .modal-backdrop.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:100%;max-width:460px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+  .modal-h{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .modal-h h3{margin:0;font-size:16px}
+  .modal-b{padding:18px 20px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+  .modal-f{padding:12px 20px;background:var(--sunk);border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+  .icon-btn{font-size:16px;line-height:1;width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;color:var(--ink-soft);border:1px solid var(--line);background:transparent}
+  .fg label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;font-weight:500}
+  .fg input,.fg textarea{width:100%;padding:8px 11px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:13px var(--f-ui)}
+  .fg textarea{min-height:80px;resize:vertical;font-family:var(--f-ui)}
+  .pick{display:flex;flex-direction:column;gap:2px}
+  .pick label{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer}
+  .pick label:hover{background:var(--sunk)}
+  .pick .who{flex:1;min-width:0}
+  .pick .who b{display:block;font-size:13px;font-weight:600}
+  .pick .who span{font-size:12px;color:var(--ink-faint)}
+  .pick .ct{font-family:var(--f-mono);font-size:11.5px;color:var(--ink-faint);white-space:nowrap}
+  .err{color:var(--neg);font-size:12.5px;min-height:1em}
+  #toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:var(--ground);padding:10px 18px;border-radius:8px;font-size:13px;display:none;z-index:10000}
+  #toast.show{display:block}
+
+  @media (max-width:860px){main{padding:18px 16px 48px}.top{padding:12px 16px}}
+</style>
+<link rel="stylesheet" href="/theme.css?v=7">
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div class="nav">
+      <a href="/">Overview</a>
+      <a href="/calls">Calls</a>
+      <a href="/cases" class="active">Cases</a>
+    </div>
+    <div class="rail-foot"><!-- profile card is injected here by /profile.js --></div>
+  </nav>
+
+  <div>
+    <header class="top">
+      <div>
+        <div class="crumb" id="crumb">Workspace</div>
+        <h1 id="title">Cases</h1>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" id="btnNew" hidden>+ New case</button>
+        <button class="btn ghost" id="btnRefresh">↻ Refresh</button>
+      </div>
+    </header>
+
+    <main>
+      <div class="kpis" id="kpis">
+        <div class="kpi"><div class="k">Open cases</div><div class="v" id="kOpen">–</div><div class="s">New, in progress or on hold</div></div>
+        <div class="kpi"><div class="k">Registered this week</div><div class="v" id="kWeek">–</div><div class="s">Last 7 days</div></div>
+        <div class="kpi" id="kUnassignedCard"><div class="k">Unassigned</div><div class="v" id="kUnassigned">–</div><div class="s">Open cases with no staff</div></div>
+        <div class="kpi"><div class="k">Closed</div><div class="v" id="kClosed">–</div><div class="s">All time</div></div>
+      </div>
+
+      <div class="layout" id="layout">
+        <section>
+          <div class="filters">
+            <div class="f grow"><label for="q">Search</label><input id="q" type="search" placeholder="Client, phone, case type or summary"></div>
+            <div class="f"><label for="fStatus">Status</label>
+              <select id="fStatus"><option value="">All statuses</option><option value="open">Open (not closed)</option></select></div>
+            <div class="f" id="fStaffWrap" hidden><label for="fStaff">Staff</label>
+              <select id="fStaff"><option value="">Everyone</option><option value="__none">Unassigned</option></select></div>
+            <div class="f"><label for="fFrom">Registered from</label><input id="fFrom" type="date"></div>
+            <div class="f"><label for="fTo">to</label><input id="fTo" type="date"></div>
+            <button class="btn ghost sm" id="btnClear" style="margin-bottom:2px">Clear</button>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h2 id="listTitle">All cases</h2><span class="meta" id="listMeta"></span></div>
+            <div class="table-scroll">
+              <table>
+                <thead><tr>
+                  <th><button id="sortDate" aria-label="Sort by registration date">Registered <span id="sortArrow">↓</span></button></th>
+                  <th>Client</th>
+                  <th>Case type</th>
+                  <th>Status</th>
+                  <th>Assigned staff</th>
+                  <th>Source</th>
+                </tr></thead>
+                <tbody id="tbody"><tr><td colspan="6" class="empty">Loading cases…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <aside class="card" id="workload" hidden>
+          <div class="card-h"><h2>Staff workload</h2><span class="meta">Open cases</span></div>
+          <ul class="load" id="loadList"></ul>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="mAssign" role="dialog" aria-modal="true" aria-labelledby="mAssignTitle">
+  <div class="modal">
+    <div class="modal-h"><h3 id="mAssignTitle">Assign staff</h3><button class="icon-btn" data-close aria-label="Close" title="Close">✕</button></div>
+    <div class="modal-b">
+      <div style="font-size:13px;color:var(--ink-soft)" id="mAssignFor"></div>
+      <div class="pick" id="pickList"></div>
+      <div class="err" id="assignErr"></div>
+    </div>
+    <div class="modal-f"><button class="btn ghost" data-close>Cancel</button><button class="btn" id="btnSaveAssign">Save</button></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="mNew" role="dialog" aria-modal="true" aria-labelledby="mNewTitle">
+  <div class="modal">
+    <div class="modal-h"><h3 id="mNewTitle">New case</h3><button class="icon-btn" data-close aria-label="Close" title="Close">✕</button></div>
+    <form id="formNew">
+      <div class="modal-b">
+        <div class="fg"><label for="nName">Client name *</label><input id="nName" required maxlength="120"></div>
+        <div class="fg"><label for="nPhone">Phone</label><input id="nPhone" type="tel" maxlength="40"></div>
+        <div class="fg"><label for="nEmail">Email</label><input id="nEmail" type="email" maxlength="160"></div>
+        <div class="fg"><label for="nType">Case type</label><input id="nType" maxlength="80" placeholder="e.g. Personal Injury"></div>
+        <div class="fg"><label for="nSummary">Summary</label><textarea id="nSummary" maxlength="2000"></textarea></div>
+        <div class="err" id="newErr"></div>
+      </div>
+      <div class="modal-f"><button type="button" class="btn ghost" data-close>Cancel</button><button class="btn" type="submit">Create case</button></div>
+    </form>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script>
+(function () {
+  var LABEL = { new: "New", in_progress: "In progress", on_hold: "On hold", closed: "Closed" };
+  var state = { cases: [], staff: null, statuses: ["new", "in_progress", "on_hold", "closed"], isAdmin: false, sortDesc: true, assigning: null };
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function initials(n) { return String(n || "?").split(/\s+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join("") || "?"; }
+  function fmtDate(ts) {
+    var d = new Date(ts * 1000);
+    return { day: d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }),
+             time: d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) };
+  }
+  function toast(msg) { var t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove("show"); }, 2600); }
+  function api(path, body) {
+    var opts = body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {};
+    return fetch(path, opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok || j.status === "error") throw new Error(j.error || ("Request failed (" + r.status + ")"));
+        return j;
+      });
+    });
+  }
+
+  // ── Load ───────────────────────────────────────────────────────────────
+  function load() {
+    var qs = [];
+    if ($("fFrom").value) qs.push("from=" + $("fFrom").value);
+    if ($("fTo").value) qs.push("to=" + $("fTo").value);
+    return api("/api/v1/cases" + (qs.length ? "?" + qs.join("&") : "")).then(function (j) {
+      state.cases = j.cases || [];
+      state.statuses = j.statuses || state.statuses;
+      state.isAdmin = Array.isArray(j.staff);
+      state.staff = j.staff || null;
+      setupRole();
+      render();
+    }).catch(function (e) {
+      $("tbody").innerHTML = '<tr><td colspan="6" class="empty" style="color:var(--neg)">Could not load cases: ' + esc(e.message) + '</td></tr>';
+    });
+  }
+
+  var roleReady = false;
+  function setupRole() {
+    if (roleReady) { fillStaffFilter(); return; }
+    roleReady = true;
+    var st = $("fStatus");
+    state.statuses.forEach(function (s) { var o = document.createElement("option"); o.value = s; o.textContent = LABEL[s] || s; st.appendChild(o); });
+    if (state.isAdmin) {
+      $("btnNew").hidden = false;
+      $("fStaffWrap").hidden = false;
+      $("workload").hidden = false;
+      fillStaffFilter();
+    } else {
+      $("title").textContent = "My cases";
+      $("crumb").textContent = "Cases assigned to you";
+      $("listTitle").textContent = "Assigned to you";
+      $("kUnassignedCard").hidden = true;
+    }
+  }
+  function fillStaffFilter() {
+    var sel = $("fStaff"), keep = sel.value;
+    Array.prototype.slice.call(sel.options, 2).forEach(function (o) { o.remove(); });
+    (state.staff || []).forEach(function (s) { var o = document.createElement("option"); o.value = s.user_id; o.textContent = s.name; sel.appendChild(o); });
+    sel.value = keep;
+    if (sel.value !== keep) sel.value = "";
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────
+  function filtered() {
+    var q = $("q").value.trim().toLowerCase(), st = $("fStatus").value, sf = $("fStaff").value;
+    var list = state.cases.filter(function (c) {
+      if (st === "open" && c.status === "closed") return false;
+      if (st && st !== "open" && c.status !== st) return false;
+      if (sf === "__none" && c.assigned_staff.length) return false;
+      if (sf && sf !== "__none" && c.assigned_staff.indexOf(sf) < 0) return false;
+      if (q && [c.client_name, c.phone, c.email, c.case_type, c.summary].join(" ").toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+    list.sort(function (a, b) { return state.sortDesc ? b.registered_at - a.registered_at : a.registered_at - b.registered_at; });
+    return list;
+  }
+
+  function render() {
+    var all = state.cases, weekAgo = Date.now() / 1000 - 7 * 86400;
+    var open = all.filter(function (c) { return c.status !== "closed"; });
+    $("kOpen").textContent = open.length;
+    $("kWeek").textContent = all.filter(function (c) { return c.registered_at >= weekAgo; }).length;
+    $("kUnassigned").textContent = open.filter(function (c) { return !c.assigned_staff.length; }).length;
+    $("kClosed").textContent = all.length - open.length;
+
+    var list = filtered();
+    $("listMeta").textContent = list.length === all.length ? all.length + " cases" : list.length + " of " + all.length + " cases";
+    $("sortArrow").textContent = state.sortDesc ? "↓" : "↑";
+    if (!list.length) {
+      var none = !all.length
+        ? (state.isAdmin ? "No cases yet. Cases appear here after intake calls, or add one with New case."
+                         : "No cases are assigned to you yet. An admin assigns cases from this page.")
+        : "No cases match these filters.";
+      $("tbody").innerHTML = '<tr><td colspan="6" class="empty">' + esc(none) + "</td></tr>";
+    } else {
+      $("tbody").innerHTML = list.map(row).join("");
+    }
+    renderWorkload();
+  }
+
+  function row(c) {
+    var d = fmtDate(c.registered_at);
+    var status = state.isAdmin
+      ? '<select class="status st-' + esc(c.status) + '" data-status="' + esc(c.case_id) + '" aria-label="Status for ' + esc(c.client_name) + '">' +
+          state.statuses.map(function (s) { return '<option value="' + s + '"' + (s === c.status ? " selected" : "") + ">" + esc(LABEL[s] || s) + "</option>"; }).join("") + "</select>"
+      : '<span class="pill st-' + esc(c.status) + '">' + esc(LABEL[c.status] || c.status) + "</span>";
+    var chips = c.staff.map(function (s) { return '<span class="chip" title="' + esc(s.email) + '"><span class="av">' + esc(initials(s.name)) + "</span>" + esc(s.name) + "</span>"; }).join("");
+    if (!chips) chips = '<span class="unassigned">Unassigned</span>';
+    var assign = state.isAdmin ? ' <button class="btn ghost sm" data-assign="' + esc(c.case_id) + '">' + (c.staff.length ? "Edit" : "Assign") + "</button>" : "";
+    var src = c.source === "call" && c.call_id
+      ? '<a href="/call-detail?call=' + encodeURIComponent(c.call_id) + '">Intake call</a>'
+      : "Added by hand";
+    if (c.clio_matter_id) src += '<span class="sub">Clio matter ' + esc(c.clio_matter_id) + "</span>";
+    return "<tr>" +
+      '<td class="num">' + esc(d.day) + '<span class="sub">' + esc(d.time) + "</span></td>" +
+      '<td class="client"><b>' + esc(c.client_name) + "</b>" +
+        (c.phone ? '<span class="sub num">' + esc(c.phone) + "</span>" : "") +
+        (c.summary ? '<span class="summary" title="' + esc(c.summary) + '">' + esc(c.summary) + "</span>" : "") + "</td>" +
+      "<td>" + (c.case_type ? esc(c.case_type) : '<span class="sub">Not set</span>') + "</td>" +
+      "<td>" + status + "</td>" +
+      '<td><div class="staff">' + chips + assign + "</div></td>" +
+      '<td class="src">' + src + "</td>" +
+    "</tr>";
+  }
+
+  function renderWorkload() {
+    if (!state.isAdmin) return;
+    var staff = (state.staff || []).slice().sort(function (a, b) { return b.open_cases - a.open_cases || a.name.localeCompare(b.name); });
+    var max = Math.max(1, staff.reduce(function (m, s) { return Math.max(m, s.open_cases); }, 0));
+    $("loadList").innerHTML = staff.length
+      ? staff.map(function (s) {
+          return '<li><span class="nm" title="' + esc(s.email) + '">' + esc(s.name) + '</span><span class="ct">' + s.open_cases + "</span>" +
+                 '<span class="bar"><i style="width:' + (s.open_cases / max * 100) + '%"></i></span></li>';
+        }).join("") + '<li class="hint">Add law staff as Member Admins on the Profile page (Members).</li>'
+      : '<li class="hint">No staff yet. Add law staff as Member Admins on the Profile page (Members).</li>';
+  }
+
+  // ── Actions ────────────────────────────────────────────────────────────
+  function replaceCase(c) {
+    state.cases = state.cases.map(function (x) { return x.case_id === c.case_id ? c : x; });
+  }
+  function refreshStaffCounts() {
+    if (!state.isAdmin) return;
+    // Counts come from the server; re-read them quietly after a change.
+    api("/api/v1/cases").then(function (j) { state.staff = j.staff || state.staff; renderWorkload(); }).catch(function () {});
+  }
+
+  $("tbody").addEventListener("change", function (e) {
+    var id = e.target.getAttribute("data-status");
+    if (!id) return;
+    var sel = e.target, prev = (state.cases.filter(function (c) { return c.case_id === id; })[0] || {}).status;
+    sel.disabled = true;
+    api("/api/v1/cases/status", { case_id: id, status: sel.value }).then(function (j) {
+      replaceCase(j.case); render(); refreshStaffCounts(); toast("Status changed to " + (LABEL[j.case.status] || j.case.status));
+    }).catch(function (err) { sel.value = prev; sel.disabled = false; toast(err.message); });
+  });
+
+  $("tbody").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-assign]");
+    if (b) openAssign(b.getAttribute("data-assign"));
+  });
+
+  function openModal(id) { $(id).classList.add("show"); var f = $(id).querySelector("input,button:not([data-close])"); if (f) f.focus(); }
+  function closeModals() { Array.prototype.forEach.call(document.querySelectorAll(".modal-backdrop.show"), function (m) { m.classList.remove("show"); }); }
+  Array.prototype.forEach.call(document.querySelectorAll("[data-close]"), function (b) { b.addEventListener("click", closeModals); });
+  Array.prototype.forEach.call(document.querySelectorAll(".modal-backdrop"), function (m) { m.addEventListener("click", function (e) { if (e.target === m) closeModals(); }); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeModals(); });
+
+  function openAssign(id) {
+    var c = state.cases.filter(function (x) { return x.case_id === id; })[0];
+    if (!c) return;
+    state.assigning = id;
+    $("mAssignFor").textContent = c.client_name + (c.case_type ? " · " + c.case_type : "");
+    $("assignErr").textContent = "";
+    var staff = state.staff || [];
+    $("pickList").innerHTML = staff.length ? staff.map(function (s) {
+      return '<label><input type="checkbox" value="' + esc(s.user_id) + '"' + (c.assigned_staff.indexOf(s.user_id) >= 0 ? " checked" : "") + ">" +
+             '<span class="av">' + esc(initials(s.name)) + '</span><span class="who"><b>' + esc(s.name) + "</b><span>" + esc(s.email) + "</span></span>" +
+             '<span class="ct">' + s.open_cases + " open</span></label>";
+    }).join("") : '<div class="empty" style="padding:16px">No staff in this workspace yet. Add law staff as Member Admins on the Profile page.</div>';
+    openModal("mAssign");
+  }
+  $("btnSaveAssign").addEventListener("click", function () {
+    var ids = Array.prototype.map.call($("pickList").querySelectorAll("input:checked"), function (i) { return i.value; });
+    var btn = this; btn.disabled = true;
+    api("/api/v1/cases/assign", { case_id: state.assigning, user_ids: ids, mode: "set" }).then(function (j) {
+      replaceCase(j.case); closeModals(); render(); refreshStaffCounts();
+      toast(j.case.staff.length ? "Assigned " + j.case.staff.map(function (s) { return s.name; }).join(", ") : "Case unassigned");
+    }).catch(function (err) { $("assignErr").textContent = err.message; }).then(function () { btn.disabled = false; });
+  });
+
+  $("btnNew").addEventListener("click", function () { $("formNew").reset(); $("newErr").textContent = ""; openModal("mNew"); });
+  $("formNew").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var btn = this.querySelector("[type=submit]"); btn.disabled = true;
+    api("/api/v1/cases", { client_name: $("nName").value, phone: $("nPhone").value, email: $("nEmail").value,
+                           case_type: $("nType").value, summary: $("nSummary").value }).then(function (j) {
+      state.cases.unshift(j.case); closeModals(); render(); toast("Case created for " + j.case.client_name);
+    }).catch(function (err) { $("newErr").textContent = err.message; }).then(function () { btn.disabled = false; });
+  });
+
+  ["q"].forEach(function (id) { $(id).addEventListener("input", render); });
+  ["fStatus", "fStaff"].forEach(function (id) { $(id).addEventListener("change", render); });
+  ["fFrom", "fTo"].forEach(function (id) { $(id).addEventListener("change", load); });
+  $("btnClear").addEventListener("click", function () {
+    var reload = $("fFrom").value || $("fTo").value;
+    $("q").value = ""; $("fStatus").value = ""; $("fStaff").value = ""; $("fFrom").value = ""; $("fTo").value = "";
+    if (reload) load(); else render();
+  });
+  $("sortDate").addEventListener("click", function () { state.sortDesc = !state.sortDesc; render(); });
+  $("btnRefresh").addEventListener("click", function () { load().then(function () { toast("Cases refreshed"); }); });
+
+  load();
+})();
+</script>
+<script src="/profile.js?v=5"></script>
+</body>
+</html>
