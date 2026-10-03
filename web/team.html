@@ -87,6 +87,11 @@
   .cases a:hover{text-decoration:underline}
   .actions{display:flex;gap:6px;justify-content:flex-end;white-space:nowrap}
   .empty{padding:36px 16px;text-align:center;color:var(--ink-faint)}
+  .clio-cell{white-space:nowrap}
+  .clio-cell .linked{font-family:var(--f-mono);font-size:12.5px}
+  .clio-cell input{width:110px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font:12.5px var(--f-mono)}
+  .linkbtn{all:unset;cursor:pointer;color:var(--accent);font-weight:600;font-size:12.5px}
+  .linkbtn:focus-visible{outline:2px solid var(--accent)}
 
   .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(19,23,37,.55);align-items:center;justify-content:center;z-index:9999;padding:16px}
   .modal-backdrop.show{display:flex}
@@ -161,8 +166,8 @@
         </div>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Member</th><th>Role</th><th>Phone</th><th>Cases</th><th>Last sign-in</th><th>Added</th><th></th></tr></thead>
-            <tbody id="tbody"><tr><td colspan="7" class="empty">Loading team…</td></tr></tbody>
+            <thead><tr><th>Member</th><th>Role</th><th>Phone</th><th>Cases</th><th class="clio-col" title="Used to set the Responsible Attorney on Clio matters">Clio user</th><th>Last sign-in</th><th>Added</th><th></th></tr></thead>
+            <tbody id="tbody"><tr><td colspan="8" class="empty">Loading team…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -213,7 +218,7 @@
 <script>
 (function () {
   var ROLE = { super_admin: "Super Admin", admin: "Product Admin", member_admin: "Member Admin" };
-  var state = { members: [], canAdd: [], confirming: null, unassigned: 0 };
+  var state = { members: [], canAdd: [], confirming: null, unassigned: 0, clio: false, editingClio: null };
   var $ = function (id) { return document.getElementById(id); };
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function initials(n) { return String(n || "?").split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join("") || "?"; }
@@ -242,6 +247,8 @@
       var t = r[0];
       state.members = t.members || [];
       state.canAdd = t.can_add_roles || [];
+      state.clio = !!t.clio_connected;
+      Array.prototype.forEach.call(document.querySelectorAll(".clio-col"), function (th) { th.hidden = !state.clio; });
       state.unassigned = (r[1].cases || []).filter(function (c) { return c.status !== "closed" && !c.assigned_staff.length; }).length;
       $("crumb").textContent = t.workspace || "Workspace";
       $("btnAdd").hidden = !state.canAdd.length;
@@ -249,7 +256,7 @@
       Array.prototype.forEach.call($("aRole").options, function (o) { o.hidden = state.canAdd.indexOf(o.value) < 0; });
       render();
     }).catch(function (e) {
-      $("tbody").innerHTML = '<tr><td colspan="7" class="empty" style="color:var(--neg)">Could not load the team: ' + esc(e.message) + "</td></tr>";
+      $("tbody").innerHTML = '<tr><td colspan="8" class="empty" style="color:var(--neg)">Could not load the team: ' + esc(e.message) + "</td></tr>";
     });
   }
 
@@ -262,7 +269,7 @@
     var list = m.filter(function (x) { return !q || [x.name, x.email, x.title].join(" ").toLowerCase().indexOf(q) >= 0; });
     $("meta").textContent = "· " + m.length + " active";
     if (!list.length) {
-      $("tbody").innerHTML = '<tr><td colspan="7" class="empty">' + (m.length ? "No members match." : "No members yet. Add your law staff with Add staff.") + "</td></tr>";
+      $("tbody").innerHTML = '<tr><td colspan="8" class="empty">' + (m.length ? "No members match." : "No members yet. Add your law staff with Add staff.") + "</td></tr>";
       return;
     }
     $("tbody").innerHTML = list.map(function (x) {
@@ -282,6 +289,7 @@
         '<td><span class="pill r-' + esc(x.role) + '">' + esc(ROLE[x.role] || x.role) + "</span></td>" +
         '<td class="num">' + (x.phone ? esc(x.phone) : '<span class="sub">–</span>') + "</td>" +
         '<td class="cases">' + cases + "</td>" +
+        (state.clio ? '<td class="clio-cell">' + clioCell(x) + "</td>" : "") +
         "<td>" + esc(ago(x.last_login_at)) + "</td>" +
         '<td class="num">' + esc(fmtDay(x.created_at)) + "</td>" +
         '<td><div class="actions">' + act + "</div></td>" +
@@ -291,8 +299,36 @@
     if (focus) focus.focus();
   }
 
+  function clioCell(x) {
+    if (state.editingClio === x.user_id) {
+      return '<input id="clioInput" inputmode="numeric" value="' + esc(x.clio_user_id) + '" placeholder="Clio user id" aria-label="Clio user id for ' + esc(x.name) + '"> ' +
+             '<button class="btn sm" data-clio-save="' + esc(x.user_id) + '">Save</button> <button class="btn ghost sm" data-clio-cancel>Cancel</button>';
+    }
+    return x.clio_user_id
+      ? '<span class="linked">#' + esc(x.clio_user_id) + '</span> <button class="linkbtn" data-clio-edit="' + esc(x.user_id) + '">Change</button>'
+      : '<button class="linkbtn" data-clio-edit="' + esc(x.user_id) + '" title="Otherwise matched to a Clio user by email">Link</button>';
+  }
+
   $("q").addEventListener("input", render);
+  $("tbody").addEventListener("keydown", function (e) {
+    if (e.target.id !== "clioInput") return;
+    if (e.key === "Enter") { e.preventDefault(); var b = $("tbody").querySelector("[data-clio-save]"); if (b) b.click(); }
+    if (e.key === "Escape") { e.stopPropagation(); state.editingClio = null; render(); }
+  });
   $("tbody").addEventListener("click", function (e) {
+    var ce = e.target.closest("[data-clio-edit]"), cs = e.target.closest("[data-clio-save]");
+    if (ce) { state.editingClio = ce.getAttribute("data-clio-edit"); render(); var inp = $("clioInput"); if (inp) inp.focus(); return; }
+    if (e.target.closest("[data-clio-cancel]")) { state.editingClio = null; render(); return; }
+    if (cs) {
+      cs.disabled = true;
+      api("/api/v1/team/clio", { user_id: cs.getAttribute("data-clio-save"), clio_user_id: $("clioInput").value.trim() }).then(function (j) {
+        state.editingClio = null;
+        toast(j.clio_user_id ? "Linked to Clio user #" + j.clio_user_id + (j.matters_updated ? " · " + j.matters_updated + " Clio matter" + (j.matters_updated === 1 ? "" : "s") + " updated" : "")
+                             : "Clio link removed");
+        load();
+      }).catch(function (err) { cs.disabled = false; toast(err.message); });
+      return;
+    }
     var ask = e.target.closest("[data-ask]"), rm = e.target.closest("[data-remove]");
     if (ask) { state.confirming = ask.getAttribute("data-ask"); render(); return; }
     if (e.target.closest("[data-cancel]")) { state.confirming = null; render(); return; }

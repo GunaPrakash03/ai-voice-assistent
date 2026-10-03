@@ -102,6 +102,10 @@
   .src a{color:var(--accent);text-decoration:none;font-weight:500}
   .src a:hover{text-decoration:underline}
   .empty{padding:36px 16px;text-align:center;color:var(--ink-faint)}
+  .clio{display:block;font-size:12px;margin-top:2px;max-width:24ch}
+  .clio.ok{color:var(--pos)}
+  .clio.error{color:var(--warn)}
+  .clio.skipped{color:var(--ink-faint)}
 
   .load{list-style:none;margin:0;padding:6px 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
   .load li{padding:8px 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center}
@@ -364,7 +368,12 @@
     var src = c.source === "call" && c.call_id
       ? '<a href="/call-detail?call=' + encodeURIComponent(c.call_id) + '">Intake call</a>'
       : "Added by hand";
-    if (c.clio_matter_id) src += '<span class="sub">Clio matter ' + esc(c.clio_matter_id) + "</span>";
+    if (c.clio_matter_id) {
+      src += '<span class="sub">Clio matter ' + esc(c.clio_matter_id) + "</span>";
+      var cs = c.clio_sync || {};
+      if (cs.status === "ok") src += '<span class="clio ok" title="' + esc(cs.message) + '">✓ Responsible: ' + esc(cs.attorney) + "</span>";
+      else if (cs.status) src += '<span class="clio ' + esc(cs.status) + '" title="' + esc(cs.message) + '">' + (cs.status === "error" ? "Clio not updated" : "Clio skipped") + " ⓘ</span>";
+    }
     return "<tr>" +
       '<td class="num">' + esc(d.day) + '<span class="sub">' + esc(d.time) + "</span></td>" +
       '<td class="client"><b>' + esc(c.client_name) + "</b>" +
@@ -439,7 +448,11 @@
     var btn = this; btn.disabled = true;
     api("/api/v1/cases/assign", { case_id: state.assigning, user_ids: ids, mode: "set" }).then(function (j) {
       replaceCase(j.case); closeModals(); render(); refreshStaffCounts();
-      toast(j.case.staff.length ? "Assigned " + j.case.staff.map(function (s) { return s.name; }).join(", ") : "Case unassigned");
+      var cs = j.case.clio_sync || {};
+      var fresh = cs.at && Date.now() / 1000 - cs.at < 30;
+      toast(fresh && cs.status === "error" ? cs.message
+            : (j.case.staff.length ? "Assigned " + j.case.staff.map(function (s) { return s.name; }).join(", ") : "Case unassigned") +
+              (fresh && cs.status === "ok" ? " · Clio updated" : ""));
     }).catch(function (err) { $("assignErr").textContent = err.message; }).then(function () { btn.disabled = false; });
   });
 

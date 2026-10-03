@@ -416,7 +416,7 @@ class Handler(SimpleHTTPRequestHandler):
     ADMIN_GET_PREFIXES = ("/api/v1/users", "/api/v1/workspaces", "/api/v1/team")
     ADMIN_POST_PREFIXES = ("/api/v1/users", "/api/v1/workspaces",
                            "/api/v1/auth/users", "/api/agents", "/api/telephony", "/api/webhooks",
-                           "/api/v1/calls/dispatch", "/api/v1/cases")
+                           "/api/v1/calls/dispatch", "/api/v1/cases", "/api/v1/team")
     ADMIN_PAGES = ("/admin-guide", "/cost-comparison", "/agent-builder", "/webhooks",
                    "/competitor-analysis", "/user-guide", "/agents", "/sip-trunks", "/phone-numbers",
                    "/call-desk/agents", "/call-desk/sip-trunks", "/call-desk/phone-numbers", "/team")
@@ -513,6 +513,39 @@ class Handler(SimpleHTTPRequestHandler):
             staff.append(self._staff_card(u) if u and u.active else {"user_id": uid, "name": "Removed user", "email": "", "role": ""})
         d["staff"] = staff
         return d
+
+    def _sync_clio_attorney(self, case):
+        """Makes the first assigned staff member the Clio matter's Responsible Attorney and records
+        the outcome on the case (shown on the Cases page). Cases without a Clio matter are left alone."""
+        if not case.clio_matter_id or not case.assigned_staff:
+            return case
+        from agent.clio_connector import clio_connector
+        lead = auth_manager.get_user(case.assigned_staff[0])
+        if not lead or not lead.active:
+            return case
+        name = lead.name or lead.email
+        if not (clio_connector.manage_token or os.getenv("CLIO_MANAGE_ACCESS_TOKEN")):
+            return case_manager.set_clio_sync(case.case_id, {"status": "skipped", "attorney": name,
+                                                             "message": "Clio Manage is not connected, so Clio was not updated"})
+        clio_id = lead.clio_user_id
+        if not clio_id:
+            found = clio_connector.find_user_by_email(lead.email)
+            if found["status"] == "success":
+                clio_id = str(found["user"]["id"])
+            elif found["status"] == "not_found":
+                msg = f"No Clio user has the email {lead.email}. Link {name} to their Clio user on the Team page."
+                return case_manager.set_clio_sync(case.case_id, {"status": "error", "attorney": name, "message": msg})
+            else:
+                msg = (f"Clio did not allow looking up users. Link {name} to their Clio user on the Team page."
+                       if found.get("code") == 403 else f"Could not reach Clio to look up {name}. Save the assignment again to retry.")
+                return case_manager.set_clio_sync(case.case_id, {"status": "error", "attorney": name, "message": msg})
+        res = clio_connector.set_responsible_attorney(case.clio_matter_id, clio_id)
+        if res["status"] == "success":
+            info = {"status": "ok", "attorney": name, "message": f"Responsible attorney in Clio: {name}"}
+        else:
+            info = {"status": "error", "attorney": name,
+                    "message": f"Clio did not accept {name} as responsible attorney" + (f" (HTTP {res['code']})" if res.get("code") else ". Clio could not be reached; save the assignment again to retry.")}
+        return case_manager.set_clio_sync(case.case_id, info)
 
     @staticmethod
     def _day_start(value: str) -> Optional[float]:
@@ -1457,14 +1490,17 @@ class Handler(SimpleHTTPRequestHandler):
                 members.append({
                     "user_id": d["user_id"], "name": d["name"] or d["email"], "email": d["email"], "phone": d["phone"],
                     "title": d["title"], "role": d["role"], "created_at": d["created_at"], "last_login_at": d["last_login_at"],
+                    "clio_user_id": d.get("clio_user_id", ""),
                     "open_cases": open_load.get(d["user_id"], 0), "total_cases": totals.get(d["user_id"], 0),
                     "is_me": d["user_id"] == me,
                     "can_remove": d["user_id"] != me and (v["is_super_admin"] or d["role"] != "super_admin"),
                 })
             creator_ws = v["user"].workspace_id if v["user"] else ws
             roles = [r for r in ("member_admin", "admin") if can_create_role(v["role"], creator_ws, r, ws)[0]]
+            from agent.clio_connector import clio_connector
             self._send_json({"status": "ok", "workspace_id": ws, "workspace": workspace.name if workspace else "",
-                             "members": members, "can_add_roles": roles})
+                             "members": members, "can_add_roles": roles,
+                             "clio_connected": bool(clio_connector.manage_token or os.getenv("CLIO_MANAGE_ACCESS_TOKEN"))})
             return
         elif parsed.path == "/api/v1/cases":
             v, ws = self._case_viewer()
@@ -1953,6 +1989,26 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": str(e)}, 400)
                 return
 
+        if parsed.path == "/api/v1/team/clio":
+            # Link a member to their Clio user, then retry the Clio update on cases they lead that failed.
+            v, ws = self._case_viewer()
+            member = auth_manager.get_user(str(payload.get("user_id") or ""))
+            if not member or not member.active or (member.workspace_id != ws and not v["is_super_admin"]):
+                self._send_json({"status": "error", "error": "Member not found"}, 404)
+                return
+            try:
+                member = auth_manager.set_clio_user_id(member.user_id, str(payload.get("clio_user_id") or ""))
+            except ValueError as e:
+                self._send_json({"status": "error", "error": str(e)}, 400)
+                return
+            updated = 0
+            if member.clio_user_id:
+                for c in case_manager.list_cases(member.workspace_id, assigned_to=member.user_id):
+                    if c["assigned_staff"][:1] == [member.user_id] and c["clio_matter_id"] and (c.get("clio_sync") or {}).get("status") != "ok":
+                        if self._sync_clio_attorney(case_manager.get(c["case_id"])).clio_sync.get("status") == "ok":
+                            updated += 1
+            self._send_json({"status": "ok", "user_id": member.user_id, "clio_user_id": member.clio_user_id, "matters_updated": updated})
+            return
         if parsed.path == "/api/v1/cases":
             v, ws = self._case_viewer()
             if payload.get("workspace_id") and v["is_super_admin"]:
@@ -1985,7 +2041,12 @@ class Handler(SimpleHTTPRequestHandler):
                             u = auth_manager.get_user(str(uid))
                             if not u or not u.active or u.workspace_id != case.workspace_id:
                                 raise ValueError(f"{uid} is not a member of this workspace")
+                    prev_lead = case.assigned_staff[0] if case.assigned_staff else ""
+                    retry = (case.clio_sync or {}).get("status") == "error"
                     case = case_manager.assign(case.case_id, [str(x) for x in ids], mode)
+                    new_lead = case.assigned_staff[0] if case.assigned_staff else ""
+                    if new_lead and (new_lead != prev_lead or retry):
+                        case = self._sync_clio_attorney(case)
                 else:
                     case = case_manager.set_status(case.case_id, str(payload.get("status") or ""))
             except ValueError as e:

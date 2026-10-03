@@ -50,6 +50,8 @@ class Case:
     updated_at: float = field(default_factory=time.time)
     created_by: str = ""            # user_id, "" for the system (call pipeline)
     assigned_staff: List[str] = field(default_factory=list)
+    # Last Responsible Attorney push to Clio: {status: ok|error|skipped, message, attorney, at}
+    clio_sync: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -271,6 +273,16 @@ class CaseManager:
                 raise KeyError(case_id)
             before = case.to_dict()
             case.status = status
+            return self._commit(case, before)
+
+    def set_clio_sync(self, case_id: str, info: Dict[str, Any]) -> Case:
+        with self._lock:
+            self._refresh()
+            case = self._cases.get(case_id)
+            if not case:
+                raise KeyError(case_id)
+            before = case.to_dict()
+            case.clio_sync = dict(info, at=time.time())
             return self._commit(case, before)
 
     def unassign_everywhere(self, user_id: str) -> int:

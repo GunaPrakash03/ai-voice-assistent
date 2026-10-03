@@ -210,6 +210,9 @@ class AuthUser:
     last_login_at: Optional[float] = None
     # Linked Google / Microsoft accounts ("google:<sub>", "microsoft:<tid>:<oid>"), see agent/oauth.py.
     identities: List[str] = field(default_factory=list)
+    # Clio Manage user id this member is linked to, so case assignments can set the matter's
+    # Responsible Attorney (Team page). "" = match by email when the Clio app may list users.
+    clio_user_id: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -616,6 +619,17 @@ class AuthManager:
         user.phone = (phone or "").strip()[:40]
         user.title = " ".join((title or "").split())[:80]   # e.g. Attorney, Paralegal (shown on the Team and Cases pages)
         self.set_password(user.user_id, password)
+        return user
+
+    def set_clio_user_id(self, user_id: str, clio_user_id: str) -> AuthUser:
+        user = self._users.get(user_id)
+        if not user or not user.active:
+            raise KeyError(user_id)
+        value = (clio_user_id or "").strip()
+        if value and not value.isdigit():
+            raise ValueError("A Clio user id is a number (Clio → Settings → Firm → Users, or ask Clio support)")
+        user.clio_user_id = value[:20]
+        self._save_store()
         return user
 
     def deactivate_user(self, user_id: str, acting_user_id: Optional[str] = None) -> bool:

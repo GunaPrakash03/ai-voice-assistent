@@ -8,9 +8,12 @@ Integrates Voice Agent Service with:
 import logging
 import os
 import re
+import urllib.parse
 import urllib.request
 import urllib.error
 import json
+import threading
+import time
 from typing import Any, Dict, List, Optional
 
 log = logging.getLogger("voice-agent.clio")
@@ -18,7 +21,9 @@ if not log.handlers:
     logging.basicConfig(level=logging.INFO)
 
 CLIO_GROW_API_URL = "https://grow.clio.com/api/v1/inbox_leads"
-CLIO_MANAGE_BASE_URL = "https://app.clio.com/api/v4"
+# EU / CA / AU accounts live on eu.app.clio.com etc.; tests point this at a local stand-in.
+CLIO_MANAGE_BASE_URL = os.getenv("CLIO_MANAGE_BASE_URL", "https://app.clio.com/api/v4").rstrip("/")
+USERS_CACHE_SECONDS = 600
 
 
 class ClioConnector:
@@ -36,6 +41,8 @@ class ClioConnector:
             self.enabled = enabled
         else:
             self.enabled = os.getenv("CLIO_ENABLED", "true").lower() in ("true", "1", "yes")
+        self._users_cache: Dict[str, Any] = {"at": 0.0, "result": None}
+        self._users_lock = threading.Lock()
 
     def format_grow_payload(
         self,
@@ -251,6 +258,62 @@ class ClioConnector:
             return {"status": "error", "code": e.code, "error": err_body}
         except Exception as e:
             return {"status": "error", "error": str(e)}
+
+    # ── Responsible attorney (Case Desk staff assignment) ────────────────────
+    def _manage_call(self, method: str, path: str, body: Optional[Dict[str, Any]] = None, timeout: float = 10.0) -> Dict[str, Any]:
+        token = self.manage_token or os.getenv("CLIO_MANAGE_ACCESS_TOKEN")
+        if not token:
+            return {"status": "error", "error": "Clio Manage is not connected"}
+        req = urllib.request.Request(
+            f"{CLIO_MANAGE_BASE_URL}{path}",
+            data=json.dumps(body).encode("utf-8") if body is not None else None,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
+                     "Accept": "application/json", "User-Agent": "Voice-Agent-Service/1.0"},
+            method=method,
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return {"status": "success", "data": json.loads(resp.read().decode("utf-8") or "{}").get("data")}
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")
+            log.warning("Clio Manage %s %s failed %d: %s", method, path.split("?")[0], e.code, err_body[:300])
+            return {"status": "error", "code": e.code, "error": err_body[:300]}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+    def list_users(self, refresh: bool = False) -> Dict[str, Any]:
+        """Clio firm users ({id, name, email}), cached for a few minutes. Needs the Clio app's Users
+        permission; without it Clio answers 403 and the result says so (code 403)."""
+        with self._users_lock:
+            cached = self._users_cache
+            if not refresh and cached["result"] is not None and time.time() - cached["at"] < USERS_CACHE_SECONDS:
+                return cached["result"]
+            res = self._manage_call("GET", "/users.json?fields=id,name,email,enabled&limit=200")
+            if res["status"] == "success":
+                res = {"status": "success", "users": [u for u in (res["data"] or []) if u.get("enabled", True)]}
+            self._users_cache = {"at": time.time(), "result": res}
+            return res
+
+    def find_user_by_email(self, email: str) -> Dict[str, Any]:
+        """{"status": "success", "user": {...}} | {"status": "not_found"} | the list_users error."""
+        res = self.list_users()
+        if res["status"] != "success":
+            return res
+        want = (email or "").strip().lower()
+        hit = next((u for u in res["users"] if str(u.get("email") or "").strip().lower() == want), None)
+        return {"status": "success", "user": hit} if hit else {"status": "not_found"}
+
+    def set_responsible_attorney(self, matter_id: Any, clio_user_id: Any) -> Dict[str, Any]:
+        """Sets the matter's Responsible Attorney to a Clio user."""
+        try:
+            uid = int(clio_user_id)
+        except (TypeError, ValueError):
+            return {"status": "error", "error": f"'{clio_user_id}' is not a Clio user id"}
+        res = self._manage_call("PATCH", f"/matters/{urllib.parse.quote(str(matter_id))}.json?fields=id,responsible_attorney",
+                                {"data": {"responsible_attorney": {"id": uid}}})
+        if res["status"] == "success":
+            log.info("Clio matter %s responsible attorney set to user %s", matter_id, uid)
+        return res
 
 
 clio_connector = ClioConnector()
