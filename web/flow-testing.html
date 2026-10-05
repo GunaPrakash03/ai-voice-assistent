@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flows &amp; Testing</title>
+<style>
+  :root {
+    --ground: #0d1117;
+    --panel: #161b22;
+    --panel-border: #30363d;
+    --ink: #e6edf3;
+    --soft: #8b949e;
+    --accent: #58a6ff;
+    --accent-bg: rgba(56, 139, 253, 0.15);
+    --ok: #3fb950;
+    --ok-bg: rgba(63, 185, 80, 0.15);
+    --warn: #d29922;
+    --warn-bg: rgba(210, 153, 34, 0.15);
+    --bad: #f85149;
+    --bad-bg: rgba(248, 81, 73, 0.15);
+    --code-bg: #0b0f14;
+    --code-border: #21262d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 30px 16px 80px;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+  header { border-bottom: 1px solid var(--panel-border); padding-bottom: 24px; margin-bottom: 32px; }
+  h1 { font-size: 28px; margin: 0 0 10px; color: #fff; }
+  h2 { font-size: 22px; margin: 40px 0 16px; color: var(--accent); border-bottom: 1px solid var(--panel-border); padding-bottom: 8px; }
+  h3 { font-size: 17px; margin: 24px 0 10px; color: #fff; }
+  p { margin: 0 0 14px; }
+  a { color: var(--accent); }
+  .lead { font-size: 16px; color: var(--soft); }
+  .card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn); }
+  .badge.bad { background: var(--bad-bg); color: var(--bad); border: 1px solid var(--bad); }
+  .badge.info { background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent); }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 6px; padding: 14px; overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; line-height: 1.5; color: #c9d1d9;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px;
+    background: rgba(110, 118, 129, 0.2); padding: 2px 6px; border-radius: 4px; color: #ff7b72; overflow-wrap: anywhere;
+  }
+  pre code { background: transparent; padding: 0; color: inherit; }
+  .table-wrap { overflow-x: auto; margin: 16px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 10px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--panel-border); font-size: 14px; }
+  th { background: rgba(255, 255, 255, 0.03); color: #fff; }
+  .nav-box { background: rgba(88, 166, 255, 0.08); border: 1px solid var(--accent); border-radius: 6px; padding: 16px 20px; margin-bottom: 30px; }
+  .nav-box ul { margin: 8px 0 0; padding-left: 20px; columns: 2; }
+  .nav-box li { margin-bottom: 6px; }
+  .nav-box a { text-decoration: none; }
+  .nav-box a:hover { text-decoration: underline; }
+  .callout { border-left: 4px solid var(--accent); padding: 12px 16px; background: rgba(88, 166, 255, 0.08); border-radius: 0 6px 6px 0; margin: 16px 0; }
+  .callout.warn { border-color: var(--warn); background: var(--warn-bg); }
+  .callout.bad { border-color: var(--bad); background: var(--bad-bg); }
+  /* Flow steps: numbered rail with the file that does the work under each step. */
+  ol.flow { list-style: none; counter-reset: step; margin: 0; padding: 0; }
+  ol.flow > li { counter-increment: step; position: relative; padding: 0 0 18px 44px; }
+  ol.flow > li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent-bg); border: 1px solid var(--accent); color: var(--accent);
+    font: 600 13px/26px ui-monospace, monospace; text-align: center;
+  }
+  ol.flow > li::after { content: ""; position: absolute; left: 14px; top: 30px; bottom: 2px; width: 1px; background: var(--panel-border); }
+  ol.flow > li:last-child::after { display: none; }
+  ol.flow b { color: #fff; }
+  .where { display: block; color: var(--soft); font-size: 13px; margin-top: 2px; overflow-wrap: anywhere; }
+  .line-ref { font-family: ui-monospace, monospace; font-weight: 700; color: var(--warn); }
+  footer { margin-top: 48px; color: var(--soft); font-size: 13px; border-top: 1px solid var(--panel-border); padding-top: 16px; }
+  @media (max-width: 640px) {
+    h1 { font-size: 23px; }
+    .nav-box ul { columns: 1; }
+    .card { padding: 16px; }
+    th, td { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>Flows &amp; Testing</h1>
+  <p class="lead">How a firm, a call and its follow-up move through the service, and which checks prove each part works.
+  File references are to this repository; routes are served by <code>scripts/serve.py</code>.</p>
+  <p class="lead">Related: <a href="/code-walkthrough">Code walkthrough</a> · <a href="/admin-guide">Admin guide</a> · <a href="/task-plan">Task plan</a></p>
+</header>
+
+<nav class="nav-box">
+  <strong>Contents</strong>
+  <ul>
+    <li><a href="#processes">What runs where</a></li>
+    <li><a href="#flow-signup">1. Sign-up to first agent</a></li>
+    <li><a href="#flow-numbers">2. Numbers and trunks</a></li>
+    <li><a href="#flow-phone">3. A phone call (Twilio)</a></li>
+    <li><a href="#flow-livekit">4. A browser or SIP call (LiveKit)</a></li>
+    <li><a href="#flow-postcall">5. After the call</a></li>
+    <li><a href="#safety">Testing: what is safe to run</a></li>
+    <li><a href="#suites">Testing: the suites</a></li>
+    <li><a href="#manual">Testing: by hand</a></li>
+    <li><a href="#known">Known gaps</a></li>
+  </ul>
+</nav>
+
+<section id="processes">
+<h2>What runs where</h2>
+<div class="table-wrap"><table>
+  <tr><th>Process</th><th>Started by</th><th>Does</th><th>Picks up changes</th></tr>
+  <tr><td><b>Dashboard server</b><br><code>scripts/serve.py</code> (port 8091)</td><td>You, by hand</td>
+      <td>Every page and API, sign-in, the Twilio voice webhook, and the Twilio media stream (phone calls run inside this process). Runs the post-call pipeline for those calls.</td>
+      <td>On restart</td></tr>
+  <tr><td><b>Agent worker</b><br><code>agent/worker.py</code> in Docker container <code>voice-agent-worker</code></td><td>Docker</td>
+      <td>Joins LiveKit rooms: browser test calls, softphone, SIP calls. Runs its own post-call pipeline, webhooks and lead emails.</td>
+      <td>Only on <code>docker restart voice-agent-worker</code>. It reads <code>.env</code> at start.</td></tr>
+  <tr><td><b>LiveKit</b></td><td>LiveKit Cloud (<code>LIVEKIT_URL</code>)</td>
+      <td>WebRTC media and SIP ingress. The SIP URI is its own host, not the WebRTC host.</td><td>n/a</td></tr>
+  <tr><td><b>Storage</b></td><td>PostgreSQL (<code>DATABASE_URL</code>) or JSON in <code>config/</code></td>
+      <td>Users, organizations, agents, cases. With <code>DATABASE_URL</code> empty everything is JSON on disk.</td><td>n/a</td></tr>
+</table></div>
+<div class="callout warn">The running dashboard server keeps the auth store in memory and writes whole collections back on save.
+Scripts that edit users or organizations directly (for example <code>scripts/enforce_admin_slots.py --apply</code>) must run with the server stopped, or the server overwrites them.</div>
+</section>
+
+<section id="flow-signup">
+<h2>1. Sign-up to first agent</h2>
+<div class="card">
+<ol class="flow">
+  <li><b>Sign-up form</b> asks for name, email, password, mobile and terms only. <code>GET /api/v1/auth/signup/options</code> tells the page whether verification is by email, SMS or unavailable.
+    <span class="where">web/signup.html → POST /api/v1/auth/signup → agent/auth_manager.py (validates before creating; the workspace starts pending)</span></li>
+  <li><b>Email code.</b> A 6-digit code is mailed to the address (30-minute life). No mail transport configured means the step reports <code>verification_unavailable</code> instead of pretending; <code>MAIL_DRY_RUN=1</code> shows the code on screen for local testing.
+    <span class="where">agent/mailer.py · POST /api/v1/auth/otp/verify, /api/v1/auth/otp/resend · transport set on /email-settings (Super Admin)</span></li>
+  <li><b>Onboarding gate.</b> A new Product Admin is redirected to <code>/onboarding</code> until it is finished.
+    <span class="where">scripts/serve.py page gate · web/onboarding.html</span></li>
+  <li><b>Firm details</b> are typed in or read from the firm's website (SSRF-safe reader, then Gemini or a headings fallback).
+    <span class="where">POST /api/v1/onboarding/website-draft → agent/website_scraper.py, agent/website_details.py</span></li>
+  <li><b>Finish.</b> Names the workspace, saves the firm profile and seeds an agent that is <em>not</em> live.
+    <span class="where">POST /api/v1/onboarding/complete → agent/onboarding.py, agent/firm_profile.py</span></li>
+</ol>
+</div>
+<p>Roles: one Super Admin for the platform and one Product Admin per organization, enforced in <code>agent/auth_manager.py</code>. Member Admins (law staff) see only the cases assigned to them.</p>
+</section>
+
+<section id="flow-numbers">
+<h2>2. Numbers and trunks</h2>
+<div class="card">
+<ol class="flow">
+  <li><b>Marketplace.</b> Lists Telnyx or Twilio numbers, filtered by country and search. Live carrier inventory is used when keys are present, otherwise a built-in catalog. The carrier chips count what those filters match.
+    <span class="where">GET /api/telephony/numbers/available → TelephonyManager.list_available_numbers / list_carriers (agent/telephony_manager.py)</span></li>
+  <li><b>Inbound trunk.</b> Needs a name and at least one full E.164 number. Every DID on it becomes an owned number assigned to the active agent.
+    <span class="where">POST /api/telephony/trunks/inbound → validate_inbound_trunk_payload(require_numbers=True) → ensure_owned_number</span></li>
+  <li><b>Outbound trunk.</b> Needs a SIP host[:port] and at least one caller-ID number.
+    <span class="where">POST /api/telephony/trunks/outbound</span></li>
+  <li><b>Assign.</b> Each owned number names the agent that answers it. Trunks are removed with the <code>…/delete</code> routes.
+    <span class="where">POST /api/telephony/numbers/update · /api/telephony/trunks{,/inbound,/outbound}/delete</span></li>
+</ol>
+</div>
+<div class="callout">Buying a number and dialling out are simulated. The marketplace never places an order with a carrier.</div>
+</section>
+
+<section id="flow-phone">
+<h2>3. A phone call (Twilio media stream)</h2>
+<p>The default path for real phone calls. No LiveKit or SIP is involved: Twilio streams 8 kHz μ-law audio straight to the dashboard server.</p>
+<div class="card">
+<ol class="flow">
+  <li><b>Twilio calls the webhook</b> for the dialled DID. The <code>X-Twilio-Signature</code> is checked; a bad one gets 403.
+    <span class="where">POST /api/telephony/voice/inbound → _maybe_twiml_webhook (scripts/serve.py)</span></li>
+  <li><b>TwiML answer</b> is <code>&lt;Connect&gt;&lt;Stream&gt;</code> to <code>/api/telephony/media-stream</code>, carrying the called and caller numbers and a shared token (checked on the stream's <code>start</code> event, because Twilio drops query strings).
+    <span class="where">agent/twilio_stream.py media_stream_token</span></li>
+  <li><b>Agent chosen</b> by the owned number's assigned agent, falling back to the active agent. A <code>call_started</code> webhook goes out.
+    <span class="where">TwilioMediaStreamSession.on_start / _resolve_agent</span></li>
+  <li><b>Listen.</b> Caller audio goes to Deepgram streaming STT. When the caller speaks over the agent, its audio stops and the unheard part of the reply is dropped from history.
+    <span class="where">_start_deepgram_stt · interrupt_agent · _truncate_unheard_reply</span></li>
+  <li><b>Reply.</b> The agent's reply uses global instructions first (no legal advice, how to end a call), then the agent's prompt, then the firm details read from the database at call time (30 s cache). It is spoken in the agent's voice, converted to μ-law.
+    <span class="where">agent_builder._preview_reply · agent/firm_context.py call_instructions · _speak_agent_text</span></li>
+  <li><b>Goodbye.</b> When a full reply reads as a sign-off, the stream is closed and Twilio hangs up.
+    <span class="where">agent_builder.looks_like_closing → _hang_up_after_goodbye</span></li>
+  <li><b>Stop.</b> The transcript is handed to the post-call pipeline (section 5). With no caller turns, only a <code>call_ended</code> webhook goes out.
+    <span class="where">TwilioMediaStreamSession.on_stop → pipeline_worker.enqueue_call / execute_job</span></li>
+</ol>
+</div>
+</section>
+
+<section id="flow-livekit">
+<h2>4. A browser or SIP call (LiveKit)</h2>
+<div class="card">
+<ol class="flow">
+  <li><b>Room.</b> The Agent Builder test call, the softphone or the browser SDK gets a token and joins a LiveKit room. In SIP mode a carrier INVITE reaches the project's SIP URI and a dispatch rule places it in a room.
+    <span class="where">web/voice-client.js · web/softphone.html · agent/token.py · agent/telephony_manager.py dispatch rules</span></li>
+  <li><b>Worker joins</b> and loads the active agent: voice applied, prompt built by the same <code>call_instructions</code> as phone calls.
+    <span class="where">agent/worker.py entrypoint · tts_manager.apply_voice</span></li>
+  <li><b>Conversation.</b> Silero VAD for turns and barge-in, streaming LLM, streaming TTS, mid-call tools, transfer, DTMF/IVR, AMD, recording, all over the room's data channel.
+    <span class="where">agent/llm_manager.py · tts_manager.py · tool_manager.py · transfer_manager.py · dtmf_manager.py · amd_manager.py · recording_manager.py</span></li>
+  <li><b>End.</b> Same sign-off detection, then the worker's own post-call pipeline.
+    <span class="where">agent/worker.py → pipeline_worker.enqueue_call</span></li>
+</ol>
+</div>
+<div class="callout warn">The worker only sees code and <code>.env</code> changes after <code>docker restart voice-agent-worker</code>. A test that passes against the dashboard server can still fail through LiveKit until then.</div>
+</section>
+
+<section id="flow-postcall">
+<h2>5. After the call</h2>
+<p>Both processes run the same six-stage pipeline (<code>agent/pipeline_worker.py</code>). A failed stage is retried. Clio and case registration never block the job.</p>
+<div class="table-wrap"><table>
+  <tr><th>#</th><th>Stage</th><th>Result</th></tr>
+  <tr><td>1</td><td><code>audio_mixdown</code></td><td>Stereo WAV (left caller, right agent), energy metrics</td></tr>
+  <tr><td>2</td><td><code>transcript_normalization</code></td><td>Clean, time-aligned turns</td></tr>
+  <tr><td>3</td><td><code>metrics_calculation</code></td><td>Talk-time ratio, words per minute</td></tr>
+  <tr><td>4</td><td><code>sentiment_analysis</code></td><td>Score, trend, frustration, summary and action items (<code>agent/sentiment_analyzer.py</code>)</td></tr>
+  <tr><td>5</td><td><code>schema_extraction</code></td><td>Typed fields (e.g. <code>legal_intake</code>), then Clio Grow lead and/or Clio Manage contact and matter, then a <b>case</b> on the Cases page (<code>agent/schema_extractor.py</code>, <code>agent/clio_connector.py</code>, <code>agent/case_manager.py</code>)</td></tr>
+  <tr><td>6</td><td><code>storage_archive</code></td><td>Recording and manifest archived; the call appears in Call History</td></tr>
+</table></div>
+<p>Listening on the pipeline's events: signed HMAC-SHA256 webhooks to each subscribed endpoint (<code>agent/webhook_dispatcher.py</code>), and a short summary email to the agent's <code>lead_emails</code> when mail is set up (<code>agent/onboarding.py</code> notify_leads). Assigning a case to staff with a Clio user id sets the matter's Responsible Attorney.</p>
+</section>
+
+<section id="safety">
+<h2>Testing: what is safe to run</h2>
+<div class="callout bad"><b>These touch real systems.</b> Run them only when that is the point.
+<ul>
+  <li><code>scripts/verify_super_admin.py</code>: drives the live server on 8091 and the real database; it creates accounts that stay behind.</li>
+  <li><code>scripts/test_clio_integration.py --live</code> and <code>scripts/simulate_call_to_clio.py</code>: send leads to the real Clio account. The default <code>--mock</code> mode is safe.</li>
+  <li><code>scripts/sip_probe.py</code>: sends a real SIP INVITE to the LiveKit SIP URI.</li>
+  <li><code>scripts/backfill_cases.py --apply</code>, <code>scripts/enforce_admin_slots.py --apply</code>: write to the shared database (stop the server first for the second).</li>
+</ul></div>
+<p>The newer suites never touch the real checkout. They copy <code>agent/</code>, <code>scripts/</code>, <code>web/</code> and <code>config/agents.json</code> to a temp folder and start their own server on a spare port with <code>DATABASE_URL</code> empty, no <code>.env</code>, carrier and mail keys stripped, loopback trust off and dummy LiveKit credentials. New tests should do the same; <code>scripts/verify_trunk_validation.py</code> is a short example.</p>
+</section>
+
+<section id="suites">
+<h2>Testing: the suites</h2>
+<p><span class="badge ok">isolated</span> offline or its own server copy &nbsp;
+   <span class="badge info">server</span> needs the dashboard on 8091 &nbsp;
+   <span class="badge warn">worker</span> also needs Docker worker + LiveKit &nbsp;
+   <span class="badge bad">live</span> writes to real systems</p>
+
+<h3>Accounts, firms and cases</h3>
+<div class="table-wrap"><table>
+  <tr><th>Script</th><th>Covers</th><th>Needs</th></tr>
+  <tr><td><code>verify_signup.py</code></td><td>Firm profile model, sign-up API, SMS verification, onboarding. Section 8 calls the server on 8091 (or <code>VERIFY_BASE_URL</code>) when one is running, and skips otherwise.</td><td><span class="badge ok">isolated</span> + <span class="badge info">server</span></td></tr>
+  <tr><td><code>verify_email_signup.py</code></td><td>Emailed verification codes, resend, no-transport wording</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>verify_email_settings.py</code></td><td>/email-settings page: SMTP / Resend / Off, test email to a local SMTP server</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>verify_admin_slots.py</code></td><td>One Super Admin, one Product Admin per organization</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>verify_website_import.py</code></td><td>Website reader, address safety, details extraction, receptionist script block</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>verify_cases.py</code></td><td>Case store, assignment, workspace isolation, mock Clio</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>verify_api_tenant.py</code></td><td>Workspaces, API keys, RBAC matrix, rate limits, JWT</td><td><span class="badge info">server</span></td></tr>
+  <tr><td><code>test_task1_rbac.py</code></td><td>Role hierarchy and creation rules</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>test_task2_middleware.py</code></td><td>Middleware and system APIs (port from <code>PORT</code>, default 8091)</td><td><span class="badge info">server</span></td></tr>
+  <tr><td><code>verify_super_admin.py</code></td><td>Super Admin portal end to end</td><td><span class="badge bad">live</span></td></tr>
+</table></div>
+
+<h3>Calls</h3>
+<div class="table-wrap"><table>
+  <tr><th>Script</th><th>Covers</th><th>Needs</th></tr>
+  <tr><td><code>verify_end_call.py</code></td><td>Sign-off detection; Twilio stream closes after a full goodbye only</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>verify_trunk_validation.py</code></td><td>Trunk create validation, trunk delete, marketplace chip counts</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>test_twilio_stream.py</code></td><td>Voice webhook TwiML, media-stream handshake, greeting audio</td><td><span class="badge info">server</span></td></tr>
+  <tr><td><code>test_playwright_voices.py</code></td><td>Agent Builder voice picker and Test Call sandbox in headless Chromium</td><td><span class="badge info">server</span></td></tr>
+  <tr><td><code>verify.py</code>, <code>verify_vad.py</code>, <code>verify_llm.py</code>, <code>verify_tts.py</code>, <code>verify_stt.py</code>, <code>verify_tools.py</code>, <code>verify_sdk.py</code></td><td>Phase 1 audio core: media server, VAD, LLM, TTS, STT wiring, tools, browser SDK</td><td><span class="badge warn">worker</span></td></tr>
+  <tr><td><code>verify_sip.py</code>, <code>verify_transfer.py</code>, <code>verify_dtmf.py</code>, <code>verify_amd.py</code>, <code>verify_recording.py</code>, <code>verify_softphone.py</code></td><td>Phase 2 telephony: SIP routing, transfer, DTMF/IVR, AMD, recording, softphone</td><td><span class="badge warn">worker</span></td></tr>
+  <tr><td><code>verify_agent_builder.py</code></td><td>Agent config, CRUD, revisions, sandbox, live config push</td><td><span class="badge warn">worker</span></td></tr>
+</table></div>
+
+<h3>After the call</h3>
+<div class="table-wrap"><table>
+  <tr><th>Script</th><th>Covers</th><th>Needs</th></tr>
+  <tr><td><code>verify_pipeline.py</code></td><td>Job lifecycle, mixdown, metrics, retries, pipeline API</td><td><span class="badge warn">worker</span></td></tr>
+  <tr><td><code>verify_analytics.py</code>, <code>verify_extraction.py</code>, <code>verify_webhooks.py</code></td><td>Sentiment and summary, typed extraction, signed webhooks with retries</td><td><span class="badge info">server</span></td></tr>
+  <tr><td><code>verify_call_history.py</code></td><td>Call log, transcript, waveform, byte-range audio, CSV</td><td><span class="badge info">server</span></td></tr>
+  <tr><td><code>test_clio_integration.py</code></td><td>Clio Grow payloads against a local mock (<code>--live</code> sends for real)</td><td><span class="badge ok">isolated</span> / <span class="badge bad">live</span></td></tr>
+  <tr><td><code>verify_hardening.py</code></td><td>Load percentiles, PII redaction audit, CI workflow</td><td><span class="badge ok">isolated</span></td></tr>
+</table></div>
+
+<h3>Running them</h3>
+<pre><code># one isolated suite (safe at any time)
+python3 scripts/verify_trunk_validation.py
+
+# the phase 1–5 regression set (needs the dashboard on 8091 and the worker)
+python3 scripts/run_all_tests.py 8091
+
+# every page as every role
+python3 scripts/audit_all_pages.py</code></pre>
+<p>Each script prints <code>[PASS]</code>/<code>[FAIL]</code> lines and exits non-zero on any failure. Isolated suites keep their temp folder and print the server log path when something fails.</p>
+</section>
+
+<section id="manual">
+<h2>Testing: by hand</h2>
+<div class="card">
+<h3 style="margin-top:0">A real phone call</h3>
+<ol>
+  <li>On <a href="/phone-numbers">Phone Numbers</a>, check the DID is active and assigned to the agent you mean to test.</li>
+  <li>Call it. The greeting should match the agent's First Message, in its voice.</li>
+  <li>Ask something about the firm: the answer should come from the saved firm details. Ask for legal advice: the agent should decline.</li>
+  <li>Say goodbye and let the agent finish: the line should drop by itself.</li>
+  <li>Within a minute the call should appear in Call History with a transcript and summary, a case on <a href="/cases">Cases</a>, and the webhook deliveries on <a href="/webhooks">Webhooks</a>.</li>
+</ol>
+<h3>A browser call</h3>
+<p>Agent Builder → Test Call exercises the LiveKit worker. If its behaviour lags a change you just made, the worker has not been restarted.</p>
+<h3>Sign-up locally without real email</h3>
+<p>Run an isolated copy (see <a href="#safety">above</a>) with <code>SIGNUP_ENABLED=1 MAIL_DRY_RUN=1</code> on a spare port; the code is shown on screen.</p>
+</div>
+</section>
+
+<section id="known">
+<h2>Known gaps</h2>
+<div class="table-wrap"><table>
+  <tr><th>Area</th><th>State</th></tr>
+  <tr><td>LiveKit hang-up</td><td><span class="badge warn">open</span> The worker skips the hang-up when the caller talks over the goodbye.</td></tr>
+  <tr><td><code>verify_sip.py</code></td><td><span class="badge warn">open</span> 3 of 5 checks fail against the current <code>config/sip_trunks.json</code>, which no longer has <code>trunk-primary</code> or an outbound trunk. The suite expects the demo trunks.</td></tr>
+  <tr><td>Firm scoping</td><td><span class="badge warn">open</span> Agents, the live agent, webhooks, the Clio token and branding are server-wide, not per firm.</td></tr>
+  <tr><td>Intake names</td><td><span class="badge warn">open</span> The regex extractor can take the agent's greeting as the client name; Cases filters it, but Clio can still receive it.</td></tr>
+  <tr><td>Carriers</td><td><span class="badge info">by design</span> Number purchase and outbound dialling are simulated.</td></tr>
+</table></div>
+</section>
+
+<footer>Written 2026-10-05 against commit 0dd82ea. When a flow or suite changes, update this page with it.</footer>
+</div>
+</body>
+</html>
