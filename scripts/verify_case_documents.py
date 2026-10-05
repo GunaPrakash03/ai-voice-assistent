@@ -19,7 +19,14 @@
    ("maria dot lopez at gmail dot com", spelled letters, corrections) and phone numbers, in both transcript
    formats, through Gemini (stand-in) or rules; a case from such a call is marked Documents requested.
    With VERIFY_LIVE_LLM=1 (Gemini key from .env, ~4 calls) a real model asks the question and reads the answer.
-Never touches the real config, .env or database.
+6. Upload links (Phase 3): offline, the link store (only a hash kept; replaced, expired and used-up links
+   refused with their reason; malformed tokens) and sending (email when there's an address and mail is set
+   up, text message otherwise, copy, no public address, send failure); over HTTP with a local test mail
+   server and SMS dry run, staff send a link, the email carries it, the caller opens the page and uploads
+   without signing in, the case shows the files as the caller's; old links are refused after a resend,
+   wrong tokens are rate-limited, and only the case's staff can send links; in the browser, the caller's
+   page at phone size and the Cases page's request box.
+Never touches the real config, .env, database, a real mailbox or a real phone.
 """
 
 import http.cookiejar
@@ -275,6 +282,221 @@ def live_suite(cases):
     os.environ.pop("GEMINI_API_KEY", None)
 
 
+# ── 6. Upload links (Phase 3) ────────────────────────────────────────────────────────────────────────
+def links_offline():
+    print("\n6a. Upload links: store and sending (offline)")
+    os.environ["DATABASE_URL"] = ""
+    import agent.upload_links as ul
+    import agent.case_manager as cmm
+    tmp = tempfile.mkdtemp(prefix="links-")
+    try:
+        st = ul.UploadLinkStore(path=os.path.join(tmp, "links.json"))
+        link, token = st.create("case-1", "ws-a")
+        check("token is long and random", len(token) >= 40 and ul.TOKEN_RE.match(token))
+        check("only the hash is stored", token not in open(os.path.join(tmp, "links.json")).read() and link.token_hash == ul.token_hash(token))
+        check("resolves", st.resolve(token).link_id == link.link_id)
+        for label, tok, status in (("unknown token", "A" * 43, 404), ("malformed token", "../../etc", 404), ("empty", "", 404)):
+            try:
+                st.resolve(tok)
+                check(f"{label} refused", False)
+            except ul.DocumentError as e:
+                check(f"{label} refused ({status})", e.status == status, e.status)
+        link2, token2 = st.create("case-1", "ws-a")
+        try:
+            st.resolve(token)
+            check("a resend replaces the old link (410)", False)
+        except ul.DocumentError as e:
+            check("a resend replaces the old link (410)", e.status == 410 and "newer one" in str(e))
+        old, oldtok = st.create("case-2", "ws-a", days=-1)
+        try:
+            st.resolve(oldtok)
+            check("expired link refused (410)", False)
+        except ul.DocumentError as e:
+            check("expired link refused (410)", e.status == 410 and "expired" in str(e))
+        small, smalltok = st.create("case-3", "ws-a")
+        small.max_files = 2
+        st.record_upload(small.link_id, "a.pdf")
+        st.record_upload(small.link_id, "b.pdf")
+        try:
+            st.resolve(smalltok)
+            check("used-up link refused (410)", False)
+        except ul.DocumentError as e:
+            check("used-up link refused (410)", e.status == 410 and "already been used" in str(e))
+        check("uploaded names kept on the link", st.latest_for_case("case-3").uploaded == ["a.pdf", "b.pdf"])
+        check("reload from disk", ul.UploadLinkStore(path=os.path.join(tmp, "links.json")).resolve(token2).link_id == link2.link_id)
+
+        # sending: swap the shared stores and transports for throwaway ones
+        orig = (ul.upload_links, cmm.case_manager)
+        ul.upload_links = ul.UploadLinkStore(path=os.path.join(tmp, "links2.json"))
+        cm = cmm.CaseManager(path=os.path.join(tmp, "cases.json"))
+        cmm.case_manager = cm
+        import agent.mailer as mailer
+        import agent.sms as sms
+        sent = []
+        orig_mail = (mailer.configured, mailer.send_email, sms.send_sms)
+        mail_ready = {"v": True}
+        mailer.configured = lambda: {"ready": mail_ready["v"]}
+        mailer.send_email = lambda to, subject, text, html="": sent.append(("email", to, subject, text, html)) or {"ok": True}
+        sms.send_sms = lambda to, body: sent.append(("sms", to, body)) or {"ok": True}
+        os.environ["PUBLIC_BASE_URL"] = "https://desk.example.com"
+        try:
+            c = cm.create("ws-a", {"client_name": "Maria Lopez", "phone": "951 555 0142",
+                                   "documents_request": {"wanted": True, "email": "maria@example.com"}})
+            r = ul.send_link(c, firm="Bottini Law")
+            check("auto: email when there's an address and mail is set up", r["ok"] and r["channel"] == "email" and r["to"] == "maria@example.com", r)
+            kind, to, subject, text, html = sent[-1]
+            url = next(w for w in text.split() if w.startswith("https://desk.example.com/upload/"))
+            check("email: firm, first name, the link, 7 days", "Bottini Law" in subject and "Hi Maria" in text and "7 days" in text and url in html)
+            check("emailed link works", ul.upload_links.resolve(url.rsplit("/", 1)[1]).case_id == c.case_id)
+            check("case records link_sent", cm.get(c.case_id).documents_request["status"] == "link_sent" and cm.get(c.case_id).documents_request["channel"] == "email")
+            mail_ready["v"] = False
+            r = ul.send_link(cm.get(c.case_id), firm="Bottini Law")
+            check("auto: text message when email isn't set up", r["ok"] and r["channel"] == "sms" and r["to"] == "+19515550142" and "upload/" in sent[-1][2], r)
+            check("text message names the firm and the link", sent[-1][2].startswith("Bottini Law:") and "valid 7 days" in sent[-1][2])
+            c2 = cm.create("ws-a", {"client_name": "No Contact", "documents_request": {"wanted": True}})
+            r = ul.send_link(c2)
+            check("no email set up and no phone: not sent, with the reason", not r["ok"] and cm.get(c2.case_id).documents_request["status"] == "not_sent" and r["error"], r)
+            r = ul.send_link(cm.get(c.case_id), channel="email")
+            check("email asked for while mail isn't set up: reason given", not r["ok"] and "Email isn't set up" in r["error"])
+            mail_ready["v"] = True
+            mailer.send_email = lambda *a, **k: {"ok": False, "error": "550 mailbox unavailable"}
+            before = len(ul.upload_links._links)
+            r = ul.send_link(cm.get(c.case_id), channel="email")
+            newest = max(ul.upload_links._links.values(), key=lambda l: l.created_at)
+            check("send failure: reason kept, the unsent link retired", not r["ok"] and "550" in r["error"] and newest.revoked and len(ul.upload_links._links) == before + 1)
+            r = ul.send_link(cm.get(c.case_id), channel="copy")
+            check("copy: returns the link to hand over", r["ok"] and r["url"].startswith("https://desk.example.com/upload/"))
+            os.environ.pop("PUBLIC_BASE_URL")
+            r = ul.send_link(cm.get(c.case_id), channel="sms")
+            check("no public address: never sends a localhost link", not r["ok"] and "PUBLIC_BASE_URL" in r["error"])
+        finally:
+            mailer.configured, mailer.send_email, sms.send_sms = orig_mail
+            ul.upload_links, cmm.case_manager = orig
+            os.environ.pop("PUBLIC_BASE_URL", None)
+        src = open(os.path.join(ROOT_DIR, "agent", "pipeline_worker.py")).read()
+        check("pipeline sends the link right after registering a case that asked for it",
+              src.index("case_manager.register_from_call(job.call_id") < src.index("sent = send_link(case)"))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def links_http(base, info, smtp):
+    print("\n6b. Upload links over HTTP (local test mail server, SMS dry run)")
+    import email as email_lib
+    A, ST, OT, anon, caller = (Client(base) for _ in range(5))
+    A.login("admin@a.test"); ST.login("staff@a.test"); OT.login("other@a.test")
+    code, body = A.call("POST", "/api/v1/cases", {"client_name": "Rosa Diaz", "phone": "+19515550177", "email": "rosa@example.com"})
+    cid = body["case"]["case_id"]
+    A.call("POST", "/api/v1/cases/assign", {"case_id": cid, "user_ids": [info["staff@a.test"]], "mode": "set"})
+    code, body = A.call("POST", "/api/v1/case-documents/link", {"case_id": cid, "channel": "email"})
+    check("staff send the link by email", code == 200 and body.get("channel") == "email" and body.get("to") == "rosa@example.com", (code, body))
+    check("response never carries the token", "upload/" not in json.dumps(body))
+    time.sleep(0.4)
+    msgs = [m for m in smtp.messages if "rosa@example.com" in m["to"]]
+    check("email arrived at the mail server", len(msgs) == 1, smtp.messages)
+    msg = email_lib.message_from_string(msgs[-1]["data"]) if msgs else None
+    text = ""
+    if msg:
+        for part in msg.walk():
+            if part.get_content_type() == "text/plain":
+                text = part.get_payload(decode=True).decode()
+    url = next((w for w in text.split() if "/upload/" in w), "")
+    token = url.rsplit("/", 1)[-1]
+    check("the email carries this server's link", url.startswith(base + "/upload/"), text[:200])
+
+    code, raw, hdrs = caller.raw("GET", "/upload/" + token)
+    check("caller's page opens without signing in", code == 200 and b"Send your documents" in raw, code)
+    check("page headers: no referrer, not indexed, not framed", hdrs.get("Referrer-Policy") == "no-referrer" and "noindex" in hdrs.get("X-Robots-Tag", "") and hdrs.get("X-Frame-Options") == "DENY")
+    code, body = caller.call("GET", "/api/v1/upload-link/info?token=" + token)
+    check("link info: firm, first name, files left", code == 200 and body["firm"] == "Firm A" and body["first_name"] == "Rosa" and body["files_left"] == 20, body)
+    check("link info shows nothing from the case itself", set(body) <= {"status", "firm", "first_name", "expires_at", "files_left", "max_file_bytes", "uploaded"})
+    q = urllib.parse.urlencode({"token": token, "name": "accident photo.png"})
+    code, raw, _ = caller.raw("POST", "/api/v1/upload-link/upload?" + q, png("crash"), {"Content-Type": "application/octet-stream"})
+    check("caller uploads through the link (201)", code == 201 and json.loads(raw)["files_left"] == 19, (code, raw[:200]))
+    code, raw, _ = caller.raw("POST", "/api/v1/upload-link/upload?" + urllib.parse.urlencode({"token": token, "name": "x.doc"}), b"\xd0\xcf\x11\xe0" + b"\x00" * 64, {"Content-Type": "application/octet-stream"})
+    check("caller's unsupported file refused with the reason", code == 400 and b".docx" in raw)
+    code, body = A.call("GET", "/api/v1/case-documents?case_id=" + cid)
+    d = body["documents"][0]
+    check("staff see the file, marked as the caller's", d["source"] == "caller" and d["uploaded_by"] == "Rosa Diaz" and d["name"] == "accident photo.png")
+    check("case shows documents received", body["documents_request"]["status"] == "received" and body["documents_request"]["files"] == 1)
+    check("link state shown to staff", body["link"]["state"] == "active" and body["link"]["files_used"] == 1 and body["link"]["channel"] == "email")
+    code, body = caller.call("GET", "/api/v1/upload-link/info?token=" + token)
+    check("caller sees only what they sent", body["uploaded"] == ["accident photo.png"])
+
+    code, body = ST.call("POST", "/api/v1/case-documents/link", {"case_id": cid, "channel": "sms"})
+    check("assigned staff resend by text (dry run)", code == 200 and body.get("channel") == "sms" and body.get("to") == "+19515550177", (code, body))
+    code, body = caller.call("GET", "/api/v1/upload-link/info?token=" + token)
+    check("old link refused after a resend (410)", code == 410 and "newer one" in body.get("error", ""))
+    code, body = A.call("POST", "/api/v1/case-documents/link", {"case_id": cid, "channel": "copy"})
+    check("copy returns a working link", code == 200 and caller.call("GET", "/api/v1/upload-link/info?token=" + body["url"].rsplit("/", 1)[1])[0] == 200)
+    copy_token = body["url"].rsplit("/", 1)[1]
+    for who, c in (("unassigned staff", OT), ("signed out", anon)):
+        code, _ = c.call("POST", "/api/v1/case-documents/link", {"case_id": cid, "channel": "copy"})
+        check(f"{who} can't send links", code in (401, 404, 302), code)
+    code, body = A.call("POST", "/api/v1/case-documents/link", {"case_id": cid, "channel": "fax"})
+    check("unknown channel refused", code == 400)
+
+    code, _ = caller.call("GET", "/api/v1/upload-link/info?token=" + "B" * 43)
+    check("wrong token (404)", code == 404)
+    return cid, copy_token
+
+
+def links_rate_limit(base, token):
+    """Last: it blocks this machine's address for the rest of the run."""
+    caller = Client(base)
+    for _ in range(25):
+        code, _ = caller.call("GET", "/api/v1/upload-link/info?token=" + "C" * 43)
+    check("wrong tokens are rate-limited (429)", code == 429, code)
+    code, _ = caller.call("GET", "/api/v1/upload-link/info?token=" + token)
+    check("…which blocks that network, even with a good link", code == 429)
+
+
+def links_browser(base, cid, token):
+    print("\n6c. Browser: caller's page and the request box")
+    from playwright.sync_api import sync_playwright
+    tmp = tempfile.mkdtemp(prefix="links-files-")
+    for n, d in (("police.pdf", pdf("Police report LA-2026")), ("car.png", png("car 2"))):
+        open(os.path.join(tmp, n), "wb").write(d)
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        ph = b.new_context(viewport={"width": 375, "height": 812}, color_scheme="dark")
+        pg = ph.new_page()
+        errs = []
+        pg.on("pageerror", lambda e: errs.append(str(e)))
+        pg.goto(base + "/upload/" + token, wait_until="load")
+        pg.wait_for_timeout(800)
+        check("phone: greeting with the caller's name and firm", "Hi Rosa" in pg.text_content("h1") and pg.text_content("#firm") == "Firm A",
+              (pg.text_content("h1"), pg.text_content("#firm")))
+        check("phone: a fresh link starts with nothing sent", pg.inner_text("#list").strip() == "" and "20 more files" in pg.inner_text("#meta"))
+        pg.set_input_files("#pick", [os.path.join(tmp, "police.pdf"), os.path.join(tmp, "car.png")])
+        pg.wait_for_timeout(2500)
+        check("phone: both files sent, thank-you shown", pg.text_content("#list").count("Sent ✓") == 2 and pg.is_visible("#done"), pg.text_content("#list"))
+        check("phone: files left counts down", "18 more files" in pg.inner_text("#meta"), pg.inner_text("#meta"))
+        check("phone: no sideways scroll", pg.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth") <= 0)
+        check("phone: camera button offered", pg.is_visible("#btnCamera") and pg.get_attribute("#camera", "capture") == "environment")
+        bad = ph.new_page()
+        bad.goto(base + "/upload/" + "D" * 43, wait_until="load")
+        bad.wait_for_timeout(800)
+        check("bad link: clear message, no upload area", "can't be used" in bad.inner_text("h1") and not bad.is_visible("#uploader"))
+        check("no JS errors (caller)", not errs, errs)
+
+        ctx = b.new_context(viewport={"width": 1280, "height": 900})
+        ctx.request.post(base + "/api/v1/auth/login", data={"email": "admin@a.test", "password": PW})
+        a = ctx.new_page()
+        a.goto(base + "/cases", wait_until="load")
+        a.wait_for_timeout(1000)
+        check("Cases row: Documents received · 3 files", "Documents received · 3 files" in a.inner_text("tr:has-text('Rosa Diaz')"), a.inner_text("tr:has-text('Rosa Diaz')"))
+        a.click("tr:has-text('Rosa Diaz') [data-docs]")
+        a.wait_for_timeout(900)
+        check("Documents window: caller's files tagged Caller", a.locator("#docList li:has-text('police.pdf') .tag-caller").count() == 1)
+        check("request box: link state and contact prefilled", "files received" in a.inner_text("#reqState") and a.input_value("#reqEmail") == "rosa@example.com")
+        a.click("[data-send=copy]")
+        a.wait_for_timeout(900)
+        check("Copy link shows the link to hand over", a.is_visible("#reqCopy") and "/upload/" in a.input_value("#reqUrl"))
+        b.close()
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
 # ── 2. PostgreSQL ────────────────────────────────────────────────────────────────────────────────────
 def postgres():
     url = os.getenv("VERIFY_PG_URL", "")
@@ -344,15 +566,19 @@ class Client:
         return code == 200 and body.get("step") == "done"
 
 
-def server_env():
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("SMTP_", "RESEND_", "MAIL_", "TWILIO_", "TELNYX_", "GEMINI_", "GOOGLE_API", "CLIO_"))}
+def server_env(extra=None):
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("SMTP_", "RESEND_", "MAIL_", "TWILIO_", "TELNYX_", "GEMINI_", "GOOGLE_API", "CLIO_", "PUBLIC_BASE", "SMS_"))}
     env.update(DATABASE_URL="", AUTH_TRUST_LOOPBACK="0", SUPER_ADMIN_EMAIL="root@platform.test", SUPER_ADMIN_PASSWORD=PW,
                LIVEKIT_URL="ws://127.0.0.1:1", LIVEKIT_API_KEY="d", LIVEKIT_API_SECRET="dummy-secret-dummy-secret")
+    env.update(extra or {})
     return env
 
 
-def start_copy():
+def start_copy(extra=None):
     tmp = tempfile.mkdtemp(prefix="casedocs-http-")
+    port = free_port()
+    extra = dict(extra or {})
+    extra.setdefault("PUBLIC_BASE_URL", f"http://127.0.0.1:{port}")
     for d in ("agent", "scripts", "web"):
         shutil.copytree(os.path.join(ROOT_DIR, d), os.path.join(tmp, d), ignore=shutil.ignore_patterns("__pycache__", "audio", "*.mp3", "*.wav"))
     for d in ("config", "recordings"):
@@ -370,10 +596,9 @@ def start_copy():
         f"    u = am.create_user(ws, e, 'member_admin'); am.set_password(u.user_id, '{PW}'); ids[e] = u.user_id\n"
         "am._save_store(); print(json.dumps({'ws': ws, **ids}))\n"
     )
-    out = subprocess.run([sys.executable, "-c", seed], cwd=tmp, env=server_env(), capture_output=True, text=True)
+    out = subprocess.run([sys.executable, "-c", seed], cwd=tmp, env=server_env(extra), capture_output=True, text=True)
     info = json.loads(out.stdout.strip().splitlines()[-1])
-    port = free_port()
-    proc = subprocess.Popen([sys.executable, "scripts/serve.py", str(port)], cwd=tmp, env=server_env(),
+    proc = subprocess.Popen([sys.executable, "scripts/serve.py", str(port)], cwd=tmp, env=server_env(extra),
                             stdout=open(os.path.join(tmp, "server.log"), "w"), stderr=subprocess.STDOUT)
     base = f"http://127.0.0.1:{port}"
     for _ in range(80):
@@ -539,15 +764,23 @@ def browser_suite(base):
 def main():
     offline()
     call_suite()
+    links_offline()
     postgres()
     if "--offline" in sys.argv:
         print(f"\n{passed}/{passed + failed} passed")
         sys.exit(1 if failed else 0)
-    tmp, proc, base, info = start_copy()
+    sys.path.insert(0, os.path.join(ROOT_DIR, "scripts"))
+    from verify_email_settings import FakeSMTP
+    smtp = FakeSMTP()
+    tmp, proc, base, info = start_copy({"SMTP_HOST": "127.0.0.1", "SMTP_PORT": str(smtp.port), "SMTP_TLS": "auto",
+                                        "MAIL_FROM": "Firm A <desk@firm-a.test>", "SMS_DRY_RUN": "1"})
     try:
         http_suite(base, info)
+        cid, token = links_http(base, info, smtp)
         if "--no-browser" not in sys.argv:
             browser_suite(base)
+            links_browser(base, cid, token)
+        links_rate_limit(base, token)
     finally:
         proc.terminate()
         try:

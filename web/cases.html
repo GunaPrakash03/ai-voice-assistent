@@ -142,12 +142,20 @@
   .doc-list .acts{display:flex;gap:6px;flex-wrap:nowrap}
   .doc-list .empty{padding:18px;grid-column:1/-1}
   .docreq{display:block;width:fit-content;margin-top:5px;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;background:var(--info-soft,#EFF4FF);color:var(--info,#2563EB);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .docreq.bad{background:var(--neg-soft);color:var(--neg)}
   .tag-caller{display:inline-block;padding:0 6px;border-radius:999px;font-size:11px;font-weight:600;background:var(--accent-soft);color:var(--accent);margin-left:4px}
   .drop{border:2px dashed var(--line);border-radius:8px;padding:16px;text-align:center;cursor:pointer;font-size:13px;color:var(--ink-soft)}
   .drop.over{border-color:var(--accent);background:var(--accent-soft)}
   .drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .drop b{display:block;color:var(--ink)}
   .upq{display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+  .req{border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .req h4{margin:0;font-size:13px}
+  .req-state{font-size:12.5px;color:var(--ink-soft)}
+  .req-state.bad{color:var(--neg)}
+  .req-state.ok{color:var(--pos)}
+  .req-row,.req-copy{display:flex;gap:6px;flex-wrap:wrap}
+  .req-row input,.req-copy input{flex:1;min-width:150px;padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:13px var(--f-ui)}
   .upq .bad{color:var(--neg)}
   .pick{display:flex;flex-direction:column;gap:2px}
   .pick label{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer}
@@ -277,6 +285,21 @@
       <div class="drop" id="docDrop" tabindex="0" role="button" aria-label="Add documents: drop files here or press Enter to choose">
         <b>Drop files here, or click to choose</b>PDF, Word, Excel, CSV, text or photos · up to 20 MB each
       </div>
+      <section class="req" aria-labelledby="reqH">
+        <h4 id="reqH">Request documents from the caller</h4>
+        <div class="req-state" id="reqState"></div>
+        <div class="req-row">
+          <input id="reqEmail" type="email" placeholder="Caller's email" aria-label="Caller's email" maxlength="160">
+          <button class="btn sm" data-send="email">Send by email</button>
+        </div>
+        <div class="req-row">
+          <input id="reqPhone" type="tel" placeholder="Caller's mobile" aria-label="Caller's mobile number" maxlength="40">
+          <button class="btn ghost sm" data-send="sms">Send by text</button>
+          <button class="btn ghost sm" data-send="copy">Copy link</button>
+        </div>
+        <div class="req-copy" id="reqCopy" hidden><input id="reqUrl" readonly aria-label="Upload link"><button class="btn ghost sm" id="reqCopyBtn">Copy</button></div>
+        <div class="err" id="reqErr"></div>
+      </section>
       <input type="file" id="docInput" multiple hidden accept=".pdf,.docx,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.webp,.heic,.heif,application/pdf,image/*,text/plain,text/csv">
       <div class="upq" id="docQueue" aria-live="polite"></div>
     </div>
@@ -430,8 +453,9 @@
   function docRequest(c) {
     var r = c.documents_request || {};
     if (!r.status) return "";
-    var to = r.email || r.phone || "no contact given";
-    return '<span class="docreq" title="The caller said on the call that they have documents">Documents requested · ' + esc(to) + "</span>";
+    var label = { requested: "Documents requested", link_sent: "Upload link sent", not_sent: "Upload link not sent", received: "Documents received" }[r.status] || "Documents requested";
+    var to = r.status === "received" ? (r.files || 0) + " file" + (r.files === 1 ? "" : "s") : (r.to || r.email || r.phone || "no contact given");
+    return '<span class="docreq' + (r.status === "not_sent" ? " bad" : "") + '" title="' + esc(r.error || "") + '">' + label + " · " + esc(to) + "</span>";
   }
 
   function renderWorkload() {
@@ -564,6 +588,7 @@
     docState.caseId = caseId; docState.confirming = null;
     $("mDocsFor").textContent = c.client_name + (c.case_type ? " · " + c.case_type : "");
     $("docQueue").innerHTML = "";
+    $("reqEmail").value = ""; $("reqPhone").value = ""; $("reqErr").textContent = ""; $("reqCopy").hidden = true;
     $("docList").innerHTML = '<li><span class="empty">Loading…</span></li>';
     openModal("mDocs");
     loadDocs();
@@ -573,12 +598,51 @@
     return api("/api/v1/case-documents?case_id=" + encodeURIComponent(caseId)).then(function (j) {
       if (caseId !== docState.caseId) return;
       docState.docs = j.documents || [];
+      renderRequest(j);
       docState.maxBytes = j.max_file_bytes || docState.maxBytes;
       state.cases.forEach(function (c) { if (c.case_id === caseId) c.documents = docState.docs.length; });
       render();
       renderDocs();
     }).catch(function (err) { $("docList").innerHTML = '<li><span class="empty">' + esc(err.message) + "</span></li>"; });
   }
+  function renderRequest(j) {
+    var c = state.cases.filter(function (x) { return x.case_id === docState.caseId; })[0] || {};
+    var r = j.documents_request || {}, l = j.link, el = $("reqState"), txt = "", cls = "";
+    function day(ts) { return ts ? new Date(ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""; }
+    if (l && l.state === "active" && l.channel && l.channel !== "copy") { txt = "Link sent by " + (l.channel === "sms" ? "text" : "email") + " to " + l.sent_to + " · works until " + day(l.expires_at) + " · " + l.files_used + " of " + l.max_files + " files received"; cls = "ok"; }
+    else if (l && l.state === "active") { txt = "A link was copied on " + day(l.created_at) + " · works until " + day(l.expires_at) + " · " + l.files_used + " files received"; cls = "ok"; }
+    else if (r.status === "not_sent") { txt = "Link not sent: " + (r.error || "unknown reason"); cls = "bad"; }
+    else if (l && l.state === "expired") { txt = "The last link expired on " + day(l.expires_at) + ". Send a new one."; }
+    else if (l && l.state === "used_up") { txt = "The last link has been used for all " + l.max_files + " files. Send a new one for more."; }
+    else if (r.status === "requested") { txt = "The caller said on the call that they have documents."; }
+    else { txt = "Send the caller a private link to add files to this case. It works for 7 days."; }
+    if (r.status === "received" && r.files) txt += (txt ? " · " : "") + "Caller has sent " + r.files + " file" + (r.files === 1 ? "" : "s") + ".";
+    el.textContent = txt; el.className = "req-state" + (cls ? " " + cls : "");
+    if (!$("reqEmail").value) $("reqEmail").value = r.email || c.email || "";
+    if (!$("reqPhone").value) $("reqPhone").value = r.phone || c.phone || "";
+  }
+  $("mDocs").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-send]");
+    if (!b) return;
+    var channel = b.getAttribute("data-send");
+    $("reqErr").textContent = ""; b.disabled = true;
+    api("/api/v1/case-documents/link", { case_id: docState.caseId, channel: channel, email: $("reqEmail").value.trim(), phone: $("reqPhone").value.trim() })
+      .then(function (j) {
+        replaceCase(j.case); render();
+        if (channel === "copy") { $("reqUrl").value = j.url; $("reqCopy").hidden = false; $("reqUrl").select(); toast("Link ready: copy it and send it to the caller"); }
+        else toast("Link sent by " + (j.channel === "sms" ? "text" : "email") + " to " + j.to + (j.dry_run ? " (test mode)" : ""));
+        return loadDocs();
+      })
+      .catch(function (err) { $("reqErr").textContent = err.message; loadDocs(); })
+      .then(function () { b.disabled = false; });
+  });
+  $("reqCopyBtn").addEventListener("click", function () {
+    var u = $("reqUrl").value;
+    var ok = function () { toast("Link copied"); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(u).then(ok, function () { $("reqUrl").select(); toast("Selected. Press Ctrl+C to copy"); });
+    else { $("reqUrl").select(); toast("Selected. Press Ctrl+C to copy"); }
+  });
+
   function renderDocs() {
     var docs = docState.docs || [];
     if (!docs.length) { $("docList").innerHTML = '<li><span class="empty">No documents on this case yet.</span></li>'; return; }

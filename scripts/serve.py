@@ -66,6 +66,7 @@ from agent import onboarding
 from agent.case_manager import case_manager, STATUSES as CASE_STATUSES
 from agent.knowledge_manager import knowledge_manager, KnowledgeError, MAX_FILE_BYTES as KNOWLEDGE_MAX_FILE
 from agent.case_documents import case_documents, DocumentError, MAX_FILE_BYTES as CASE_DOC_MAX_FILE
+from agent.upload_links import upload_links, send_link as send_upload_link
 amd_manager = AMDManager()
 
 
@@ -483,7 +484,7 @@ class Handler(SimpleHTTPRequestHandler):
         """
         path = parsed.path
         if (path in self.PUBLIC_PATHS or path.endswith(self.STATIC_SUFFIXES) or path.startswith("/audio/")
-                or path.startswith("/api/v1/auth/oauth/")):
+                or path.startswith("/api/v1/auth/oauth/") or path.startswith(("/upload/", "/api/v1/upload-link/"))):
             return True
         if self._session_user():
             return True
@@ -515,6 +516,8 @@ class Handler(SimpleHTTPRequestHandler):
     # Product Admins (admin) and Member Admins (member_admin) receive 403 / redirect for these.
     # Softphone WebRTC dialer and API Keys & Provider Secrets are strictly Super Admin only.
     WEBSITE_DRAFT_LIMITER = None   # set below the class (needs auth_manager's limiter type)
+    UPLOAD_LINK_LIMITER = None
+    UPLOAD_LINK_MISS_LIMITER = None
     SUPER_ADMIN_PAGES = ("/organizations", "/users", "/softphone", "/api-keys", "/branding", "/email-settings")
     SUPER_ADMIN_PREFIXES = ("/api/v1/system/", "/api/v1/api-keys", "/api/providers")
 
@@ -650,6 +653,66 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"status": "error", "error": str(e)}, e.status)
             return
         self._send_json({"status": "ok", "document": doc.public()}, 201)
+
+    # ── Caller upload links (no sign-in: the link itself is the permission) ──
+    def _upload_link_limited(self) -> bool:
+        """Rate limit for the public link endpoints. True (and 429 sent) when over."""
+        if not self.UPLOAD_LINK_LIMITER.check(f"ip:{self._client_ip()}").allowed:
+            self._send_json({"status": "error", "error": "Too many requests. Wait a minute and try again."}, 429)
+            return True
+        return False
+
+    def _resolve_upload_link(self, token: str):
+        try:
+            return upload_links.resolve(token)
+        except DocumentError as e:
+            if e.status == 404:   # wrong tokens count towards a stricter limit: no guessing
+                self.UPLOAD_LINK_MISS_LIMITER.check(f"ip:{self._client_ip()}")
+            self._send_json({"status": "error", "error": str(e)}, e.status)
+            return None
+
+    def _upload_link_api(self, parsed) -> None:
+        q = parse_qs(parsed.query)
+        token = (q.get("token") or [""])[0]
+        if self._upload_link_limited():
+            return
+        cutoff = time.time() - self.UPLOAD_LINK_MISS_LIMITER.window_seconds
+        misses = [t for t in self.UPLOAD_LINK_MISS_LIMITER._history.get(f"ip:{self._client_ip()}", []) if t > cutoff]
+        if len(misses) >= 20:
+            self._send_json({"status": "error", "error": "Too many invalid links from this network. Try again later."}, 429)
+            return
+        if parsed.path == "/api/v1/upload-link/upload":
+            data = self._read_capped_body(CASE_DOC_MAX_FILE)
+            if data is None:
+                return
+            link = self._resolve_upload_link(token)
+            if not link:
+                return
+            case = case_manager.get(link.case_id)
+            if not case:
+                self._send_json({"status": "error", "error": "This case is no longer available."}, 410)
+                return
+            name = (q.get("name") or [""])[0]
+            try:
+                doc = case_documents.add(case.case_id, case.workspace_id, name, data, source="caller",
+                                         uploaded_by=case.client_name or "Caller")
+                link = upload_links.record_upload(link.link_id, doc.name)
+                case_manager.update_documents_request(case.case_id, {"status": "received", "received_at": time.time(),
+                                                                     "files": int((case.documents_request or {}).get("files", 0)) + 1})
+            except DocumentError as e:
+                self._send_json({"status": "error", "error": str(e)}, e.status)
+                return
+            self._send_json({"status": "ok", "name": doc.name, "files_left": max(0, link.max_files - link.files_used)}, 201)
+            return
+        link = self._resolve_upload_link(token)
+        if not link:
+            return
+        case = case_manager.get(link.case_id)
+        from agent.firm_context import firm_name
+        first = ((case.client_name if case else "") or "").split(" ")[0]
+        self._send_json({"status": "ok", "firm": firm_name(link.workspace_id) or "", "first_name": "" if first.lower() in ("unknown", "") else first,
+                         "expires_at": link.expires_at, "files_left": max(0, link.max_files - link.files_used),
+                         "max_file_bytes": CASE_DOC_MAX_FILE, "uploaded": list(link.uploaded)})
 
     def _knowledge_upload(self, parsed) -> None:
         """POST /api/v1/knowledge/upload?name=<file name>[&workspace_id=] with the file's bytes as the body."""
@@ -970,6 +1033,23 @@ class Handler(SimpleHTTPRequestHandler):
             handle_twilio_media_stream(self, parsed.path)
             return
         if self._maybe_twiml_webhook(parsed):
+            return
+        if parsed.path == "/api/v1/upload-link/info":
+            self._upload_link_api(parsed)
+            return
+        if parsed.path.startswith("/upload/"):
+            # The caller's upload page. The token stays in the URL path; the page reads it and calls the API.
+            with open(os.path.join(WEB, "upload.html"), "rb") as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Robots-Tag", "noindex, nofollow")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Frame-Options", "DENY")
+            self.end_headers()
+            self.wfile.write(content)
             return
         if parsed.path.endswith(".html"):
             # Old bookmarks and links: /api-keys.html → /api-keys (permanent, so browsers update).
@@ -1820,8 +1900,15 @@ class Handler(SimpleHTTPRequestHandler):
                     item = d.public()
                     item["can_delete"] = bool(v["is_admin"] or (me and d.uploaded_by_id == me))
                     docs.append(item)
+                link = upload_links.latest_for_case(case.case_id)
+                link_info = None
+                if link:
+                    link_info = {"state": link.state(), "channel": link.channel, "sent_to": link.sent_to,
+                                 "expires_at": link.expires_at, "files_used": link.files_used,
+                                 "max_files": link.max_files, "created_at": link.created_at, "created_by": link.created_by}
                 self._send_json({"status": "ok", "case_id": case.case_id, "documents": docs,
-                                 "max_file_bytes": CASE_DOC_MAX_FILE, "can_upload": True})
+                                 "max_file_bytes": CASE_DOC_MAX_FILE, "can_upload": True,
+                                 "documents_request": case.documents_request or {}, "link": link_info})
                 return
             doc = case_documents.get((q.get("doc_id") or [""])[0])
             if not doc or doc.case_id != case.case_id:
@@ -1903,6 +1990,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/v1/case-documents/upload":
             self._case_document_upload(parsed)
+            return
+        if parsed.path == "/api/v1/upload-link/upload":
+            self._upload_link_api(parsed)
             return
         content_len = int(self.headers.get("Content-Length", 0))
         post_data = self.rfile.read(content_len) if content_len > 0 else b"{}"
@@ -2448,6 +2538,29 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": str(e)}, 503)
                 return
             self._send_json({"status": "ok", "case": self._case_out(case)}, 201)
+            return
+        if parsed.path == "/api/v1/case-documents/link":
+            case = self._case_for_viewer(str(payload.get("case_id") or ""))
+            if not case:
+                return
+            channel = str(payload.get("channel") or "auto")
+            if channel not in ("auto", "email", "sms", "copy"):
+                self._send_json({"status": "error", "error": "channel must be email, sms or copy"}, 400)
+                return
+            from agent.telephony_manager import public_base_url
+            base = public_base_url()
+            if not base:
+                req_base = self._public_base_url()
+                host = urllib.parse.urlparse(req_base).hostname or ""
+                if channel == "copy" or host not in ("localhost", "127.0.0.1", "::1"):
+                    base = req_base
+            v = self._viewer()
+            who = (v["user"].name or v["user"].email) if v["user"] else "local admin"
+            result = send_upload_link(case, channel=channel, email=str(payload.get("email") or ""),
+                                      phone=str(payload.get("phone") or ""), base=base, created_by=who)
+            case = case_manager.get(case.case_id)
+            self._send_json(dict(result, status="ok" if result["ok"] else "error", case=self._case_out(case)),
+                            200 if result["ok"] else 400)
             return
         if parsed.path == "/api/v1/case-documents/delete":
             case = self._case_for_viewer(str(payload.get("case_id") or ""))
@@ -3812,6 +3925,8 @@ except Exception as _e:
     log.warning("Firm-details prompt cleanup skipped: %s", _e)
 Handler.WEBSITE_DRAFT_LIMITER = SlidingWindowRateLimiter(default_limit=5, window_seconds=600)
 Handler.EMAIL_TEST_LIMITER = SlidingWindowRateLimiter(default_limit=5, window_seconds=300)
+Handler.UPLOAD_LINK_LIMITER = SlidingWindowRateLimiter(default_limit=60, window_seconds=60)
+Handler.UPLOAD_LINK_MISS_LIMITER = SlidingWindowRateLimiter(default_limit=1000, window_seconds=600)
 
 import signal
 try:

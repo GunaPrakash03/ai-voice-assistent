@@ -648,6 +648,14 @@ class PostCallPipelineWorker:
                 if case:
                     job.metadata["case_id"] = case.case_id
                     log.info("Case %s registered for call %s (%s)", case.case_id, job.call_id, case.workspace_id)
+                    # The caller said they have documents: send the private upload link now.
+                    if (case.documents_request or {}).get("status") == "requested":
+                        try:
+                            from agent.upload_links import send_link
+                            sent = send_link(case)
+                            job.metadata["documents_link"] = {k: sent.get(k) for k in ("ok", "channel", "to", "error")}
+                        except Exception as link_err:
+                            log.warning("Upload link not sent for case %s: %s", case.case_id, link_err)
             except Exception as case_err:
                 log.warning("Case registration failed for %s: %s", job.call_id, case_err)
 

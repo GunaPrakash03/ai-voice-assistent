@@ -21,3 +21,4 @@ webhook_receiver/
 .clio_tokens.json
 config/knowledge/
 config/case_documents/
+config/upload_links.json

@@ -289,6 +289,17 @@ class CaseManager:
             case.clio_sync = dict(info, at=time.time())
             return self._commit(case, before)
 
+    def update_documents_request(self, case_id: str, changes: Dict[str, Any]) -> Case:
+        """Merges ``changes`` into the case's documents request (status, channel, to, sent_at, ...)."""
+        with self._lock:
+            self._refresh()
+            case = self._cases.get(case_id)
+            if not case:
+                raise KeyError(case_id)
+            before = case.to_dict()
+            case.documents_request = dict(case.documents_request or {}, **changes)
+            return self._commit(case, before)
+
     def unassign_everywhere(self, user_id: str) -> int:
         """Drops a removed member from every case. Returns how many cases changed."""
         changed = 0

@@ -51,6 +51,26 @@ def _load_profile(workspace_id: str) -> Dict[str, Any]:
     return {}
 
 
+def firm_name(workspace_id: str) -> str:
+    """The firm's display name (Profile → Firm details, else the workspace name), "" when unknown."""
+    wid = workspace_id or DEFAULT_WORKSPACE
+    name = str((firm_profile(wid) or {}).get("firm_name") or "").strip()
+    if name:
+        return name
+    try:
+        from agent import storage
+        if storage.database_url():
+            doc = storage.load_document("workspaces", wid) if storage.available() else None
+            return str((doc or {}).get("name") or "").strip()
+        with open(AUTH_STORE_PATH, "r", encoding="utf-8") as f:
+            for w in json.load(f).get("workspaces", []) or []:
+                if w.get("workspace_id") == wid:
+                    return str(w.get("name") or "").strip()
+    except Exception as e:
+        log.debug("Firm name for %s not read: %s", wid, e)
+    return ""
+
+
 def firm_profile(workspace_id: str) -> Dict[str, Any]:
     """The workspace's saved firm profile, cached for CACHE_SECONDS."""
     wid = workspace_id or DEFAULT_WORKSPACE

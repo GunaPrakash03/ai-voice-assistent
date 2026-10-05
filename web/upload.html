@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Send your documents</title>
+<style>
+  :root{
+    --ground:#F4F5F8; --panel:#FFFFFF; --sunk:#EEF0F4; --ink:#131725; --ink-soft:#4E556B; --ink-faint:#80869A;
+    --line:#DDE0E9; --accent:#C2560F; --accent-soft:#FDF5EF; --pos:#2F7A4F; --pos-soft:#E6F2EA; --neg:#A32F26; --neg-soft:#FAEAE8;
+    --f-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
+      --line:#262B3A; --accent:#F0803C; --accent-soft:#2A1809; --pos:#5FBF88; --pos-soft:#12251A; --neg:#E0776C; --neg-soft:#2A1513;
+    }
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  body{margin:0;background:var(--ground);color:var(--ink);font:16px/1.5 var(--f-ui);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:560px;margin:0 auto;padding:28px 16px 48px}
+  .firm{font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+  h1{font-size:24px;line-height:1.25;margin:0 0 8px}
+  .lead{color:var(--ink-soft);margin:0 0 20px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .drop{border:2px dashed var(--line);border-radius:10px;padding:22px 14px;text-align:center}
+  .drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .drop p{margin:0 0 14px;color:var(--ink-soft);font-size:14px}
+  .btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px;padding:10px 18px;border-radius:8px;border:1px solid transparent;
+       background:var(--accent);color:#fff;font:600 15px var(--f-ui);cursor:pointer}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--ink)}
+  .btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .small{font-size:13px;color:var(--ink-faint);margin:12px 0 0}
+  .list{list-style:none;margin:16px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+  .list li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-radius:8px;background:var(--sunk);font-size:14px}
+  .list .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .list .st{font-size:13px;color:var(--ink-soft);white-space:nowrap}
+  .list .ok{color:var(--pos);font-weight:600}
+  .list li.bad{background:var(--neg-soft)}
+  .list li.bad .st{color:var(--neg);white-space:normal;grid-column:1/-1}
+  .bar{grid-column:1/-1;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+  .bar span{display:block;height:100%;background:var(--accent)}
+  .done{margin-top:16px;padding:14px 16px;border-radius:10px;background:var(--pos-soft);color:var(--pos);font-weight:600}
+  .msg{padding:18px;border-radius:12px;background:var(--neg-soft);color:var(--neg)}
+  .msg b{display:block;font-size:17px;margin-bottom:4px}
+  .foot{margin-top:22px;font-size:12.5px;color:var(--ink-faint)}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <p class="firm" id="firm">&nbsp;</p>
+  <h1 id="title">Send your documents</h1>
+  <p class="lead" id="lead">Loading…</p>
+
+  <div class="msg" id="error" role="alert" hidden></div>
+
+  <section class="card" id="uploader" hidden>
+    <div class="drop" id="drop">
+      <p>Photos, a police report, medical bills, letters: anything about your case. PDF, Word or photos, up to <span id="maxMb">20</span> MB each.</p>
+      <div class="btns">
+        <button class="btn" type="button" id="btnPick">Choose files</button>
+        <button class="btn ghost" type="button" id="btnCamera">Take a photo</button>
+      </div>
+      <input type="file" id="pick" multiple hidden accept=".pdf,.docx,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp,.heic,.heif,application/pdf,image/*">
+      <input type="file" id="camera" hidden accept="image/*" capture="environment">
+    </div>
+    <ul class="list" id="list" aria-live="polite"></ul>
+    <div class="done" id="done" hidden>Thank you. The firm has your documents. You can add more any time before the link expires.</div>
+    <p class="small" id="meta"></p>
+  </section>
+
+  <p class="foot">Only the firm can see what you send. This page can add files to your case; it can't show or change anything already there.</p>
+</main>
+<script>
+(function () {
+  var token = (location.pathname.split("/upload/")[1] || "").split(/[/?#]/)[0];
+  var $ = function (id) { return document.getElementById(id); };
+  var info = null, busy = false, queue = [];
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function size(b) { return b < 1048576 ? Math.max(1, Math.round(b / 1024)) + " KB" : (b / 1048576).toFixed(1) + " MB"; }
+  function fail(msg) {
+    $("uploader").hidden = true;
+    $("lead").hidden = true;
+    $("title").textContent = "This link can't be used";
+    $("error").innerHTML = "<b>Sorry.</b>" + esc(msg);
+    $("error").hidden = false;
+  }
+  function meta() {
+    var left = info.files_left;
+    var until = new Date(info.expires_at * 1000).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+    $("meta").textContent = (left > 0 ? left + " more file" + (left === 1 ? "" : "s") + " can be added" : "No more files can be added with this link") + " · link works until " + until + ".";
+    $("btnPick").disabled = $("btnCamera").disabled = left <= 0;
+  }
+  function render() {
+    $("list").innerHTML = queue.map(function (it) {
+      var st = it.state === "done" ? '<span class="st ok">Sent ✓</span>' : it.state === "bad" ? '<span class="st">' + esc(it.msg) + "</span>"
+             : '<span class="st">' + (it.state === "up" ? "Sending " + it.pct + "%" : "Waiting") + "</span>";
+      return '<li class="' + (it.state === "bad" ? "bad" : "") + '"><span class="nm">' + esc(it.name) + "</span>" + st +
+        (it.state === "up" ? '<span class="bar"><span style="width:' + it.pct + '%"></span></span>' : "") + "</li>";
+    }).join("");
+    $("done").hidden = !queue.some(function (it) { return it.state === "done"; }) || queue.some(function (it) { return it.state === "wait" || it.state === "up"; });
+  }
+  function add(files) {
+    if (!info) return;
+    Array.prototype.forEach.call(files, function (f) {
+      var it = { file: f, name: f.name || "photo.jpg", state: "wait", pct: 0, msg: "" };
+      if (f.size > info.max_file_bytes) { it.state = "bad"; it.msg = it.name + " is " + size(f.size) + "; the limit is " + Math.round(info.max_file_bytes / 1048576) + " MB."; }
+      else if (!f.size) { it.state = "bad"; it.msg = it.name + " is empty."; }
+      queue.push(it);
+    });
+    render();
+    next();
+  }
+  function next() {
+    if (busy) return;
+    var it = queue.find(function (x) { return x.state === "wait"; });
+    if (!it) return;
+    if (info.files_left <= 0) { it.state = "bad"; it.msg = "No more files can be added with this link."; render(); return next(); }
+    busy = true; it.state = "up"; render();
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/v1/upload-link/upload?token=" + encodeURIComponent(token) + "&name=" + encodeURIComponent(it.name));
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = function (e) { if (e.lengthComputable) { it.pct = Math.round(e.loaded / e.total * 100); render(); } };
+    xhr.onload = function () {
+      var j = {};
+      try { j = JSON.parse(xhr.responseText || "{}"); } catch (e) {}
+      if (xhr.status === 201) { it.state = "done"; info.files_left = j.files_left; meta(); }
+      else if (xhr.status === 410 || xhr.status === 404) { it.state = "bad"; it.msg = j.error || "This link can no longer be used."; fail(j.error || "This link can no longer be used."); }
+      else { it.state = "bad"; it.msg = it.name + ": " + (j.error || "couldn't be sent (" + xhr.status + "). Please try again."); }
+      busy = false; render(); next();
+    };
+    xhr.onerror = function () { it.state = "bad"; it.msg = it.name + ": the connection dropped. Please try again."; busy = false; render(); next(); };
+    xhr.send(it.file);
+  }
+
+  var drop = $("drop");
+  ["dragenter", "dragover"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("over"); }); });
+  ["dragleave", "drop"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("over"); }); });
+  drop.addEventListener("drop", function (e) { if (info && info.files_left > 0 && e.dataTransfer.files.length) add(e.dataTransfer.files); });
+  $("btnPick").addEventListener("click", function () { $("pick").click(); });
+  $("btnCamera").addEventListener("click", function () { $("camera").click(); });
+  ["pick", "camera"].forEach(function (id) { $(id).addEventListener("change", function () { if (this.files.length) add(this.files); this.value = ""; }); });
+
+  if (!token) { fail("This upload link is incomplete. Open the link from your email or text message again."); return; }
+  fetch("/api/v1/upload-link/info?token=" + encodeURIComponent(token)).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || "This link can't be used right now."); return j; });
+  }).then(function (j) {
+    info = j;
+    if (j.firm) { $("firm").textContent = j.firm; document.title = "Send your documents · " + j.firm; }
+    $("title").textContent = j.first_name ? "Hi " + j.first_name + ", send us your documents" : "Send us your documents";
+    $("lead").textContent = "Add the documents you mentioned on the phone. They go straight to your case" + (j.firm ? " at " + j.firm : "") + ".";
+    $("maxMb").textContent = Math.round(j.max_file_bytes / 1048576);
+    (j.uploaded || []).forEach(function (n) { queue.push({ name: n, state: "done", pct: 100 }); });
+    $("uploader").hidden = false;
+    meta();
+    render();
+  }).catch(function (e) { fail(e.message); });
+})();
+</script>
+</body>
+</html>

@@ -167,13 +167,13 @@ var PHASES = [
       done: "A transcript with a yes produces a case marked Documents requested with the contact." }
   ]},
   { id: 3, name: "Upload link", sub: "A private, expiring link that adds files to one case", tasks: [
-    { id: "3.1", status: "todo", name: "Secure links",
+    { id: "3.1", status: "done", name: "Secure links",
       desc: "Random link stored only as a hash, tied to one case, valid 7 days, 20 files max, rate-limited; can only add files.",
       done: "Expired, used-up, guessed or tampered links are refused." },
-    { id: "3.2", status: "todo", name: "Send it",
+    { id: "3.2", status: "done", name: "Send it",
       desc: "After the call: email with the link (firm name, what to send, expiry); text message when there's no usable email. Resend by email or text from the case.",
       done: "Mail arrives at a test mail server; text goes out through Twilio (dry run in tests)." },
-    { id: "3.3", status: "todo", name: "Upload page for callers",
+    { id: "3.3", status: "done", name: "Upload page for callers",
       desc: "/upload/<link>: no login, phone-friendly, firm name and case owner's first name, drag or pick files (camera on phones), progress, a clear thank-you.",
       done: "Uploads from a phone-sized browser land on the case." }
   ]},
