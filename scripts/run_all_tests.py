@@ -73,6 +73,8 @@ TEST_SUITES = [
 
     # Phase 5: Client Self-Service Sign-Up
     ("Phase 5 - Tasks 5.1-5.4: Firm Profile, Sign-Up & Verify",   "scripts/verify_signup.py", False),
+    # Knowledge base (web/knowledge-plan.html): isolated, never touches the real database
+    ("Knowledge Base: Store, Read, Search & Calls",               "scripts/verify_knowledge.py", False),
 ]
 
 

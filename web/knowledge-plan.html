@@ -89,7 +89,7 @@
 
 <header>
   <h1>Knowledge Base Plan</h1>
-  <p class="lead">Each firm gets one knowledge library. Admins upload files, documents and images; every agent in that firm answers callers from them. The bars move as tasks land.</p>
+  <p class="lead">Each firm gets one knowledge library. Admins upload files, documents and images; every agent in that firm answers callers from them. All four phases are built and tested.</p>
   <div class="nav"><a href="/task-plan">Task plan</a><a href="/flow-testing">Flows &amp; Testing</a><a href="/admin-guide">Admin guide</a></div>
 </header>
 
@@ -178,10 +178,10 @@ var PHASES = [
       done: "Each role sees exactly what it should." }
   ]},
   { id: 4, name: "Tests and docs", sub: "Proof it works, written down", tasks: [
-    { id: "4.1", status: "todo", name: "verify_knowledge.py",
+    { id: "4.1", status: "done", name: "verify_knowledge.py",
       desc: "Isolated suite: every format, image reading with a Gemini stand-in, limits, firm isolation, search, both call paths.",
       done: "Suite passes without touching the real database." },
-    { id: "4.2", status: "todo", name: "Browser check and guides",
+    { id: "4.2", status: "done", name: "Browser check and guides",
       desc: "Upload flow checked at desktop and phone width; Flows & Testing and the Admin guide updated.",
       done: "No console errors; guides describe the feature." }
   ]}

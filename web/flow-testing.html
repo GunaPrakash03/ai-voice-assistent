@@ -110,6 +110,7 @@
     <li><a href="#flow-phone">3. A phone call (Twilio)</a></li>
     <li><a href="#flow-livekit">4. A browser or SIP call (LiveKit)</a></li>
     <li><a href="#flow-postcall">5. After the call</a></li>
+    <li><a href="#flow-knowledge">6. Knowledge base</a></li>
     <li><a href="#safety">Testing: what is safe to run</a></li>
     <li><a href="#suites">Testing: the suites</a></li>
     <li><a href="#manual">Testing: by hand</a></li>
@@ -185,8 +186,8 @@ Scripts that edit users or organizations directly (for example <code>scripts/enf
     <span class="where">TwilioMediaStreamSession.on_start / _resolve_agent</span></li>
   <li><b>Listen.</b> Caller audio goes to Deepgram streaming STT. When the caller speaks over the agent, its audio stops and the unheard part of the reply is dropped from history.
     <span class="where">_start_deepgram_stt · interrupt_agent · _truncate_unheard_reply</span></li>
-  <li><b>Reply.</b> The agent's reply uses global instructions first (no legal advice, how to end a call), then the agent's prompt, then the firm details read from the database at call time (30 s cache). It is spoken in the agent's voice, converted to μ-law.
-    <span class="where">agent_builder._preview_reply · agent/firm_context.py call_instructions · _speak_agent_text</span></li>
+  <li><b>Reply.</b> The agent's reply uses global instructions first (no legal advice, how to end a call, answer firm questions only from the firm's details and files), then the agent's prompt, then the firm details read from the database at call time (30 s cache), then FIRM KNOWLEDGE: the passages from the firm's knowledge base that match the caller's last two turns. It is spoken in the agent's voice, converted to μ-law.
+    <span class="where">agent_builder._preview_reply · knowledge_query · agent/firm_context.py call_instructions, knowledge_context · _speak_agent_text</span></li>
   <li><b>Goodbye.</b> When a full reply reads as a sign-off, the stream is closed and Twilio hangs up.
     <span class="where">agent_builder.looks_like_closing → _hang_up_after_goodbye</span></li>
   <li><b>Stop.</b> The transcript is handed to the post-call pipeline (section 5). With no caller turns, only a <code>call_ended</code> webhook goes out.
@@ -203,6 +204,8 @@ Scripts that edit users or organizations directly (for example <code>scripts/enf
     <span class="where">web/voice-client.js · web/softphone.html · agent/token.py · agent/telephony_manager.py dispatch rules</span></li>
   <li><b>Worker joins</b> and loads the active agent: voice applied, prompt built by the same <code>call_instructions</code> as phone calls.
     <span class="where">agent/worker.py entrypoint · tts_manager.apply_voice</span></li>
+  <li><b>Each caller turn</b> rebuilds the instructions with that turn's FIRM KNOWLEDGE passages (in a thread, off the audio loop); the <code>query_knowledge_base</code> tool searches the same firm.
+    <span class="where">agent/worker.py execute_llm_turn · call_agent · agent/tool_manager.py query_knowledge_base</span></li>
   <li><b>Conversation.</b> Silero VAD for turns and barge-in, streaming LLM, streaming TTS, mid-call tools, transfer, DTMF/IVR, AMD, recording, all over the room's data channel.
     <span class="where">agent/llm_manager.py · tts_manager.py · tool_manager.py · transfer_manager.py · dtmf_manager.py · amd_manager.py · recording_manager.py</span></li>
   <li><b>End.</b> Same sign-off detection, then the worker's own post-call pipeline.
@@ -225,6 +228,27 @@ Scripts that edit users or organizations directly (for example <code>scripts/enf
   <tr><td>6</td><td><code>storage_archive</code></td><td>Recording and manifest archived; the call appears in Call History</td></tr>
 </table></div>
 <p>Listening on the pipeline's events: signed HMAC-SHA256 webhooks to each subscribed endpoint (<code>agent/webhook_dispatcher.py</code>), and a short summary email to the agent's <code>lead_emails</code> when mail is set up (<code>agent/onboarding.py</code> notify_leads). Assigning a case to staff with a Clio user id sets the matter's Responsible Attorney.</p>
+</section>
+
+<section id="flow-knowledge">
+<h2>6. Knowledge base</h2>
+<p>One library of files per firm, read once on upload and searched on every caller turn. Admins manage it on <code>/knowledge</code>.</p>
+<div class="card">
+<ol class="flow">
+  <li><b>Upload.</b> The file's bytes are the request body. Type is decided from the bytes (PDF, Word, Excel, CSV, text, Markdown, PNG/JPEG/WebP); limits are 20 MB a file and 200 MB / 300 files a firm; duplicates are refused.
+    <span class="where">POST /api/v1/knowledge/upload → KnowledgeManager.upload, sniff (agent/knowledge_manager.py)</span></li>
+  <li><b>Store.</b> The record goes to <code>app_documents</code> (<code>knowledge_files</code>) and the original bytes to <code>knowledge_blobs</code>; JSON and files under <code>config/knowledge/</code> without a database.
+    <span class="where">agent/storage.py save_document, save_blob</span></li>
+  <li><b>Read</b> in the background. PDF text pages, Word paragraphs and tables, Excel rows and plain text are read on the dashboard server. Images and scanned PDF pages go to Gemini (one retry). The result is Ready or Failed with a reason.
+    <span class="where">KnowledgeManager.process · extract · _gemini_read_image</span></li>
+  <li><b>Split.</b> Short overlapping passages (about 900 characters), never across PDF pages, saved to <code>knowledge_chunks</code>.
+    <span class="where">split_passages</span></li>
+  <li><b>Search.</b> BM25 over the firm's ready passages, with stemming and a small set of receptionist synonyms. Other processes (the worker) reload when the collection stamps change.
+    <span class="where">KnowledgeManager.search · _Index · storage.collection_stamps</span></li>
+  <li><b>Use on calls.</b> Each caller turn adds the best passages to the agent's instructions (sections 3 and 4). Nothing matching means the agent offers a call back.
+    <span class="where">agent/firm_context.py knowledge_context</span></li>
+</ol>
+</div>
 </section>
 
 <section id="safety">
@@ -268,6 +292,8 @@ Scripts that edit users or organizations directly (for example <code>scripts/enf
   <tr><th>Script</th><th>Covers</th><th>Needs</th></tr>
   <tr><td><code>verify_end_call.py</code></td><td>Sign-off detection; Twilio stream closes after a full goodbye only</td><td><span class="badge ok">isolated</span></td></tr>
   <tr><td><code>verify_trunk_validation.py</code></td><td>Trunk create validation, trunk delete, marketplace chip counts</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>verify_knowledge.py</code></td><td>Knowledge base: file types, reading every format, passages, search, limits, firm isolation, the API by role, restart; FIRM KNOWLEDGE on every call path and the knowledge tool. <code>VERIFY_PG_URL</code> adds a throwaway-PostgreSQL section; <code>VERIFY_LIVE_LLM=1</code> adds two real Gemini answers.</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>test_playwright_knowledge.py</code></td><td>The Knowledge base page in headless Chromium: upload, statuses, preview, Try a question, download, delete, Read again, Member Admin view, phone width. Uses the Gemini key from <code>.env</code> for the image (<code>--no-gemini</code> to skip).</td><td><span class="badge ok">isolated</span></td></tr>
   <tr><td><code>test_twilio_stream.py</code></td><td>Voice webhook TwiML, media-stream handshake, greeting audio</td><td><span class="badge info">server</span></td></tr>
   <tr><td><code>test_playwright_voices.py</code></td><td>Agent Builder voice picker and Test Call in headless Chromium. The Test Call is a live LiveKit call to the Docker worker, which saves each one to the real Call History and recordings.</td><td><span class="badge warn">worker</span> <span class="badge bad">live</span></td></tr>
   <tr><td><code>verify.py</code>, <code>verify_vad.py</code>, <code>verify_llm.py</code>, <code>verify_tts.py</code>, <code>verify_stt.py</code>, <code>verify_tools.py</code>, <code>verify_sdk.py</code></td><td>Phase 1 audio core: media server, VAD, LLM, TTS, STT wiring, tools, browser SDK</td><td><span class="badge warn">worker</span></td></tr>
@@ -324,10 +350,12 @@ python3 scripts/audit_all_pages.py</code></pre>
   <tr><td>Firm scoping</td><td><span class="badge warn">open</span> Agents, the live agent, webhooks, the Clio token and branding are server-wide, not per firm.</td></tr>
   <tr><td>Intake names</td><td><span class="badge warn">open</span> The regex extractor can take the agent's greeting as the client name; Cases filters it, but Clio can still receive it.</td></tr>
   <tr><td>Carriers</td><td><span class="badge info">by design</span> Number purchase and outbound dialling are simulated.</td></tr>
+  <tr><td>Booking tools</td><td><span class="badge warn">open</span> <code>check_availability</code>, <code>book_appointment</code> and <code>lookup_order</code> are simulated; saved copies in <code>config/custom_tools.json</code> make them echo instead. Turn them off for agents until a real calendar is connected.</td></tr>
+  <tr><td>Knowledge search</td><td><span class="badge info">by design</span> Word matching, not meaning: a question sharing no words (or synonyms) with a file won't find it.</td></tr>
 </table></div>
 </section>
 
-<footer>Written 2026-10-05 against commit 0dd82ea. When a flow or suite changes, update this page with it.</footer>
+<footer>Written 2026-10-05; knowledge base added the same day. When a flow or suite changes, update this page with it.</footer>
 </div>
 </body>
 </html>

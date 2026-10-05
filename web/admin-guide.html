@@ -42,13 +42,14 @@
           <div class="h">Workspace</div>
           <a href="#team">4. Team &amp; roles</a>
           <a href="#agents">5. Agents overview</a>
-          <a href="#numbers">6. Numbers &amp; SIP trunks</a>
-          <a href="#webhooks">7. Webhook endpoints</a>
+          <a href="#knowledge">6. Knowledge base</a>
+          <a href="#numbers">7. Numbers &amp; SIP trunks</a>
+          <a href="#webhooks">8. Webhook endpoints</a>
           <div class="h">Platform</div>
-          <a href="#storage">8. Storage &amp; backups</a>
-          <a href="#security">9. Sign-in &amp; security</a>
-          <a href="#ops">10. Running the stack</a>
-          <a href="#limits">11. Known limits</a>
+          <a href="#storage">9. Storage &amp; backups</a>
+          <a href="#security">10. Sign-in &amp; security</a>
+          <a href="#ops">11. Running the stack</a>
+          <a href="#limits">12. Known limits</a>
         </aside>
 
         <div>
@@ -107,8 +108,20 @@
             <p>Test calls, recordings and extracted data are attributed to the agent that handled them, and every member sees the same call history.</p>
           </section>
 
+          <section class="card" id="knowledge">
+            <h2>6. Knowledge base</h2>
+            <p>Each firm has one library of files on the <b>Knowledge base</b> page. Every agent in that firm answers callers from it: fee schedules, office hours, locations, policies, FAQs. On each caller turn the agent is given the passages that best match what the caller just said; when nothing matches, it says it doesn't have that information and offers a call back instead of guessing.</p>
+            <ol class="steps">
+              <li><b>Upload</b>: drop files on the page or click to choose. Accepted: PDF, Word (.docx), Excel (.xlsx), CSV, text, Markdown, and PNG/JPG/WebP images. Up to 20 MB a file, 200 MB and 300 files a firm. Old .doc/.xls files, zip files and duplicates are refused with the reason.</li>
+              <li><b>Reading</b>: each file is read once, right after upload. Images and scanned PDF pages are read by Gemini (needs the Gemini key on <b>API Keys &amp; Providers</b>); without it those files show <i>Failed</i> with that reason. Fix the cause, then press <span class="btnlike">Read again</span>.</li>
+              <li><b>Check it</b>: <span class="btnlike">Preview</span> shows the exact text agents search; <b>Try a question</b> shows the passages an agent would get for a caller's question.</li>
+              <li><b>Remove</b>: <span class="btnlike">Delete</span>, then confirm. Agents stop using the file at once (the call worker within a few seconds).</li>
+            </ol>
+            <p>Product Admins manage their own firm's library and Member Admins can view and search it. Super Admins can work on any firm's library with the firm picker. Search matches words, with stemming and common caller phrasings (cost/fee/price, hours/open, where/address), not meaning, so give files plain wording that callers would use.</p>
+          </section>
+
           <section class="card" id="numbers">
-            <h2>6. Numbers &amp; SIP trunks</h2>
+            <h2>7. Numbers &amp; SIP trunks</h2>
             <ol class="steps">
               <li><b>Buy Phone Numbers</b>: Telnyx and Twilio inventory in separate tabs; buying records the carrier, assigns a trunk and an agent.</li>
               <li><b>SIP Trunks &amp; DIDs</b>: owned numbers with an agent dropdown each (per-number routing), inbound and outbound trunks, and dispatch rules. Edit or remove numbers and trunks here.</li>
@@ -118,14 +131,14 @@
           </section>
 
           <section class="card" id="webhooks">
-            <h2>7. Webhook endpoints</h2>
+            <h2>8. Webhook endpoints</h2>
             <p>On <b>Webhooks &amp; Data</b> add an endpoint URL, choose events, and optionally set the signing secret (one is generated otherwise). Press <span class="btnlike">Test</span>: a signed test event is posted and the result shows the HTTP code and round trip. The health pill reflects the last delivery. Recent deliveries list status, attempts and errors, with <span class="btnlike">Replay</span>.</p>
             <p>Endpoints are workspace-wide; whether a call posts anything is decided per agent by its <b>Webhook &amp; data extraction</b> toggle. The payload carries <code>call</code>, <code>extracted</code> (the agent's fields, filled by Gemini), <code>summary</code>, <code>sentiment</code> and <code>transcript</code>, signed with <code>X-Signature-256</code> (HMAC-SHA256 of the body). Failed deliveries retry with back-off, then land in the dead-letter list.</p>
           </section>
 
           <section class="card" id="storage">
-            <h2>8. Storage &amp; backups</h2>
-            <p>Everything is written through to <b>PostgreSQL</b> (container <code>voice-postgres</code>, host port 5433, volume <code>voice_pgdata</code>): agents and revisions, phone numbers, trunks and rules, users, sessions and API keys, post-call jobs, and every recording as bytes. The JSON files under <code>config/</code> and the WAVs under <code>recordings/</code> remain the working copy; at start-up anything missing or older on disk is restored from the database.</p>
+            <h2>9. Storage &amp; backups</h2>
+            <p>Everything is written through to <b>PostgreSQL</b> (container <code>voice-postgres</code>, host port 5433, volume <code>voice_pgdata</code>): agents and revisions, phone numbers, trunks and rules, users, sessions and API keys, post-call jobs, every recording as bytes, and the knowledge base (file records and passages in <code>app_documents</code>, original files in <code>knowledge_blobs</code>). The JSON files under <code>config/</code> and the WAVs under <code>recordings/</code> remain the working copy; at start-up anything missing or older on disk is restored from the database.</p>
             <ul>
               <li>Connection: <code>DATABASE_URL</code> in <code>.env</code> (empty = files only).</li>
               <li>Status: <b>My Profile → Data &amp; storage</b>, or <code>GET /api/storage/status</code>.</li>
@@ -136,7 +149,7 @@
           </section>
 
           <section class="card" id="security">
-            <h2>9. Sign-in &amp; security</h2>
+            <h2>10. Sign-in &amp; security</h2>
             <ul>
               <li>Passwords are stored as PBKDF2-SHA256 hashes. Sessions are HttpOnly cookies (12 h, or 30 days with "keep me signed in") and are stored hashed.</li>
               <li>The SMS step is on for any account with a phone on its profile. Codes last 5 minutes, 5 attempts, resend after 30 s. Sender: the workspace's SMS-capable Twilio number (<code>TWILIO_SMS_FROM</code> overrides).</li>
@@ -146,7 +159,7 @@
           </section>
 
           <section class="card" id="ops">
-            <h2>10. Running the stack</h2>
+            <h2>11. Running the stack</h2>
 <pre>docker compose up -d redis livekit postgres agent   # media server, cache, database, AI worker
 python3 scripts/serve.py                            # dashboard + API on http://localhost:8091
 docker compose up -d agent                          # restart the worker after key changes
@@ -159,7 +172,7 @@ python3 scripts/run_all_tests.py                    # 20 verification suites</pr
           </section>
 
           <section class="card" id="limits">
-            <h2>11. Known limits</h2>
+            <h2>12. Known limits</h2>
             <table>
               <thead><tr><th>Area</th><th>Today</th><th>To lift it</th></tr></thead>
               <tbody>
@@ -167,6 +180,7 @@ python3 scripts/run_all_tests.py                    # 20 verification suites</pr
                 <tr><td>SMS sign-in codes</td><td>Twilio trial: verified numbers only</td><td>Verify numbers in Twilio, or upgrade</td></tr>
                 <tr><td>ElevenLabs voices</td><td>Free plan: premade only</td><td>Starter plan or higher for Voice Library / professional voices</td></tr>
                 <tr><td>Gemini</td><td>Free tier rate limits</td><td>Paid tier for 3.6 Flash on busy lines</td></tr>
+                <tr><td>Knowledge base search</td><td>Word matching with stemming and caller synonyms</td><td>Add Gemini embeddings if callers' questions miss files that share no words with them</td></tr>
                 <tr><td>Recording archive</td><td>Local folder, placeholder URL</td><td>Choose cloud storage and wire the archive step</td></tr>
               </tbody>
             </table>
