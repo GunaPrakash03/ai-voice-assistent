@@ -634,6 +634,13 @@ class PostCallPipelineWorker:
             except Exception as clio_err:
                 log.warning("Clio sync encountered non-blocking error for %s: %s", job.call_id, clio_err)
 
+            # Did the caller ask to send documents? (the closing question, agent/documents_request.py)
+            try:
+                from agent.documents_request import detect as detect_documents
+                job.metadata["documents_request"] = detect_documents(job.transcript_turns)
+            except Exception as doc_err:
+                log.warning("Documents question not read for %s: %s", job.call_id, doc_err)
+
             # Register the case for the dashboard's case list (once per call, see agent/case_manager.py).
             try:
                 from agent.case_manager import case_manager

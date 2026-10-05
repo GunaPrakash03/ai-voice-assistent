@@ -159,10 +159,10 @@ var PHASES = [
       done: "A case created with files shows them right away." }
   ]},
   { id: 2, name: "Ask on the call", sub: "The agent offers to collect documents before saying goodbye", tasks: [
-    { id: "2.1", status: "todo", name: "Closing question",
+    { id: "2.1", status: "done", name: "Closing question",
       desc: "Global rule: before the goodbye on an intake call, ask whether the caller has documents about their case; if yes, confirm the email (spelled back) or the mobile number for the link.",
       done: "A test call asks the question once, at the end, and confirms where to send." },
-    { id: "2.2", status: "todo", name: "Capture the answer",
+    { id: "2.2", status: "done", name: "Capture the answer",
       desc: "Intake extraction gets 'has documents' and the confirmed email/phone; the case created from the call is marked Documents requested.",
       done: "A transcript with a yes produces a case marked Documents requested with the contact." }
   ]},

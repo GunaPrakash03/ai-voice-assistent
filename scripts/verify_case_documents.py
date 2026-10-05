@@ -14,6 +14,11 @@
    the document count; a Super Admin reaches any firm's case.
 4. Browser (headless Chromium, same copy): New case with files attached, the Documents window lists them,
    add more by file picker, delete with an in-place confirm, assigned staff see their case's documents.
+5. The call (Phase 2, offline): the global rules ask the documents question before the closing line; the
+   call-ending check doesn't hang up on it; the transcript reader finds yes/no, typed and spoken emails
+   ("maria dot lopez at gmail dot com", spelled letters, corrections) and phone numbers, in both transcript
+   formats, through Gemini (stand-in) or rules; a case from such a call is marked Documents requested.
+   With VERIFY_LIVE_LLM=1 (Gemini key from .env, ~4 calls) a real model asks the question and reads the answer.
 Never touches the real config, .env or database.
 """
 
@@ -141,6 +146,133 @@ def offline():
         check("delete_for_case", s.delete_for_case("case-2") == 1 and not s.list_for_case("case-2"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ── 5. The call (Phase 2) ────────────────────────────────────────────────────────────────────────────
+def T(*pairs):
+    return [{"speaker": who, "text": text} for who, text in pairs]
+
+
+INTAKE = [("agent", "Thanks for calling Bottini Law, this is Maya. How can I help?"),
+          ("caller", "I was rear-ended on the I-5 last week."),
+          ("agent", "I'm sorry to hear that. Can I have your full name?"),
+          ("caller", "Maria Lopez."),
+          ("agent", "Thank you, Maria. Do you have any documents about this, like photos, a police report or medical bills?")]
+
+
+def call_suite():
+    print("\n5. The call: closing question and the caller's answer")
+    os.environ["DATABASE_URL"] = ""
+    from agent import firm_context as fc
+    from agent import documents_request as dr
+    from agent.agent_builder import looks_like_closing
+    g = fc.GLOBAL_INSTRUCTIONS
+    check("global rule asks about documents before the closing line",
+          "Do you have any documents about this" in g and g.index("- Documents:") < g.index("- Ending the call:"))
+    check("rule confirms the email letter by letter, or a mobile number", "letter by letter" in g and "mobile number" in g)
+    check("the documents question doesn't end the call",
+          not looks_like_closing("Do you have any documents about this, like photos, a police report or medical bills?"))
+
+    cases = [
+        ("yes + typed email", INTAKE + [("caller", "Yes I do."), ("agent", "What's the best email for the link?"), ("caller", "maria.lopez@gmail.com")],
+         True, "maria.lopez@gmail.com", ""),
+        ("yes + spoken email", INTAKE + [("caller", "Yeah, a few photos."), ("agent", "Great, what email should I send it to?"),
+                                          ("caller", "maria dot lopez at gmail dot com")], True, "maria.lopez@gmail.com", ""),
+        ("spelled letters", INTAKE + [("caller", "Yes."), ("agent", "Your email?"), ("caller", "m a r i a at yahoo dot com")],
+         True, "maria@yahoo.com", ""),
+        ("caller corrects the email", INTAKE + [("caller", "Sure."), ("agent", "Email?"), ("caller", "maria at gmail dot com"),
+                                                 ("agent", "That's m-a-r-i-a at gmail dot com?"), ("caller", "No sorry, it's maria2 at gmail dot com")],
+         True, "maria2@gmail.com", ""),
+        ("yes + no email, mobile", INTAKE + [("caller", "Yes, I have the police report."), ("agent", "Do you have an email?"),
+                                              ("caller", "I don't, text me at 951 555 0142")], True, "", "+19515550142"),
+        ("follow-up mentions documents again, correction", INTAKE + [("caller", "Yes, I have photos of the car and the police report."),
+            ("agent", "Could you please share the best email address to send you a secure upload link for those documents?"),
+            ("caller", "maria dot lopez at gmail dot com"),
+            ("agent", "Let me make sure I have that right: M-A-R-I-A-.-L-O-P-E-Z-@-G-M-A-I-L-.-C-O-M. Is that right?"),
+            ("caller", "No, it's maria2 at gmail dot com, with a 2."),
+            ("agent", "Got it, M-A-R-I-A-2-@-G-M-A-I-L-.-C-O-M. Is that right?"), ("caller", "Yes, that's right.")],
+         True, "maria2@gmail.com", ""),
+        ("no", INTAKE + [("caller", "No, nothing yet."), ("agent", "No problem. Someone will call you back. Goodbye.")], False, "", ""),
+        ("never asked", INTAKE[:4] + [("agent", "Thank you, someone will call you back. Goodbye.")], False, "", ""),
+    ]
+    for label, turns, wanted, email, phone in cases:
+        r = dr._by_rules(dr._turns(T(*turns)))
+        check(f"rules: {label}", r["wanted"] == wanted and r["email"] == email and r["phone"] == phone, r)
+    check("rules: asked is reported", dr._by_rules(dr._turns(T(*cases[6][1])))["asked"] is True and dr._by_rules(dr._turns(T(*cases[7][1])))["asked"] is False)
+    worker_fmt = [{"role": "assistant" if w == "agent" else "user", "content": t} for w, t in cases[0][1]]
+    check("worker transcript format (role/content)", dr.detect(worker_fmt)["email"] == "maria.lopez@gmail.com")
+    check("spoken email helper", dr.spoken_email("it's john underscore doe at law dash firm dot co dot uk") == "john_doe@law-firm.co.uk")
+
+    import agent.schema_extractor as se
+    orig_key, orig_json = se._gemini_key, se.gemini_json
+    se._gemini_key = lambda: "test"
+    se.gemini_json = lambda system, text, **kw: {"asked": True, "wanted": True, "email": "Maria.Lopez@Gmail.com", "phone": ""}
+    try:
+        r = dr.detect(T(*cases[0][1]))
+        check("Gemini reading used when a key is set", r["engine"] == "gemini" and r["email"] == "maria.lopez@gmail.com", r)
+        se.gemini_json = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("Gemini HTTP 429"))
+        r = dr.detect(T(*cases[1][1]))
+        check("Gemini failure falls back to rules", r["engine"] == "rules" and r["email"] == "maria.lopez@gmail.com", r)
+        se.gemini_json = lambda *a, **kw: {"asked": True, "wanted": True, "email": "not an email", "phone": "12"}
+        r = dr.detect(T(*cases[0][1]))
+        check("Gemini's bad email/phone dropped, never invented", r["email"] == "" and r["phone"] == "", r)
+        se.gemini_json = lambda *a, **kw: {"asked": False}
+        check("no documents talk: Gemini not even asked", dr.detect(T(*cases[7][1]))["engine"] == "rules")
+    finally:
+        se._gemini_key, se.gemini_json = orig_key, orig_json
+
+    import agent.case_manager as cmm
+    tmp = tempfile.mkdtemp(prefix="docreq-")
+    try:
+        cm = cmm.CaseManager(path=os.path.join(tmp, "cases.json"))
+        md = {"agent_extraction": {"engine": "gemini", "values": {"full_name": "Maria Lopez", "callback_phone": "+19515550142"}},
+              "documents_request": {"asked": True, "wanted": True, "email": "maria.lopez@gmail.com", "phone": "", "engine": "rules"}}
+        c = cm.register_from_call("call-1", md)
+        check("case from the call marked Documents requested", c.documents_request.get("status") == "requested" and c.documents_request["email"] == "maria.lopez@gmail.com", c.documents_request)
+        md2 = dict(md, documents_request={"asked": True, "wanted": False})
+        check("no documents -> nothing marked", cm.register_from_call("call-2", md2).documents_request == {})
+        check("kept after reload", cmmCheck(cmm, tmp, c.case_id))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    src = open(os.path.join(ROOT_DIR, "agent", "pipeline_worker.py")).read()
+    check("pipeline reads the answer before registering the case",
+          src.index('job.metadata["documents_request"] = detect_documents') < src.index("case_manager.register_from_call(job.call_id"))
+
+    if os.getenv("VERIFY_LIVE_LLM") == "1":
+        live_suite(cases)
+
+
+def cmmCheck(cmm, tmp, case_id):
+    again = cmm.CaseManager(path=os.path.join(tmp, "cases.json"))
+    return (again.get(case_id) or cmm.Case(case_id="", workspace_id="", client_name="")).documents_request.get("status") == "requested"
+
+
+def live_suite(cases):
+    print("\n   live model")
+    key = ""
+    for line in open(os.path.join(ROOT_DIR, ".env")):
+        if line.startswith("GEMINI_API_KEY="):
+            key = line.split("=", 1)[1].strip().strip("'\"")
+    os.environ["GEMINI_API_KEY"] = key
+    from agent import documents_request as dr
+    from agent.agent_builder import agent_builder, AgentConfig
+    r = dr.detect(T(*cases[3][1]))
+    check("live: reads the corrected email", r["engine"] == "gemini" and r["wanted"] and r["email"] == "maria2@gmail.com", r)
+    r = dr.detect(T(*cases[6][1]))
+    check("live: reads a no", r["wanted"] is False, r)
+    cfg = AgentConfig(agent_id="live", name="Maya", first_message="Thanks for calling Bottini Law, this is Maya.",
+                      system_prompt="You are Maya, the intake receptionist at Bottini Law. Take the caller's name, phone and what happened.",
+                      llm_model="gemini-3.5-flash-lite", workspace_id="ws-none")
+    hist = [{"speaker": "agent", "text": "Thanks for calling Bottini Law, this is Maya. How can I help?"},
+            {"speaker": "caller", "text": "I was rear-ended on the I-5 last week and my neck hurts."},
+            {"speaker": "agent", "text": "I'm sorry to hear that. May I have your full name and a good phone number?"},
+            {"speaker": "caller", "text": "Maria Lopez, 951 555 0142. That's everything I wanted to report."}]
+    reply = agent_builder._preview_reply(cfg, hist[-1]["text"], None, history=hist)
+    check("live: agent asks about documents before closing", "document" in reply.lower(), reply)
+    hist += [{"speaker": "agent", "text": reply}, {"speaker": "caller", "text": "Yes, I have photos of the car."}]
+    reply2 = agent_builder._preview_reply(cfg, hist[-1]["text"], None, history=hist)
+    check("live: then asks where to send the link", "email" in reply2.lower() or "text" in reply2.lower() or "mobile" in reply2.lower(), reply2)
+    os.environ.pop("GEMINI_API_KEY", None)
 
 
 # ── 2. PostgreSQL ────────────────────────────────────────────────────────────────────────────────────
@@ -373,6 +505,10 @@ def browser_suite(base):
         pg.keyboard.press("Escape")
         pg.wait_for_timeout(300)
         check("count on the row follows", "2 documents" in pg.inner_text("tr:has-text('Jamal Carter')"))
+        r = ctx.request.post(base + "/api/v1/cases", data={"client_name": "Ana Ruiz", "documents_request": {"wanted": True, "email": "ana@example.com"}})
+        pg.reload(wait_until="load")
+        pg.wait_for_timeout(1000)
+        check("Documents requested badge with where to send", "Documents requested · ana@example.com" in pg.inner_text("tr:has-text('Ana Ruiz')"))
         check("no JS errors (admin)", not errs, errs)
 
         m = b.new_context(viewport={"width": 1280, "height": 900})
@@ -402,6 +538,7 @@ def browser_suite(base):
 
 def main():
     offline()
+    call_suite()
     postgres()
     if "--offline" in sys.argv:
         print(f"\n{passed}/{passed + failed} passed")

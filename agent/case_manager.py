@@ -52,6 +52,9 @@ class Case:
     assigned_staff: List[str] = field(default_factory=list)
     # Last Responsible Attorney push to Clio: {status: ok|error|skipped, message, attorney, at}
     clio_sync: Dict[str, Any] = field(default_factory=dict)
+    # Caller documents (web/documents-plan.html): {"status": "requested", "email", "phone", "at", "engine"}
+    # once the caller said on the call that they have documents; {} otherwise.
+    documents_request: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -223,6 +226,7 @@ class CaseManager:
                 updated_at=now,
                 created_by=created_by,
                 assigned_staff=[],
+                documents_request=_documents_request(data.get("documents_request")),
             )
             self._cases[case.case_id] = case
             try:
@@ -343,8 +347,17 @@ class CaseManager:
             "summary": pick(ai_fields, "matter_summary", "situation_summary", "case_summary")
                        or pick(rx_fields, "case_summary") or summary.get("executive_summary") or "",
             "call_id": call_id,
+            "documents_request": md.get("documents_request"),
             "clio_matter_id": matter.get("matter_id") if matter.get("status") == "success" else "",
             "registered_at": registered_at if isinstance(registered_at, (int, float)) else None,
         }, source="call")
+
+def _documents_request(raw: Any) -> Dict[str, Any]:
+    """The case's documents request from what the call said (agent/documents_request.detect), or {}."""
+    if not isinstance(raw, dict) or not raw.get("wanted"):
+        return {}
+    return {"status": "requested", "email": _text(raw.get("email"), 160), "phone": _text(raw.get("phone"), 40),
+            "at": time.time(), "engine": _text(raw.get("engine"), 20)}
+
 
 case_manager = CaseManager()
