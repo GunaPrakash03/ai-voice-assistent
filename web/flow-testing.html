@@ -234,6 +234,8 @@ Scripts that edit users or organizations directly (for example <code>scripts/enf
   <li><code>scripts/verify_super_admin.py</code>: drives the live server on 8091 and the real database; it creates accounts that stay behind.</li>
   <li><code>scripts/test_clio_integration.py --live</code> and <code>scripts/simulate_call_to_clio.py</code>: send leads to the real Clio account. The default <code>--mock</code> mode is safe.</li>
   <li><code>scripts/sip_probe.py</code>: sends a real SIP INVITE to the LiveKit SIP URI.</li>
+  <li><code>scripts/test_playwright_voices.py</code> and Agent Builder's Test Call: live calls through the Docker worker, saved to the real Call History, even when the dashboard server is an isolated copy.</li>
+  <li>Any script run from the repo folder that imports <code>agent/</code> reads <code>.env</code>, including <code>DATABASE_URL</code>. Prefix it with <code>DATABASE_URL=</code> unless the database is the point.</li>
   <li><code>scripts/backfill_cases.py --apply</code>, <code>scripts/enforce_admin_slots.py --apply</code>: write to the shared database (stop the server first for the second).</li>
 </ul></div>
 <p>The newer suites never touch the real checkout. They copy <code>agent/</code>, <code>scripts/</code>, <code>web/</code> and <code>config/agents.json</code> to a temp folder and start their own server on a spare port with <code>DATABASE_URL</code> empty, no <code>.env</code>, carrier and mail keys stripped, loopback trust off and dummy LiveKit credentials. New tests should do the same; <code>scripts/verify_trunk_validation.py</code> is a short example.</p>
@@ -267,7 +269,7 @@ Scripts that edit users or organizations directly (for example <code>scripts/enf
   <tr><td><code>verify_end_call.py</code></td><td>Sign-off detection; Twilio stream closes after a full goodbye only</td><td><span class="badge ok">isolated</span></td></tr>
   <tr><td><code>verify_trunk_validation.py</code></td><td>Trunk create validation, trunk delete, marketplace chip counts</td><td><span class="badge ok">isolated</span></td></tr>
   <tr><td><code>test_twilio_stream.py</code></td><td>Voice webhook TwiML, media-stream handshake, greeting audio</td><td><span class="badge info">server</span></td></tr>
-  <tr><td><code>test_playwright_voices.py</code></td><td>Agent Builder voice picker and Test Call sandbox in headless Chromium</td><td><span class="badge info">server</span></td></tr>
+  <tr><td><code>test_playwright_voices.py</code></td><td>Agent Builder voice picker and Test Call in headless Chromium. The Test Call is a live LiveKit call to the Docker worker, which saves each one to the real Call History and recordings.</td><td><span class="badge warn">worker</span> <span class="badge bad">live</span></td></tr>
   <tr><td><code>verify.py</code>, <code>verify_vad.py</code>, <code>verify_llm.py</code>, <code>verify_tts.py</code>, <code>verify_stt.py</code>, <code>verify_tools.py</code>, <code>verify_sdk.py</code></td><td>Phase 1 audio core: media server, VAD, LLM, TTS, STT wiring, tools, browser SDK</td><td><span class="badge warn">worker</span></td></tr>
   <tr><td><code>verify_sip.py</code>, <code>verify_transfer.py</code>, <code>verify_dtmf.py</code>, <code>verify_amd.py</code>, <code>verify_recording.py</code>, <code>verify_softphone.py</code></td><td>Phase 2 telephony: SIP routing, transfer, DTMF/IVR, AMD, recording, softphone</td><td><span class="badge warn">worker</span></td></tr>
   <tr><td><code>verify_agent_builder.py</code></td><td>Agent config, CRUD, revisions, sandbox, live config push</td><td><span class="badge warn">worker</span></td></tr>
@@ -280,7 +282,7 @@ Scripts that edit users or organizations directly (for example <code>scripts/enf
   <tr><td><code>verify_analytics.py</code>, <code>verify_extraction.py</code>, <code>verify_webhooks.py</code></td><td>Sentiment and summary, typed extraction, signed webhooks with retries</td><td><span class="badge info">server</span></td></tr>
   <tr><td><code>verify_call_history.py</code></td><td>Call log, transcript, waveform, byte-range audio, CSV</td><td><span class="badge info">server</span></td></tr>
   <tr><td><code>test_clio_integration.py</code></td><td>Clio Grow payloads against a local mock (<code>--live</code> sends for real)</td><td><span class="badge ok">isolated</span> / <span class="badge bad">live</span></td></tr>
-  <tr><td><code>verify_hardening.py</code></td><td>Load percentiles, PII redaction audit, CI workflow</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>verify_hardening.py</code></td><td>Load percentiles, PII redaction audit, CI workflow. Its load test writes <code>load-call-*</code> pipeline jobs to whatever database <code>.env</code> names; run it with <code>DATABASE_URL=</code> set empty.</td><td><span class="badge bad">live</span> unless <code>DATABASE_URL=</code></td></tr>
 </table></div>
 
 <h3>Running them</h3>
