@@ -1136,6 +1136,7 @@ class AgentBuilder:
         anthropic_key = os.getenv("ANTHROPIC_API_KEY")
 
         self.last_reply_backend = "script"
+        instructions = call_instructions(cfg.system_prompt, cfg.workspace_id, caller_text=knowledge_query(utterance, history))
         if gemini_key and (cfg.llm_model.startswith("gemini") or "gemini" in cfg.llm_model):
             gemini_error = ""
             for attempt in range(2):
@@ -1160,7 +1161,7 @@ class AgentBuilder:
                     system_instruction = {
                         "parts": [{
                             "text": (
-                                f"{call_instructions(cfg.system_prompt, cfg.workspace_id)}\n\n"
+                                f"{instructions}\n\n"
                                 f"Guidelines: Speak concisely in 1-2 natural conversational sentences suitable for a phone call. "
                                 f"Never output XML, markdown, or thought tags. "
                                 f"The conversation transcript below already contains your opening greeting as your first turn; "
@@ -1219,7 +1220,7 @@ class AgentBuilder:
                     import urllib.request
                     url = "https://api.openai.com/v1/chat/completions"
                     messages = [{"role": "system", "content": (
-                        f"{call_instructions(cfg.system_prompt, cfg.workspace_id)}\n\n"
+                        f"{instructions}\n\n"
                         f"Guidelines: Speak concisely in 1-2 natural conversational sentences suitable for a phone call. "
                         f"Never output XML, markdown, or thought tags. "
                         f"The conversation transcript below already contains your opening greeting as your first turn; "
@@ -1280,7 +1281,7 @@ class AgentBuilder:
                     payload = json.dumps({
                         "model": cfg.llm_model,
                         "system": (
-                            f"{call_instructions(cfg.system_prompt, cfg.workspace_id)}\n\n"
+                            f"{instructions}\n\n"
                             f"Guidelines: Speak concisely in 1-2 natural conversational sentences suitable for a phone call. "
                             f"Never output XML, markdown, or thought tags. "
                             f"The conversation transcript below already contains your opening greeting as your first turn; "
@@ -1320,7 +1321,14 @@ class AgentBuilder:
             if "order" in tool_name:
                 return "Looking up your order status right now. Everything looks on schedule."
             if "knowledge" in tool_name or "query" in tool_name:
-                return "Let me retrieve that information for you. Here is what our records show."
+                from agent.knowledge_manager import knowledge_manager
+                hits = [h for h in knowledge_manager.search(cfg.workspace_id or "ws-default", knowledge_query(utterance, history), 1)
+                        if h["relevance"] >= 0.35]
+                if not hits:
+                    return "I don't have that information in front of me, but I can have someone from the firm call you back about it."
+                passage = " ".join(hits[0]["text"].split())
+                cut = passage.rfind(". ", 0, 320)
+                return "Here's what I have: " + (passage[: cut + 1] if cut > 80 else passage[:320])
             if "transfer" in tool_name:
                 return "Connecting you with a specialist right now. Please hold for just a moment."
             return "Let me check that for you right now. I'll confirm the details in a moment."
@@ -1561,6 +1569,16 @@ class AgentBuilder:
 
 
 from agent.firm_context import call_instructions  # noqa: E402  (after AgentBuilder: firm_context imports onboarding lazily)
+
+
+def knowledge_query(utterance: str, history: Optional[List[Dict[str, Any]]] = None) -> str:
+    """What to search the firm's knowledge base with on a caller turn: their latest words plus the turn
+    before, so a follow-up ("and how much is that?") keeps its topic."""
+    caller = [t.get("text", "") for t in (history or []) if t.get("speaker") == "caller" and t.get("text")]
+    latest = (utterance or "").strip()
+    if latest and (not caller or caller[-1].strip() != latest):
+        caller.append(latest)
+    return " ".join(caller[-2:]).strip()
 
 
 def _without_firm_block(prompt: str) -> str:

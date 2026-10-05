@@ -102,8 +102,10 @@ NO_LEGAL_ADVICE = (
 GLOBAL_INSTRUCTIONS = (
     f"{GLOBAL_MARK} (apply to every call and override anything in the agent instructions below):\n"
     f"- {NO_LEGAL_ADVICE}\n"
-    "- When a caller asks about the firm, answer from the ABOUT THE FIRM section below and nothing else; if it "
-    "doesn't say, offer to have someone from the firm call back.\n"
+    "- When a caller asks about the firm (fees, hours, locations, people, services, policies), answer only from the "
+    "ABOUT THE FIRM and FIRM KNOWLEDGE sections below. Use their facts exactly as written and never guess a price, "
+    "date, time, address or name. If neither section answers the question, tell the caller you don't have that "
+    "information handy and offer to have someone from the firm call them back.\n"
     "- Ending the call: once you have what you need and the caller has nothing else, finish with one short "
     "closing line that ends in a goodbye, e.g. \"Thank you for calling. Someone from our team will call you back. "
     "Goodbye.\" Don't ask another question in that line; the call hangs up after it. If the caller says goodbye "
@@ -112,10 +114,48 @@ GLOBAL_INSTRUCTIONS = (
 )
 
 
-def call_instructions(prompt: str, workspace_id: str = "") -> str:
+KNOWLEDGE_MARK = "FIRM KNOWLEDGE"
+KNOWLEDGE_MIN_RELEVANCE = 0.35     # of the best match; weaker passages are left out
+KNOWLEDGE_MAX_PASSAGES = 3
+KNOWLEDGE_MAX_CHARS = 2400
+
+
+def knowledge_context(workspace_id: str, caller_text: str) -> str:
+    """The FIRM KNOWLEDGE block for one caller turn: the passages from the firm's uploaded files that best
+    match what the caller just said, or "" when nothing matches (or the library can't be read)."""
+    query = (caller_text or "").strip()
+    if not query:
+        return ""
+    try:
+        from agent.knowledge_manager import knowledge_manager
+        hits = knowledge_manager.search(workspace_id or DEFAULT_WORKSPACE, query, limit=KNOWLEDGE_MAX_PASSAGES + 2)
+    except Exception as e:
+        log.warning("Knowledge base search failed for %s: %s", workspace_id, e)
+        return ""
+    lines, used = [], 0
+    for h in hits:
+        if h["relevance"] < KNOWLEDGE_MIN_RELEVANCE or len(lines) >= KNOWLEDGE_MAX_PASSAGES:
+            break
+        text = " ".join(h["text"].split())
+        room = KNOWLEDGE_MAX_CHARS - used
+        if room < 200:
+            break
+        text = text[:room]
+        where = h["file_name"] + (f", page {h['page']}" if h.get("page") else "")
+        lines.append(f"[{len(lines) + 1}] ({where}) {text}")
+        used += len(text)
+    if not lines:
+        return ""
+    return (f"{KNOWLEDGE_MARK} (passages from the firm's own files that may answer what the caller just said; "
+            "use them only if they do, and don't read out file names):\n" + "\n".join(lines))
+
+
+def call_instructions(prompt: str, workspace_id: str = "", caller_text: str = "") -> str:
     """The instructions a call runs with, in order: the global instructions, then the agent's own prompt,
-    then the firm's current saved details (ABOUT THE FIRM) as reference."""
+    then the firm's current saved details (ABOUT THE FIRM) as reference, then — when ``caller_text`` is
+    given — the FIRM KNOWLEDGE passages that match it."""
     body = with_firm_details(prompt, workspace_id)
-    if GLOBAL_MARK in body:
-        return body
-    return GLOBAL_INSTRUCTIONS + "\n" + body.lstrip()
+    if GLOBAL_MARK not in body:
+        body = GLOBAL_INSTRUCTIONS + "\n" + body.lstrip()
+    block = knowledge_context(workspace_id, caller_text)
+    return body + "\n\n" + block if block else body

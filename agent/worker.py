@@ -27,7 +27,7 @@ import os
 import re
 import time
 import wave
-from typing import AsyncIterable, Optional
+from typing import Any, AsyncIterable, Dict, Optional
 
 from dotenv import load_dotenv
 try:
@@ -376,6 +376,9 @@ async def entrypoint(ctx: agents.JobContext):
     )
 
     assistant_agent: Optional[VoiceAssistantAgent] = None
+    # The agent this call is running as (swapped by apply_agent_config) and what the caller has said, so
+    # each turn's instructions can carry the firm's knowledge-base passages for that turn.
+    call_agent: Dict[str, Any] = {"cfg": active_cfg, "caller_turns": []}
     if active_cfg:
         live_prompt = call_instructions(active_cfg.system_prompt, active_cfg.workspace_id)   # + Firm details from the DB, no legal advice
         llm_manager.system_instruction = live_prompt
@@ -392,6 +395,7 @@ async def entrypoint(ctx: agents.JobContext):
     transfer_manager.register_call_context(ctx.room.name, ctx.room.name, primary_part_id)
     if hasattr(llm_manager, "tool_registry"):
         llm_manager.tool_registry.set_call_context(ctx.room.name, ctx.room.name, primary_part_id)
+        llm_manager.tool_registry.workspace_id = (active_cfg.workspace_id if active_cfg else "") or ""
 
     @ctx.room.on("participant_connected")
     def on_participant_joined(participant):
@@ -562,6 +566,17 @@ async def entrypoint(ctx: agents.JobContext):
                 "old_state": "thinking",
                 "timestamp": time.time(),
             }, topic="agent_state", reliable=True)
+
+            cfg_now = call_agent.get("cfg")
+            if cfg_now and user_input.strip():
+                call_agent["caller_turns"].append(user_input.strip())
+                query = " ".join(call_agent["caller_turns"][-2:])
+                try:
+                    turn_prompt = await asyncio.to_thread(call_instructions, cfg_now.system_prompt, cfg_now.workspace_id, query)
+                    llm_manager.system_instruction = turn_prompt
+                    llm_manager.context.system_instruction = turn_prompt
+                except Exception as e:
+                    log.warning("Turn instructions not refreshed (%s); keeping the previous ones", e)
 
             metrics = await llm_manager.generate_response(
                 user_text=user_input,
@@ -1494,6 +1509,9 @@ async def entrypoint(ctx: agents.JobContext):
                 # Swap the live persona: prompt and sampling on the dialogue
                 # manager, voice on the TTS stream, for the next turn onwards.
                 live_prompt = call_instructions(cfg.system_prompt, cfg.workspace_id)
+                call_agent["cfg"] = cfg
+                if hasattr(llm_manager, "tool_registry"):
+                    llm_manager.tool_registry.workspace_id = cfg.workspace_id or ""
                 llm_manager.system_instruction = live_prompt
                 llm_manager.context.system_instruction = live_prompt
                 llm_manager.temperature = cfg.temperature

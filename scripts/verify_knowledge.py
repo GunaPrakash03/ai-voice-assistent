@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/verify_knowledge.py — the per-firm knowledge base (web/knowledge-plan.html, Phase 1).
+"""scripts/verify_knowledge.py — the per-firm knowledge base (web/knowledge-plan.html, Phases 1-2).
 
 1. Offline (throwaway folder, DATABASE_URL cleared): file types are decided from the bytes (PDF, Word,
    Excel, CSV, Markdown, text, PNG/JPEG/WebP accepted; old .doc, zip, binary and empty refused); every
@@ -13,6 +13,12 @@
    format as a Product Admin, list, preview text, download the original byte-for-byte, search, delete,
    reprocess; Member Admins can read but not change; another firm's admin can't see or touch the files;
    a Super Admin can work on any firm with ?workspace_id=; oversize and wrong types are refused.
+4. Calls (offline, Phase 2): each caller turn's instructions carry the firm's matching passages after the
+   global rules (FIRM KNOWLEDGE), and none when nothing matches or for another firm; the global rule says to
+   answer only from them; a follow-up keeps its topic; the knowledge tool searches the call's firm and
+   says "call back" instead of guessing; the reply path (phone calls and Test Call) sends the passages to
+   the model; the scripted fallback reads them; the worker refreshes instructions every turn.
+   With VERIFY_LIVE_LLM=1 (uses the Gemini key in .env, 2 calls) a real model answers from an upload.
 Never touches the real config, .env or database.
 """
 
@@ -277,6 +283,133 @@ def _scan_only_pdf():
     return out
 
 
+# ── 4. Calls (Phase 2) ───────────────────────────────────────────────────────────────────────────────
+def calls():
+    print("\n4. Calls: knowledge on every caller turn")
+    os.environ["DATABASE_URL"] = ""
+    import asyncio
+    import agent.knowledge_manager as km
+    from agent import firm_context as fc
+    tmp = tempfile.mkdtemp(prefix="knowledge-calls-")
+    # The shared singleton is what the call paths use: point it at a throwaway folder.
+    m = km.knowledge_manager
+    orig_dir = m.local_dir
+    m.local_dir = tmp
+    m._load()
+    try:
+        m.upload("ws-default", "fees.pdf", make_pdf(scanned_page=False), wait=True)
+        m.upload("ws-default", "office.docx", make_docx(), wait=True)
+        m.upload("ws-other", "other.txt", b"Other firm: our retainer is 40 percent and parking is on Oak Street.", wait=True)
+
+        block = fc.knowledge_context("ws-default", "how much is a simple will?")
+        check("matching passage added", block.startswith(fc.KNOWLEDGE_MARK) and "1,500 dollars" in block and "(fees.pdf, page 1)" in block, block[:200])
+        check("nothing added for an unrelated question", fc.knowledge_context("ws-default", "zzzz qqqq") == "")
+        check("nothing added for an empty turn", fc.knowledge_context("ws-default", "") == "")
+        check("another firm's files never added", "Oak Street" not in fc.knowledge_context("ws-default", "where do I park, Oak Street?"))
+        check("agents with no firm use the default firm", "1,500" in fc.knowledge_context("", "price of a will"))
+        orig_max = fc.KNOWLEDGE_MAX_CHARS
+        fc.KNOWLEDGE_MAX_CHARS = 250
+        check("block size capped", len(fc.knowledge_context("ws-default", "parking will fee hours")) < 250 + 300)
+        fc.KNOWLEDGE_MAX_CHARS = orig_max
+
+        ins = fc.call_instructions("You are Maya, the receptionist.", "ws-default", caller_text="where can I park?")
+        check("order: global rules, agent prompt, then FIRM KNOWLEDGE",
+              ins.index(fc.GLOBAL_MARK) < ins.index("You are Maya") < ins.index(fc.KNOWLEDGE_MARK + " (") and "garage on Elm Street" in ins)
+        check("global rule: answer from FIRM KNOWLEDGE, never guess", "FIRM KNOWLEDGE sections below" in fc.GLOBAL_INSTRUCTIONS and "never guess a price" in fc.GLOBAL_INSTRUCTIONS)
+        check("no caller text -> no knowledge block (call start)", fc.KNOWLEDGE_MARK + " (" not in fc.call_instructions("You are Maya.", "ws-default"))
+
+        from agent.agent_builder import knowledge_query, agent_builder, AgentConfig
+        hist = [{"speaker": "agent", "text": "Hi, this is Maya."}, {"speaker": "caller", "text": "I need a simple will."},
+                {"speaker": "agent", "text": "Sure."}, {"speaker": "caller", "text": "And how much is that?"}]
+        check("follow-up keeps its topic", knowledge_query("And how much is that?", hist) == "I need a simple will. And how much is that?")
+        check("latest turn added when not yet in history", knowledge_query("Where do I park?", hist[:2]) == "I need a simple will. Where do I park?")
+        check("follow-up finds the fee", "1,500" in fc.knowledge_context("ws-default", knowledge_query("And how much is that?", hist)))
+
+        from agent.tool_manager import ToolRegistry, REAL_BUILTINS
+        reg = ToolRegistry()
+        tool = reg.get_tool("query_knowledge_base")
+        check("a saved endpoint-less copy doesn't replace the real built-ins",
+              all(reg.get_tool(n).handler.__name__ == n for n in REAL_BUILTINS), [reg.get_tool(n).handler.__name__ for n in REAL_BUILTINS])
+        reg.workspace_id = "ws-default"
+        res = asyncio.run(tool.handler(query="what are your office hours"))
+        check("knowledge tool: real passage from the call's firm", res["found"] and "8:30 am" in res["snippet"] and res["sources"][0] == "office.docx", res)
+        res = asyncio.run(tool.handler(query="zzzz qqqq"))
+        check("knowledge tool: nothing found -> no guess", res["found"] is False and res["snippet"] == "")
+        reg.workspace_id = "ws-other"
+        res = asyncio.run(tool.handler(query="office hours parking"))
+        check("knowledge tool: other firm gets only its own files", res["found"] and "office.docx" not in res["sources"], res.get("sources"))
+        check("old made-up shop answers are gone", "30-day hassle-free" not in open(os.path.join(ROOT_DIR, "agent", "tool_manager.py")).read())
+        import agent.llm_manager as lm
+        fmt = lm.StreamingDialogueManager._format_grounded_tool_response
+        check("tool reply when nothing found offers a call back",
+              "call you back" in fmt(None, "query_knowledge_base", {"status": "success", "result": {"found": False}}))
+        check("tool reply speaks the passage",
+              "1,500 dollars" in fmt(None, "query_knowledge_base", {"status": "success", "result": {"found": True, "snippet": "A simple will is 1,500 dollars."}}))
+
+        # The reply path used by phone calls (Twilio) and the Agent Builder Test Call: capture what is sent.
+        import urllib.request as ur
+        sent = {}
+
+        class FakeResp:
+            def __init__(self, body): self.body = body
+            def read(self): return self.body
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        def fake_urlopen(req, timeout=None):
+            sent["body"] = json.loads(req.data.decode())
+            return FakeResp(json.dumps({"candidates": [{"content": {"parts": [{"text": "A simple will is fifteen hundred dollars."}]}}]}).encode())
+        cfg = AgentConfig(agent_id="t", name="Maya", first_message="Thanks for calling.", system_prompt="You are Maya.", llm_model="gemini-3.5-flash-lite", workspace_id="ws-default")
+        orig_open, orig_key = ur.urlopen, os.environ.get("GEMINI_API_KEY")
+        ur.urlopen, os.environ["GEMINI_API_KEY"] = fake_urlopen, "test-key"
+        try:
+            reply = agent_builder._preview_reply(cfg, "How much does a simple will cost?", None, history=hist[:1] + [{"speaker": "caller", "text": "How much does a simple will cost?"}])
+        finally:
+            ur.urlopen = orig_open
+            if orig_key is None:
+                os.environ.pop("GEMINI_API_KEY", None)
+            else:
+                os.environ["GEMINI_API_KEY"] = orig_key
+        system = sent.get("body", {}).get("system_instruction", {}).get("parts", [{}])[0].get("text", "")
+        check("phone/Test Call reply: the model is sent the matching passage", fc.KNOWLEDGE_MARK in system and "1,500 dollars" in system, system[-300:])
+        check("phone/Test Call reply returned", "fifteen hundred" in reply, reply)
+
+        for k in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+            os.environ.pop(k, None)
+        cfg2 = AgentConfig(agent_id="t2", name="Maya", first_message="Thanks for calling.", system_prompt="You are Maya.", llm_model="none", workspace_id="ws-default")
+        r = agent_builder._preview_reply(cfg2, "what are your office hours", "query_knowledge_base")
+        check("scripted fallback reads the passage", r.startswith("Here's what I have:") and "8:30 am" in r, r)
+        r = agent_builder._preview_reply(cfg2, "zzzz qqqq", "query_knowledge_base")
+        check("scripted fallback with nothing found offers a call back", "call you back" in r, r)
+
+        src = open(os.path.join(ROOT_DIR, "agent", "worker.py")).read()
+        turn = src[src.index("async def execute_llm_turn"):src.index("metrics = await llm_manager.generate_response(")]
+        check("worker: every caller turn rebuilds the instructions with the knowledge query",
+              "call_instructions, cfg_now.system_prompt, cfg_now.workspace_id, query" in turn and "asyncio.to_thread" in turn)
+        check("worker: the knowledge tool searches the call's firm", "tool_registry.workspace_id = (active_cfg.workspace_id" in src)
+
+        if os.getenv("VERIFY_LIVE_LLM") == "1":
+            key = ""
+            for line in open(os.path.join(ROOT_DIR, ".env")):
+                if line.startswith("GEMINI_API_KEY="):
+                    key = line.split("=", 1)[1].strip().strip("'\"")
+            os.environ["GEMINI_API_KEY"] = key
+            cfg3 = AgentConfig(agent_id="t3", name="Maya", first_message="Thanks for calling.", system_prompt="You are Maya, receptionist at Bottini Law.", llm_model="gemini-3.5-flash-lite", workspace_id="ws-default")
+            r1 = agent_builder._preview_reply(cfg3, "Where can I park when I come in?", None,
+                                              history=[{"speaker": "agent", "text": "Thanks for calling Bottini Law, this is Maya."},
+                                                       {"speaker": "caller", "text": "Where can I park when I come in?"}])
+            check("live model answers from the upload (parking)", "elm" in r1.lower() or "garage" in r1.lower(), r1)
+            r2 = agent_builder._preview_reply(cfg3, "What does your firm charge for a divorce?", None,
+                                              history=[{"speaker": "agent", "text": "Thanks for calling Bottini Law, this is Maya."},
+                                                       {"speaker": "caller", "text": "What does your firm charge for a divorce?"}])
+            check("live model doesn't invent a price it doesn't have", not any(c.isdigit() for c in r2), r2)
+            os.environ.pop("GEMINI_API_KEY", None)
+    finally:
+        m.local_dir = orig_dir
+        m._load()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # ── 2. PostgreSQL (throwaway database only) ──────────────────────────────────────────────────────────
 def postgres():
     url = os.getenv("VERIFY_PG_URL", "")
@@ -488,6 +621,7 @@ def http_suite():
 
 def main():
     offline()
+    calls()
     postgres()
     if "--offline" not in sys.argv:
         http_suite()

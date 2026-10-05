@@ -156,13 +156,13 @@ var PHASES = [
       done: "Questions return the right passages from the right file." }
   ]},
   { id: 2, name: "Use it on calls", sub: "The agent answers from the firm's library on every call path", tasks: [
-    { id: "2.1", status: "todo", name: "Replace the knowledge tool",
+    { id: "2.1", status: "done", name: "Replace the knowledge tool",
       desc: "query_knowledge_base searches the caller's firm. The made-up shop answers are removed.",
       done: "A LiveKit test call answers from an uploaded file." },
-    { id: "2.2", status: "todo", name: "Phone calls (Twilio)",
+    { id: "2.2", status: "done", name: "Phone calls (Twilio)",
       desc: "The phone path doesn't run tools, so the best passages for each caller turn are added to the agent's context.",
       done: "A phone call answers from an uploaded file." },
-    { id: "2.3", status: "todo", name: "Answer only from what's there",
+    { id: "2.3", status: "done", name: "Answer only from what's there",
       desc: "Global rules extended: use the library and firm details, say so when nothing matches, still no legal advice.",
       done: "An unanswerable question gets a follow-up offer, not a guess." }
   ]},

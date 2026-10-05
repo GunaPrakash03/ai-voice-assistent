@@ -9,7 +9,7 @@ Components:
    - check_availability: Calendar slot lookup.
    - book_appointment: Reservation booking engine.
    - lookup_order: Real-time order tracking and status lookup.
-   - query_knowledge_base: Knowledge retrieval for policies, pricing, and FAQs.
+   - query_knowledge_base: Searches the firm's uploaded knowledge base (agent/knowledge_manager.py).
    - execute_webhook: Async HTTP webhook dispatcher.
 """
 
@@ -43,6 +43,10 @@ def _storage_sync(path: str) -> None:
         storage.sync_file(path)
     except Exception as e:
         log.debug("Storage sync skipped for %s: %s", path, e)
+
+
+# Built-in tools that do real work (search the firm's files, transfer the call, send a webhook).
+REAL_BUILTINS = ("query_knowledge_base", "transfer_call", "execute_webhook")
 
 
 def make_http_tool_handler(endpoint: str, method: str, timeout: float):
@@ -215,9 +219,12 @@ class ToolRegistry:
         self._call_id: Optional[str] = None
         self._room_name: Optional[str] = None
         self._participant_identity: Optional[str] = None
+        self.workspace_id: str = ""      # the firm whose knowledge base query_knowledge_base searches
         self._register_default_tools()
         self._load_custom_tools()
         for custom_tool in self._custom_tools.values():
+            if custom_tool.name in REAL_BUILTINS and not (custom_tool.metadata or {}).get("endpoint_url"):
+                continue
             self.register(custom_tool, persist=False)
 
     def _load_custom_tools(self) -> None:
@@ -230,6 +237,12 @@ class ToolRegistry:
                 try:
                     name = item["name"]
                     endpoint = item.get("endpoint_url", "")
+                    if name in REAL_BUILTINS and not endpoint:
+                        # A saved copy of a built-in with no endpoint would replace its real handler with
+                        # an echo. Keep the built-in. (The simulated ones — availability, booking, orders —
+                        # are left as saved: their built-ins invent results a caller must not hear.)
+                        log.info("Custom tool '%s' has no endpoint; keeping the built-in tool", name)
+                        continue
                     method = item.get("method", "POST")
                     timeout = float(item.get("timeout", 3.0))
                     handler = make_http_tool_handler(endpoint, method, timeout)
@@ -436,30 +449,27 @@ class ToolRegistry:
             )
         )
 
-        # 4. Query Knowledge Base
+        # 4. Query Knowledge Base: the firm's own uploaded files, never made-up answers.
         async def query_knowledge_base(query: str, category: Optional[str] = None) -> dict:
-            await asyncio.sleep(0.07)  # simulate vector retrieval
-            q = query.lower()
-            if "hour" in q or "open" in q or "time" in q:
-                snippet = "Our business hours are Monday through Friday 8:00 AM to 8:00 PM EST, and Saturday 9:00 AM to 5:00 PM EST."
-            elif "return" in q or "refund" in q:
-                snippet = "We offer a 30-day hassle-free return policy. Full refunds are processed to the original payment method within 3 business days."
-            elif "price" in q or "cost" in q or "tier" in q:
-                snippet = "Our pricing plans start at $49/month for Starter and $199/month for Professional with 24/7 dedicated voice support."
-            else:
-                snippet = f"General policy for '{query}': All services include 99.9% uptime SLA and real-time WebRTC voice agent monitoring."
-
+            from agent.knowledge_manager import knowledge_manager
+            ws = self.workspace_id or "ws-default"
+            hits = await asyncio.to_thread(knowledge_manager.search, ws, query, 3)
+            hits = [h for h in hits if h["relevance"] >= 0.35]
+            if not hits:
+                return {"query": query, "found": False, "snippet": "", "sources": [],
+                        "note": "Nothing in the firm's files answers this. Don't guess; offer a call back."}
             return {
                 "query": query,
-                "category": category or "general",
-                "snippet": snippet,
-                "confidence_score": 0.94,
+                "found": True,
+                "snippet": hits[0]["text"],
+                "passages": [h["text"] for h in hits],
+                "sources": [h["file_name"] + (f" p.{h['page']}" if h.get("page") else "") for h in hits],
             }
 
         self.register(
             ToolDefinition(
                 name="query_knowledge_base",
-                description="Search documentation and knowledge base for FAQs, return policies, hours, and pricing.",
+                description="Search the firm's own files (fee schedules, office hours, locations, policies, FAQs) for the caller's question. Answer only from what it returns.",
                 parameters={
                     "type": "object",
                     "properties": {

@@ -452,7 +452,13 @@ class StreamingDialogueManager:
                 f"{res.get('cancellation_policy')}"
             )
         elif tool_name == "query_knowledge_base":
-            return f"{res.get('snippet')} Let me know if you would like more information."
+            if not res.get("found"):
+                return "I don't have that information in front of me, but I can have someone from the firm call you back about it."
+            snippet = " ".join(str(res.get("snippet") or "").split())
+            if len(snippet) > 320:
+                cut = snippet.rfind(". ", 0, 320)
+                snippet = snippet[: cut + 1] if cut > 80 else snippet[:320].rsplit(" ", 1)[0] + "..."
+            return f"Here's what I have: {snippet} Is there anything else I can help with?"
         elif tool_name == "execute_webhook":
             return f"The webhook request to {res.get('url')} was dispatched and acknowledged with status {res.get('status_code', 200)}."
         elif tool_name == "transfer_call":

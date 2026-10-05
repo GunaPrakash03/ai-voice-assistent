@@ -45,7 +45,7 @@ MAX_UNZIPPED_BYTES = 150 * 1024 * 1024   # .docx/.xlsx are zip files; refuse zip
 MAX_SHEET_ROWS = 5000
 CHUNK_CHARS = 900
 CHUNK_OVERLAP = 150
-REFRESH_SECONDS = 15
+REFRESH_SECONDS = 5
 
 KINDS = {
     "pdf": "PDF", "docx": "Word document", "xlsx": "Excel workbook", "csv": "CSV",
@@ -460,8 +460,14 @@ class KnowledgeManager:
         self._chunks: Dict[str, Dict[str, Any]] = {}     # file_id -> {"text", "chunks"}
         self._indexes: Dict[str, _Index] = {}             # workspace_id -> index
         self._loaded_at = 0.0
+        self._checked_at = 0.0
+        self._stamps: Optional[Dict[str, float]] = None
         self._local_mtime = 0.0
         self._load()
+        if os.getenv("DATABASE_URL"):
+            from agent import storage
+            self._stamps = storage.collection_stamps((FILES, CHUNKS))
+            self._checked_at = time.time()
 
     # storage ------------------------------------------------------------------------------------------
     def _db(self) -> bool:
@@ -512,8 +518,15 @@ class KnowledgeManager:
 
     def _refresh(self) -> None:
         if os.getenv("DATABASE_URL"):
-            if time.time() - self._loaded_at >= REFRESH_SECONDS:
+            # Cheap check (two stamps) at most every REFRESH_SECONDS; a full reload only when they moved.
+            if time.time() - self._checked_at < REFRESH_SECONDS:
+                return
+            self._checked_at = time.time()
+            from agent import storage
+            stamps = storage.collection_stamps((FILES, CHUNKS))
+            if stamps is not None and stamps != self._stamps:
                 self._load()
+                self._stamps = stamps
         elif os.path.isfile(self._index_path) and os.path.getmtime(self._index_path) != self._local_mtime:
             self._load()
 

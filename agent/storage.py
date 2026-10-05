@@ -246,6 +246,12 @@ def delete_document(collection: str, doc_id: str) -> bool:
     try:
         with _connect() as conn, conn.cursor() as cur:
             cur.execute("DELETE FROM app_documents WHERE collection = %s AND doc_id = %s", (collection, doc_id))
+            # Bump the collection's stamp so other processes watching it (collection_stamps) reload.
+            cur.execute(
+                "INSERT INTO collection_meta (collection, updated_at) VALUES (%s, %s) "
+                "ON CONFLICT (collection) DO UPDATE SET updated_at = GREATEST(collection_meta.updated_at, EXCLUDED.updated_at)",
+                (collection, time.time()),
+            )
             conn.commit()
         return True
     except Exception as e:
@@ -382,6 +388,19 @@ def db_collections() -> Optional[set]:
             return {r[0] for r in cur.fetchall()}
     except Exception as e:
         log.warning("Cannot read collection list: %s", e)
+        return None
+
+
+def collection_stamps(names: Iterable[str]) -> Optional[Dict[str, float]]:
+    """Last-change stamp per collection (missing = never written). None when the database can't be read."""
+    if not available():
+        return None
+    try:
+        with _connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT collection, updated_at FROM collection_meta WHERE collection = ANY(%s)", (list(names),))
+            return {r[0]: float(r[1]) for r in cur.fetchall()}
+    except Exception as e:
+        log.warning("Cannot read collection stamps: %s", e)
         return None
 
 
