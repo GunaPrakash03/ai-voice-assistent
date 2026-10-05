@@ -229,8 +229,12 @@ def _mask_secret(val: Optional[str]) -> Optional[str]:
     return "••••••••"
 
 
-def validate_inbound_trunk_payload(trunk_id: str, name: str, numbers: List[str], allowed_addresses: List[str], transport: str = "udp") -> List[str]:
-    """Returns a list of human-readable validation errors (empty = valid)."""
+def validate_inbound_trunk_payload(trunk_id: str, name: str, numbers: List[str], allowed_addresses: List[str], transport: str = "udp",
+                                   require_numbers: bool = False) -> List[str]:
+    """Returns a list of human-readable validation errors (empty = valid).
+
+    require_numbers: an inbound trunk with no numbers matches nothing we can route, so the
+    inbound create route asks for at least one DID."""
     errors: List[str] = []
     if not trunk_id or not re.match(r"^[A-Za-z0-9_.-]{3,64}$", trunk_id):
         errors.append("trunk_id must be 3-64 chars of letters, digits, '-', '_' or '.'")
@@ -239,9 +243,12 @@ def validate_inbound_trunk_payload(trunk_id: str, name: str, numbers: List[str],
     if not isinstance(numbers, list):
         errors.append("numbers must be a list of E.164 phone numbers")
     else:
-        bad = [n for n in numbers if not is_valid_phone_number(str(n))]
+        # A trunk DID is a full number: E164_REGEX alone lets "12" through as "+12".
+        bad = [n for n in numbers if not is_valid_phone_number(str(n)) or len(normalize_phone_number(str(n))) < 9]
         if bad:
             errors.append(f"invalid phone number(s): {', '.join(str(b) for b in bad)}")
+        elif require_numbers and not numbers:
+            errors.append("inbound trunk needs at least one phone number (E.164, e.g. +14155550123)")
     for addr in (allowed_addresses or []):
         try:
             ipaddress.ip_network(str(addr), strict=False)
@@ -956,12 +963,28 @@ class TelephonyManager:
                         return False, f"Telnyx network error: {e}"
         return True, "skipped"
 
-    def list_carriers(self) -> List[dict]:
+    @staticmethod
+    def _catalog_item_matches(item: dict, country: Optional[str], search: Optional[str]) -> bool:
+        target_country = (country or "").upper().strip()
+        if target_country and target_country != "ALL" and item["country"] != target_country:
+            return False
+        if search:
+            q = search.lower().strip()
+            if (q not in item["phone_number"].lower() and
+                q not in item["friendly_name"].lower() and
+                q not in item["region"].lower()):
+                return False
+        return True
+
+    def list_carriers(self, country: Optional[str] = None, search: Optional[str] = None) -> List[dict]:
+        """Per-carrier counts. `available` honours the same country/search filters as the marketplace list."""
         out = []
+        active = {k for k, v in self._owned_numbers.items() if v.status == "active"}
         for cid, meta in CARRIERS.items():
-            active = {k for k, v in self._owned_numbers.items() if v.status == "active"}
             owned = sum(1 for n in self._owned_numbers.values() if n.status == "active" and n.carrier == cid)
-            avail = sum(1 for i in AVAILABLE_NUMBERS_CATALOG if i["carrier"] == cid and i["phone_number"] not in active)
+            avail = sum(1 for i in AVAILABLE_NUMBERS_CATALOG
+                        if i["carrier"] == cid and i["phone_number"] not in active
+                        and self._catalog_item_matches(i, country, search))
             out.append({"carrier": cid, "name": meta["name"], "sip_host": meta["sip_host"], "docs_url": meta["docs_url"], "owned": owned, "available": avail})
         return out
 
@@ -1092,14 +1115,8 @@ class TelephonyManager:
                 continue
             if target_carrier and target_carrier != "all" and item["carrier"] != target_carrier:
                 continue
-            if target_country and target_country != "ALL" and item["country"] != target_country:
+            if not self._catalog_item_matches(item, country, search):
                 continue
-            if search:
-                q = search.lower().strip()
-                if (q not in item["phone_number"].lower() and
-                    q not in item["friendly_name"].lower() and
-                    q not in item["region"].lower()):
-                    continue
             if not any(r["phone_number"] == item["phone_number"] for r in results):
                 results.append(item)
         return results

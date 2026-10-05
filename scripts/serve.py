@@ -1117,11 +1117,17 @@ class Handler(SimpleHTTPRequestHandler):
             country = (q.get("country") or [""])[0] or None
             search = (q.get("search") or q.get("q") or [""])[0] or None
             carrier = (q.get("carrier") or [""])[0] or None
+            available = telephony_manager.list_available_numbers(country=country, search=search, carrier=carrier)
+            carriers = telephony_manager.list_carriers(country=country, search=search)
+            # The selected carrier's list may come from its live API, so its chip shows what is listed.
+            for c in carriers:
+                if carrier and c["carrier"] == carrier.lower().strip():
+                    c["available"] = len(available)
             self._send_json({
                 "status": "ok",
                 "carrier": carrier or "all",
-                "carriers": telephony_manager.list_carriers(),
-                "available": telephony_manager.list_available_numbers(country=country, search=search, carrier=carrier),
+                "carriers": carriers,
+                "available": available,
             })
             return
         elif parsed.path == "/api/telephony/calls":
@@ -2470,10 +2476,11 @@ class Handler(SimpleHTTPRequestHandler):
         elif parsed.path == "/api/telephony/trunks/inbound":
             from agent.telephony_manager import SIPInboundTrunk, validate_inbound_trunk_payload
             t_id = str(payload.get("trunk_id", "")).strip() or f"trunk-in-{int(time.time())}"
-            name = str(payload.get("name") or "Custom Inbound Trunk").strip()
+            # No default name: the dashboard form fills one in, and an empty API payload should be refused.
+            name = str(payload.get("name") or "").strip()
             numbers = payload.get("numbers", [])
             allowed = payload.get("allowed_addresses") or ["0.0.0.0/0"]
-            errors = validate_inbound_trunk_payload(t_id, name, numbers, allowed)
+            errors = validate_inbound_trunk_payload(t_id, name, numbers, allowed, require_numbers=True)
             if errors:
                 self._send_json({"status": "error", "error": "; ".join(errors), "errors": errors}, 400)
                 return
