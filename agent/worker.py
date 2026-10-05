@@ -56,6 +56,7 @@ from agent.webhook_dispatcher import webhook_dispatcher
 webhook_dispatcher.attach_to_pipeline(pipeline_worker)
 from agent.onboarding import attach_lead_notifier
 from agent.firm_context import call_instructions
+from agent.amd_manager import amd_applies
 attach_lead_notifier(pipeline_worker)
 
 load_dotenv()
@@ -848,7 +849,9 @@ async def entrypoint(ctx: agents.JobContext):
 
     @ctx.room.on("track_subscribed")
     def on_track_subscribed(track: rtc.Track, publication: rtc.TrackPublication, participant: rtc.RemoteParticipant):
-        if track.kind == rtc.TrackKind.KIND_AUDIO:
+        # Voicemail detection only on calls the agent placed: on inbound and test calls a false "beep"
+        # made the agent read a voicemail message over the caller and hang up (agent/amd_manager.amd_applies).
+        if track.kind == rtc.TrackKind.KIND_AUDIO and amd_applies(ctx.room.name, getattr(ctx.room, "metadata", "") or ""):
             async def feed_amd_audio():
                 try:
                     audio_stream = rtc.AudioStream(track)

@@ -14,6 +14,7 @@ answering machine/voicemail system, using:
 
 import logging
 import math
+import os
 import re
 import struct
 import time
@@ -23,6 +24,22 @@ from pydantic import BaseModel, Field
 
 log = logging.getLogger("amd-manager")
 
+
+
+def amd_applies(room_name: str, room_metadata: str = "") -> bool:
+    """Answering-machine detection is for calls the agent places (outbound), where a voicemail may answer.
+    On inbound and browser test calls a person rang us, and a false 'beep' (a held vowel, a phone tone) would
+    make the agent read a voicemail message over the caller and hang up. AMD_ON_ALL_CALLS=1 forces it on."""
+    import json as _json
+    if os.getenv("AMD_ON_ALL_CALLS") == "1":
+        return True
+    if (room_name or "").startswith(("outbound-", "sip-out-")):
+        return True
+    try:
+        meta = _json.loads(room_metadata) if room_metadata else {}
+    except ValueError:
+        meta = {}
+    return isinstance(meta, dict) and str(meta.get("direction", "")).lower() == "outbound"
 
 class AMDState(str, Enum):
     DETECTING = "detecting"

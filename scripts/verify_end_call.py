@@ -85,5 +85,20 @@ asyncio.run(main())
 print("\n3. Global instructions")
 check("every agent is told how to end a call", "Ending the call" in GLOBAL_INSTRUCTIONS and "Goodbye" in GLOBAL_INSTRUCTIONS)
 
+print("\n4. Voicemail detection only on calls the agent places")
+from agent.amd_manager import amd_applies
+os.environ.pop("AMD_ON_ALL_CALLS", None)
+check("browser test call: no voicemail detection", not amd_applies("test-maya-bottini-muv58hta"))
+check("inbound phone call: no voicemail detection", not amd_applies("call-_+14155550177_AbCdEf"))
+check("outbound call: voicemail detection on", amd_applies("outbound-1791171505-7777") and amd_applies("sip-out-1791171505-7777"))
+check("room marked outbound in metadata: on", amd_applies("custom-room", '{"direction": "outbound"}'))
+check("bad metadata: off", not amd_applies("custom-room", "{not json"))
+os.environ["AMD_ON_ALL_CALLS"] = "1"
+check("AMD_ON_ALL_CALLS=1 forces it on (tests)", amd_applies("test-x-abcd"))
+os.environ.pop("AMD_ON_ALL_CALLS", None)
+src = open(os.path.join(ROOT_DIR, "agent", "worker.py")).read()
+check("the worker feeds caller audio to voicemail detection only when it applies",
+      "KIND_AUDIO and amd_applies(ctx.room.name" in src)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
