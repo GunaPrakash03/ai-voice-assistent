@@ -698,7 +698,7 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 doc = case_documents.add(case.case_id, case.workspace_id, name, data, source="caller",
                                          uploaded_by=case.client_name or "Caller")
-                link = upload_links.record_upload(link.link_id, doc.name)
+                link = upload_links.record_upload(link.link_id, doc.name, doc.doc_id)
                 req = case.documents_request or {}
                 changes = {"status": "received", "received_at": time.time(),
                            "files": int(req.get("files", 0)) + 1, "new_files": int(req.get("new_files", 0)) + 1}
@@ -711,7 +711,34 @@ class Handler(SimpleHTTPRequestHandler):
             except DocumentError as e:
                 self._send_json({"status": "error", "error": str(e)}, e.status)
                 return
-            self._send_json({"status": "ok", "name": doc.name, "files_left": max(0, link.max_files - link.files_used)}, 201)
+            self._send_json({"status": "ok", "name": doc.name, "id": doc.doc_id, "files_left": max(0, link.max_files - link.files_used)}, 201)
+            return
+        if parsed.path == "/api/v1/upload-link/remove":
+            # A caller takes back a wrong upload: only a file sent through this same link, while it is valid.
+            try:
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0) or 0)) or b"{}")
+            except ValueError:
+                body = {}
+            link = self._resolve_upload_link(str(body.get("token") or ""))
+            if not link:
+                return
+            doc_id = str(body.get("id") or "")
+            doc = case_documents.get(doc_id)
+            if not doc_id or doc_id not in link.uploaded_ids or not doc or doc.case_id != link.case_id or doc.source != "caller":
+                self._send_json({"status": "error", "error": "That file wasn't sent with this link, so it can't be removed here."}, 404)
+                return
+            try:
+                case_documents.delete(doc.doc_id)
+                link = upload_links.record_removal(link.link_id, doc.doc_id)
+                case = case_manager.get(link.case_id)
+                if case:
+                    req = case.documents_request or {}
+                    case_manager.update_documents_request(case.case_id, {"files": max(0, int(req.get("files", 0)) - 1),
+                                                                         "new_files": max(0, int(req.get("new_files", 0)) - 1)})
+            except DocumentError as e:
+                self._send_json({"status": "error", "error": str(e)}, e.status)
+                return
+            self._send_json({"status": "ok", "removed": doc.name, "files_left": max(0, link.max_files - link.files_used)})
             return
         link = self._resolve_upload_link(token)
         if not link:
@@ -721,7 +748,8 @@ class Handler(SimpleHTTPRequestHandler):
         first = ((case.client_name if case else "") or "").split(" ")[0]
         self._send_json({"status": "ok", "firm": firm_name(link.workspace_id) or "", "first_name": "" if first.lower() in ("unknown", "") else first,
                          "expires_at": link.expires_at, "files_left": max(0, link.max_files - link.files_used),
-                         "max_file_bytes": CASE_DOC_MAX_FILE, "uploaded": list(link.uploaded)})
+                         "max_file_bytes": CASE_DOC_MAX_FILE, "uploaded": list(link.uploaded),
+                         "files": upload_links.sent_files(link)})
 
     def _notify_new_documents(self, case) -> None:
         """Background email to the case's staff and the firm's lead emails (never delays the caller)."""
@@ -2018,7 +2046,7 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/v1/case-documents/upload":
             self._case_document_upload(parsed)
             return
-        if parsed.path == "/api/v1/upload-link/upload":
+        if parsed.path in ("/api/v1/upload-link/upload", "/api/v1/upload-link/remove"):
             self._upload_link_api(parsed)
             return
         content_len = int(self.headers.get("Content-Length", 0))

@@ -40,6 +40,11 @@
   .list .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .list .st{font-size:13px;color:var(--ink-soft);white-space:nowrap}
   .list .ok{color:var(--pos);font-weight:600}
+  .list .acts{display:flex;align-items:center;gap:8px;white-space:nowrap}
+  .rm{all:unset;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink-soft);padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--panel)}
+  .rm.yes{background:var(--neg);border-color:var(--neg);color:#fff}
+  .rm:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .rm:disabled{opacity:.5;cursor:default}
   .list li.bad{background:var(--neg-soft)}
   .list li.bad .st{color:var(--neg);white-space:normal;grid-column:1/-1}
   .bar{grid-column:1/-1;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
@@ -73,7 +78,7 @@
     <p class="small" id="meta"></p>
   </section>
 
-  <p class="foot">Only the firm can see what you send. This page can add files to your case; it can't show or change anything already there.</p>
+  <p class="foot">Only the firm can see what you send. This page can add files to your case, and remove ones you sent here by mistake; it can't show or change anything else.</p>
 </main>
 <script>
 (function () {
@@ -96,14 +101,36 @@
     $("btnPick").disabled = $("btnCamera").disabled = left <= 0;
   }
   function render() {
-    $("list").innerHTML = queue.map(function (it) {
-      var st = it.state === "done" ? '<span class="st ok">Sent ✓</span>' : it.state === "bad" ? '<span class="st">' + esc(it.msg) + "</span>"
+    $("list").innerHTML = queue.map(function (it, i) {
+      var rm = "";
+      if (it.state === "done" && it.id) {
+        rm = it.confirm
+          ? '<span class="st">Remove it?</span><button class="rm yes" data-yes="' + i + '">Yes, remove</button><button class="rm" data-keep="' + i + '">Keep</button>'
+          : '<button class="rm" data-rm="' + i + '" aria-label="Remove ' + esc(it.name) + '">Remove</button>';
+      }
+      var st = it.state === "done" ? '<span class="acts">' + (it.confirm ? "" : '<span class="st ok">Sent ✓</span>') + rm + "</span>"
+             : it.state === "bad" ? '<span class="st">' + esc(it.msg) + "</span>"
              : '<span class="st">' + (it.state === "up" ? "Sending " + it.pct + "%" : "Waiting") + "</span>";
       return '<li class="' + (it.state === "bad" ? "bad" : "") + '"><span class="nm">' + esc(it.name) + "</span>" + st +
         (it.state === "up" ? '<span class="bar"><span style="width:' + it.pct + '%"></span></span>' : "") + "</li>";
     }).join("");
     $("done").hidden = !queue.some(function (it) { return it.state === "done"; }) || queue.some(function (it) { return it.state === "wait" || it.state === "up"; });
   }
+  $("list").addEventListener("click", function (e) {
+    var b = e.target.closest("button");
+    if (!b) return;
+    var i;
+    if (b.dataset.rm !== undefined) { queue[+b.dataset.rm].confirm = true; render(); return; }
+    if (b.dataset.keep !== undefined) { queue[+b.dataset.keep].confirm = false; render(); return; }
+    if (b.dataset.yes === undefined) return;
+    i = +b.dataset.yes;
+    var it = queue[i];
+    b.disabled = true;
+    fetch("/api/v1/upload-link/remove", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: token, id: it.id }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || "It couldn't be removed. Please try again."); return j; }); })
+      .then(function (j) { queue.splice(i, 1); info.files_left = j.files_left; meta(); render(); })
+      .catch(function (err) { it.confirm = false; it.state = "bad"; it.msg = it.name + ": " + err.message; render(); });
+  });
   function add(files) {
     if (!info) return;
     Array.prototype.forEach.call(files, function (f) {
@@ -128,7 +155,7 @@
     xhr.onload = function () {
       var j = {};
       try { j = JSON.parse(xhr.responseText || "{}"); } catch (e) {}
-      if (xhr.status === 201) { it.state = "done"; info.files_left = j.files_left; meta(); }
+      if (xhr.status === 201) { it.state = "done"; it.id = j.id; info.files_left = j.files_left; meta(); }
       else if (xhr.status === 410 || xhr.status === 404) { it.state = "bad"; it.msg = j.error || "This link can no longer be used."; fail(j.error || "This link can no longer be used."); }
       else { it.state = "bad"; it.msg = it.name + ": " + (j.error || "couldn't be sent (" + xhr.status + "). Please try again."); }
       busy = false; render(); next();
@@ -154,7 +181,7 @@
     $("title").textContent = j.first_name ? "Hi " + j.first_name + ", send us your documents" : "Send us your documents";
     $("lead").textContent = "Add the documents you mentioned on the phone. They go straight to your case" + (j.firm ? " at " + j.firm : "") + ".";
     $("maxMb").textContent = Math.round(j.max_file_bytes / 1048576);
-    (j.uploaded || []).forEach(function (n) { queue.push({ name: n, state: "done", pct: 100 }); });
+    (j.files || (j.uploaded || []).map(function (n) { return { name: n }; })).forEach(function (f) { queue.push({ name: f.name, id: f.id, state: "done", pct: 100 }); });
     $("uploader").hidden = false;
     meta();
     render();

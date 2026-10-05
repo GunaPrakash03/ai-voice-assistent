@@ -1,8 +1,8 @@
 """
 Private upload links for callers (web/documents-plan.html, Phase 3).
 
-A link lets someone add files to ONE case, nothing else: it can't list, open or delete what is already on
-the case. It is a random token (only its SHA-256 is stored), valid for LINK_DAYS, good for MAX_FILES files.
+A link lets someone add files to ONE case, and remove the ones they sent through that same link while it is
+valid (a wrong upload); it can't list, open or delete anything else on the case. It is a random token (only its SHA-256 is stored), valid for LINK_DAYS, good for MAX_FILES files.
 Sending a new link for a case retires the older ones.
 
 ``send_link`` makes a link and delivers it: by email when there's a usable address and email is set up,
@@ -53,6 +53,7 @@ class UploadLink:
     max_files: int = MAX_FILES
     files_used: int = 0
     uploaded: List[str] = field(default_factory=list)     # names of the files sent through this link
+    uploaded_ids: List[str] = field(default_factory=list) # their case-document ids (same order): what the caller may remove
     revoked: bool = False
     channel: str = ""                                      # email | sms | copy
     sent_to: str = ""
@@ -176,13 +177,33 @@ class UploadLinkStore:
             raise DocumentError(f"This link has already been used for {link.max_files} files. Call the firm if you need to send more.", 410)
         return link
 
-    def record_upload(self, link_id: str, name: str) -> UploadLink:
+    def record_upload(self, link_id: str, name: str, doc_id: str = "") -> UploadLink:
         with self._lock:
             link = self._fresh(link_id)
             if not link:
                 raise DocumentError("This upload link isn't valid.", 404)
             link.files_used += 1
             link.uploaded.append(name)
+            link.uploaded_ids.append(doc_id)
+            self._save(link)
+            return link
+
+    def sent_files(self, link: UploadLink) -> List[Dict[str, str]]:
+        """What the caller sent through this link: [{"id", "name"}] (older links have names only)."""
+        ids = list(link.uploaded_ids) + [""] * (len(link.uploaded) - len(link.uploaded_ids))
+        return [{"id": i, "name": n} for i, n in zip(ids, link.uploaded)]
+
+    def record_removal(self, link_id: str, doc_id: str) -> UploadLink:
+        """Forgets a file the caller removed and gives its slot back."""
+        with self._lock:
+            link = self._fresh(link_id)
+            if not link or doc_id not in link.uploaded_ids:
+                raise DocumentError("That file wasn't sent with this link.", 404)
+            i = link.uploaded_ids.index(doc_id)
+            link.uploaded_ids.pop(i)
+            if i < len(link.uploaded):
+                link.uploaded.pop(i)
+            link.files_used = max(0, link.files_used - 1)
             self._save(link)
             return link
 
