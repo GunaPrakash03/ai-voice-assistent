@@ -86,6 +86,7 @@
     { href: "/cases", label: "Cases" },
     { href: "/team", label: "Team", role: "admin" },
     { href: "/agents", label: "Agents", v: "agents", role: "admin", also: ["/agent-builder"] },
+    { href: "/knowledge", label: "Knowledge base" },
     { href: "/sip-trunks", label: "SIP Trunks & DIDs", v: "telephony", role: "admin" },
     { href: "/phone-numbers", label: "Buy Phone Numbers", v: "market", role: "admin", tag: "DID" },
     { href: "/webhooks", label: "Webhooks & Data", role: "admin" },

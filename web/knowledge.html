@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Knowledge base — Call Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#F2F3F7; --panel:#FFFFFF; --sunk:#E9EBF1; --rail:#161A2B;
+    --rail-ink:#A8AEC4; --rail-on:#FFFFFF;
+    --ink:#131725; --ink-soft:#4E556B; --ink-faint:#858BA0;
+    --line:#DDE0E9; --line-soft:#EBEDF3;
+    --accent:#C2560F; --accent-soft:#FDF5EF; --accent-border:#E8833A;
+    --pos:#2F7A4F; --pos-soft:#E6F2EA;
+    --neu:#5A6480; --neu-soft:#EDEFF4;
+    --neg:#A32F26; --neg-soft:#FAEAE8;
+    --warn:#9A6200; --warn-soft:#FDF3E1;
+    --info:#2563EB; --info-soft:#EFF4FF;
+    --f-ui:"Geist",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    --f-mono:"Geist Mono","SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D0F17; --panel:#161A26; --sunk:#11141E; --rail:#090B12;
+      --rail-ink:#767D96; --rail-on:#FFFFFF;
+      --ink:#E7E9F0; --ink-soft:#A2A9BF; --ink-faint:#6E7590;
+      --line:#262B3A; --line-soft:#1C2130;
+      --accent:#F0803C; --accent-soft:#2A1809; --accent-border:#C2560F;
+      --pos:#5FBF88; --pos-soft:#12251A;
+      --neu:#8891AB; --neu-soft:#1A1F2C;
+      --neg:#E0776C; --neg-soft:#2A1513;
+      --warn:#E0A84A; --warn-soft:#2A1F0B;
+      --info:#93B4FF; --info-soft:rgba(147,180,255,.12);
+    }
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .app{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
+  .rail{background:var(--rail);padding:18px 0;display:flex;flex-direction:column}
+  .brand{padding:0 18px 18px;margin-bottom:14px}
+  .brand b{color:var(--rail-on);font-size:15px;font-weight:700;display:block}
+  .brand span{color:var(--rail-ink);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+  .nav{display:flex;flex-direction:column;gap:1px;padding:0 10px}
+  .nav a{all:unset;cursor:pointer;padding:9px 12px;border-radius:5px;color:var(--rail-ink);font-size:13.5px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
+  .nav a.active{background:var(--accent);color:#fff;font-weight:600}
+  .rail-foot{margin-top:auto;padding:14px 18px 0}
+
+  .top{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  h1{font-size:20px;font-weight:700;margin:0}
+  .crumb{font-size:12px;color:var(--ink-faint);margin-bottom:2px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 15px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;background:var(--accent);color:#fff;font-family:var(--f-ui);text-decoration:none}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-soft)}
+  .btn.sm{padding:4px 10px;font-size:12px}
+  .btn.danger{background:var(--neg);border-color:var(--neg);color:#fff}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn:focus-visible,.icon-btn:focus-visible,.drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  main{padding:24px 28px 60px;display:flex;flex-direction:column;gap:20px}
+  .lead{margin:0;color:var(--ink-soft);font-size:13.5px;max-width:760px}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 16px}
+  .stat .k{font-size:12px;color:var(--ink-faint)}
+  .stat .n{font-family:var(--f-mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+  .stat .s{font-size:12px;color:var(--ink-soft)}
+  .meter{height:6px;border-radius:3px;background:var(--sunk);overflow:hidden;margin-top:6px}
+  .meter span{display:block;height:100%;background:var(--accent)}
+
+  .drop{border:2px dashed var(--line);border-radius:10px;background:var(--panel);padding:26px 18px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+  .drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .drop b{display:block;font-size:15px;margin-bottom:4px}
+  .drop .s{font-size:12.5px;color:var(--ink-faint)}
+  .queue{display:flex;flex-direction:column;gap:6px;margin-top:12px;text-align:left}
+  .q{display:grid;grid-template-columns:minmax(0,1fr) 160px;gap:10px;align-items:center;font-size:12.5px}
+  .q .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .q .msg{color:var(--ink-faint);text-align:right}
+  .q.bad .msg{color:var(--neg);text-align:left;grid-column:1/-1}
+  .q .meter{margin-top:0}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .card-h{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .card-h h2{font-size:14px;margin:0}
+  .card-h .meta{font-size:12px;color:var(--ink-faint)}
+  .card-b{padding:14px 16px}
+  .tbl-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;text-align:left}
+  th{background:var(--sunk);color:var(--ink-soft);font-size:11.5px;font-weight:600;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:11px 14px;border-bottom:1px solid var(--line);font-size:13.5px;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .sub{display:block;font-size:12px;color:var(--ink-faint)}
+  .fname{display:flex;gap:10px;align-items:flex-start;min-width:220px}
+  .ficon{width:34px;height:34px;flex:none;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font:600 10.5px var(--f-mono);background:var(--neu-soft);color:var(--neu)}
+  .ficon.pdf{background:var(--neg-soft);color:var(--neg)} .ficon.docx{background:var(--info-soft);color:var(--info)}
+  .ficon.xlsx,.ficon.csv{background:var(--pos-soft);color:var(--pos)} .ficon.image{background:var(--accent-soft);color:var(--accent)}
+  .fname .dl{font-weight:600;word-break:break-word;color:var(--ink);text-decoration:none}
+  .fname .dl:hover{color:var(--accent);text-decoration:underline}
+  .fname .dl:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+  .st-ready{background:var(--pos-soft);color:var(--pos)}
+  .st-processing{background:var(--info-soft);color:var(--info)}
+  .st-failed{background:var(--neg-soft);color:var(--neg)}
+  .reason{font-size:12px;color:var(--neg);margin-top:4px;max-width:340px}
+  .note{font-size:12px;color:var(--warn);margin-top:4px;max-width:340px}
+  .actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:nowrap}
+  .empty{padding:36px 16px;text-align:center;color:var(--ink-faint)}
+  .notice{background:var(--info-soft);color:var(--info);border-radius:8px;padding:10px 14px;font-size:13px}
+
+  .ask{display:flex;gap:8px;flex-wrap:wrap}
+  .ask input{flex:1;min-width:200px;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font:14px var(--f-ui)}
+  .hits{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+  .hit{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .hit .src{font-size:12px;color:var(--ink-faint);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+  .hit .src b{color:var(--ink-soft)}
+  .hit p{margin:0;font-size:13.5px;white-space:pre-wrap}
+  .hint{font-size:12.5px;color:var(--ink-faint);margin-top:10px}
+
+  .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(19,23,37,.55);align-items:center;justify-content:center;z-index:9999;padding:16px}
+  .modal-backdrop.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:100%;max-width:760px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+  .modal-h{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .modal-h h3{margin:0;font-size:15px;word-break:break-word}
+  .modal-b{padding:16px 20px;overflow:auto}
+  .modal-b pre{margin:0;font:13px/1.6 var(--f-ui);white-space:pre-wrap;word-break:break-word}
+  .icon-btn{font-size:16px;line-height:1;width:28px;height:28px;flex:none;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;color:var(--ink-soft);border:1px solid var(--line);background:transparent}
+  .firm-picker{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-faint)}
+  .firm-picker select{padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font:600 13px var(--f-ui);max-width:220px}
+  #toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:var(--ground);padding:10px 18px;border-radius:8px;font-size:13px;display:none;z-index:10000;max-width:calc(100vw - 48px)}
+  #toast.show{display:block}
+  @media (max-width:860px){
+    .app{grid-template-columns:1fr}
+    .rail{padding:12px 0}
+    .nav{flex-direction:row;flex-wrap:wrap}
+    .rail-foot{display:none}
+    main{padding:18px 16px 48px}.top{padding:12px 16px}
+    .q{grid-template-columns:minmax(0,1fr) 100px}
+  }
+</style>
+<link rel="stylesheet" href="/theme.css?v=7">
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <div class="brand"><b>Call Desk</b><span>AI Assistant Voice</span></div>
+    <div class="nav">
+      <a href="/">Overview</a>
+      <a href="/agents" data-admin-only>Agents</a>
+      <a href="/knowledge" class="active">Knowledge base</a>
+      <a href="/cases">Cases</a>
+    </div>
+    <div class="rail-foot"><!-- profile card is injected here by /profile.js --></div>
+  </nav>
+
+  <div>
+    <header class="top">
+      <div>
+        <div class="crumb" id="crumb">Workspace</div>
+        <h1>Knowledge base</h1>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center" id="topActions">
+        <button class="btn" id="btnUpload" hidden>Upload files</button>
+      </div>
+    </header>
+
+    <main>
+      <p class="lead">Every agent in your firm answers callers from these files: fee schedules, office hours, locations, policies, FAQs. Files are read once when you upload them; images and scanned pages are read by Gemini.</p>
+
+      <div class="notice" id="viewOnly" hidden>You can view and search the knowledge base. Only Product Admins can add or remove files.</div>
+
+      <section class="stats" aria-label="Library">
+        <div class="stat"><div class="k">Files</div><div class="n" id="sFiles">–</div><div class="s" id="sFilesSub">&nbsp;</div></div>
+        <div class="stat"><div class="k">Ready for calls</div><div class="n" id="sReady">–</div><div class="s" id="sReadySub">&nbsp;</div></div>
+        <div class="stat"><div class="k">Storage used</div><div class="n" id="sBytes">–</div><div class="meter"><span id="sMeter" style="width:0"></span></div></div>
+      </section>
+
+      <section id="dropSection" hidden>
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="Upload files: drop them here or press Enter to choose">
+          <b>Drop files here, or click to choose</b>
+          <span class="s">PDF, Word (.docx), Excel (.xlsx), CSV, text, Markdown, PNG, JPG or WebP · up to <span id="maxFile">20 MB</span> each</span>
+          <div class="queue" id="queue"></div>
+        </div>
+        <input type="file" id="fileInput" multiple hidden accept=".pdf,.docx,.xlsx,.csv,.txt,.md,.markdown,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp,text/plain,text/csv,text/markdown">
+      </section>
+
+      <section class="card" aria-labelledby="filesH">
+        <div class="card-h"><h2 id="filesH">Files</h2><span class="meta" id="filesMeta"></span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>File</th><th>Status</th><th>Size</th><th>Added</th><th style="text-align:right">Actions</th></tr></thead>
+            <tbody id="rows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="askH">
+        <div class="card-h"><h2 id="askH">Try a question</h2><span class="meta">What an agent would find for a caller</span></div>
+        <div class="card-b">
+          <form class="ask" id="askForm">
+            <input id="askInput" type="text" placeholder="e.g. How much do you charge for a will?" aria-label="Question" maxlength="300">
+            <button class="btn" type="submit" id="btnAsk">Search</button>
+          </form>
+          <div class="hits" id="hits"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="previewModal" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+  <div class="modal">
+    <div class="modal-h"><div><h3 id="previewTitle">File</h3><span class="sub" id="previewMeta"></span></div><button class="icon-btn" id="previewClose" aria-label="Close">×</button></div>
+    <div class="modal-b"><pre id="previewText"></pre></div>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="/firm-picker.js?v=1"></script>
+<script>
+(function () {
+  var KIND_TAG = { pdf: "PDF", docx: "DOC", xlsx: "XLS", csv: "CSV", markdown: "MD", text: "TXT", image: "IMG" };
+  var ENGINE = { "pdf-text": "Text read from the PDF", "pdf-text+gemini": "PDF text, scanned pages read by Gemini", docx: "Read from Word",
+                 xlsx: "Read from Excel", text: "Plain text", gemini: "Read by Gemini" };
+  var OK_EXT = /\.(pdf|docx|xlsx|csv|txt|md|markdown|png|jpe?g|webp)$/i;
+  var state = { files: [], usage: null, canEdit: false, confirming: null, poll: null, queue: [] };
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function size(b) { return b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(0) + " KB" : (b / 1048576).toFixed(1) + " MB"; }
+  function fmtDay(ts) { return ts ? new Date(ts * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : ""; }
+  function toast(msg) { var t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove("show"); }, 3200); }
+  function q(prefix) { return FirmPicker.query(prefix); }
+  function api(path, body) {
+    var opts = body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {};
+    return fetch(path, opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok || j.status === "error") throw new Error(j.error || ("Request failed (" + r.status + ")"));
+        return j;
+      });
+    });
+  }
+
+  function load() {
+    return api("/api/v1/knowledge" + q("?")).then(function (j) {
+      state.files = j.files || [];
+      state.usage = j.usage;
+      state.canEdit = !!j.can_edit;
+      $("crumb").textContent = j.workspace || "Workspace";
+      $("btnUpload").hidden = !state.canEdit;
+      $("dropSection").hidden = !state.canEdit;
+      $("viewOnly").hidden = state.canEdit;
+      $("maxFile").textContent = Math.round(j.usage.max_file_bytes / 1048576) + " MB";
+      render();
+      schedulePoll();
+    }).catch(function (e) {
+      $("rows").innerHTML = '<tr><td colspan="5" class="empty">' + esc(e.message) + "</td></tr>";
+    });
+  }
+
+  function schedulePoll() {
+    clearTimeout(state.poll);
+    if (state.files.some(function (f) { return f.status === "processing"; })) state.poll = setTimeout(load, 2000);
+  }
+
+  function render() {
+    var u = state.usage || { files: 0, ready: 0, processing: 0, failed: 0, bytes: 0, max_firm_bytes: 1, max_files: 0 };
+    $("sFiles").textContent = u.files;
+    $("sFilesSub").textContent = u.max_files ? "of " + u.max_files + " allowed" : "";
+    $("sReady").textContent = u.ready;
+    $("sReadySub").textContent = [u.processing ? u.processing + " being read" : "", u.failed ? u.failed + " failed" : ""].filter(Boolean).join(" · ") || (u.files ? "All files ready" : "Nothing uploaded yet");
+    $("sBytes").textContent = size(u.bytes) + " / " + Math.round(u.max_firm_bytes / 1048576) + " MB";
+    $("sMeter").style.width = Math.min(100, u.bytes / u.max_firm_bytes * 100).toFixed(1) + "%";
+    $("filesMeta").textContent = state.files.length ? state.files.length + " file" + (state.files.length === 1 ? "" : "s") : "";
+    if (!state.files.length) {
+      $("rows").innerHTML = '<tr><td colspan="5" class="empty">' + (state.canEdit ? "No files yet. Upload a fee schedule, office hours or an FAQ to get started." : "No files yet.") + "</td></tr>";
+      return;
+    }
+    $("rows").innerHTML = state.files.map(function (f) {
+      var status = f.status === "ready" ? '<span class="pill st-ready">Ready</span><span class="sub">' + f.chunk_count + " passage" + (f.chunk_count === 1 ? "" : "s") + (f.pages ? " · " + f.pages + " page" + (f.pages === 1 ? "" : "s") : "") + "</span>"
+        : f.status === "processing" ? '<span class="pill st-processing">Reading…</span>'
+        : '<span class="pill st-failed">Failed</span><div class="reason">' + esc(f.error) + "</div>";
+      if (f.notes) status += '<div class="note">' + esc(f.notes) + "</div>";
+      var acts = [];
+      if (f.status === "ready") acts.push('<button class="btn ghost sm" data-act="preview" data-id="' + f.file_id + '">Preview</button>');
+      if (state.canEdit) {
+        if (state.confirming === f.file_id) {
+          acts.push('<button class="btn danger sm" data-act="delete" data-id="' + f.file_id + '">Delete for good</button>');
+          acts.push('<button class="btn ghost sm" data-act="cancel">Keep</button>');
+        } else {
+          if (f.status !== "processing") acts.push('<button class="btn ghost sm" data-act="reprocess" data-id="' + f.file_id + '" title="Read the file again">Read again</button>');
+          acts.push('<button class="btn ghost sm" data-act="confirm" data-id="' + f.file_id + '">Delete</button>');
+        }
+      }
+      var href = "/api/v1/knowledge/download?file_id=" + encodeURIComponent(f.file_id) + q("&");
+      return "<tr><td><div class=\"fname\"><span class=\"ficon " + esc(f.kind) + "\">" + (KIND_TAG[f.kind] || "FILE") + "</span><div><a class=\"dl\" href=\"" + href + "\" title=\"Download the original file\">" + esc(f.name) + "</a>" +
+        '<span class="sub">' + esc(f.kind_label) + (f.engine && ENGINE[f.engine] ? " · " + ENGINE[f.engine] : "") + "</span></div></div></td>" +
+        "<td>" + status + "</td>" +
+        '<td class="num">' + size(f.size_bytes) + "</td>" +
+        "<td>" + fmtDay(f.created_at) + '<span class="sub">' + esc(f.uploaded_by) + "</span></td>" +
+        '<td><div class="actions">' + acts.join("") + "</div></td></tr>";
+    }).join("");
+  }
+
+  // ── Uploads: one at a time, with progress ──
+  function enqueue(fileList) {
+    Array.prototype.forEach.call(fileList, function (file) {
+      var item = { file: file, pct: 0, msg: "Waiting", bad: false };
+      var max = state.usage ? state.usage.max_file_bytes : 20 * 1048576;
+      if (!OK_EXT.test(file.name)) { item.bad = true; item.msg = file.name + ": this file type isn't supported. Use PDF, Word (.docx), Excel (.xlsx), CSV, text, Markdown or an image."; }
+      else if (file.size > max) { item.bad = true; item.msg = file.name + ": " + size(file.size) + " is over the " + Math.round(max / 1048576) + " MB limit."; }
+      else if (!file.size) { item.bad = true; item.msg = file.name + ": the file is empty."; }
+      state.queue.push(item);
+    });
+    renderQueue();
+    pump();
+  }
+  function renderQueue() {
+    $("queue").innerHTML = state.queue.map(function (it) {
+      if (it.bad) return '<div class="q bad"><span class="msg">' + esc(it.msg) + "</span></div>";
+      return '<div class="q"><span class="nm">' + esc(it.file.name) + '</span><span class="msg">' + esc(it.msg) +
+        (it.pct > 0 && it.pct < 100 ? '<div class="meter"><span style="width:' + it.pct + '%"></span></div>' : "") + "</span></div>";
+    }).join("");
+  }
+  var busy = false;
+  function pump() {
+    if (busy) return;
+    var next = state.queue.find(function (it) { return !it.bad && it.msg === "Waiting"; });
+    if (!next) { setTimeout(function () { state.queue = state.queue.filter(function (it) { return it.bad; }); renderQueue(); }, 4000); return; }
+    busy = true;
+    next.msg = "Uploading";
+    renderQueue();
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/v1/knowledge/upload?name=" + encodeURIComponent(next.file.name) + q("&"));
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = function (e) { if (e.lengthComputable) { next.pct = Math.round(e.loaded / e.total * 100); renderQueue(); } };
+    xhr.onload = function () {
+      var j = {};
+      try { j = JSON.parse(xhr.responseText || "{}"); } catch (e) {}
+      if (xhr.status === 201) { next.msg = "Uploaded, reading…"; next.pct = 100; }
+      else { next.bad = true; next.msg = next.file.name + ": " + (j.error || "upload failed (" + xhr.status + ")"); }
+      finish();
+    };
+    xhr.onerror = function () { next.bad = true; next.msg = next.file.name + ": the upload was interrupted. Check your connection and try again."; finish(); };
+    xhr.send(next.file);
+    function finish() { busy = false; renderQueue(); load(); pump(); }
+  }
+
+  var drop = $("drop");
+  drop.addEventListener("click", function (e) { if (e.target.closest(".q")) return; $("fileInput").click(); });
+  drop.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("fileInput").click(); } });
+  ["dragenter", "dragover"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("over"); }); });
+  ["dragleave", "drop"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("over"); }); });
+  drop.addEventListener("drop", function (e) { if (e.dataTransfer && e.dataTransfer.files.length) enqueue(e.dataTransfer.files); });
+  $("fileInput").addEventListener("change", function () { if (this.files.length) enqueue(this.files); this.value = ""; });
+  $("btnUpload").addEventListener("click", function () { $("fileInput").click(); });
+
+  // ── Row actions ──
+  $("rows").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-act]");
+    if (!b) return;
+    var id = b.dataset.id, act = b.dataset.act;
+    if (act === "confirm") { state.confirming = id; render(); return; }
+    if (act === "cancel") { state.confirming = null; render(); return; }
+    if (act === "preview") { preview(id); return; }
+    b.disabled = true;
+    var body = { file_id: id };
+    if (FirmPicker.id()) body.workspace_id = FirmPicker.id();
+    if (act === "delete") {
+      api("/api/v1/knowledge/delete", body).then(function () { state.confirming = null; toast("File deleted. Agents stop using it right away."); load(); })
+        .catch(function (err) { toast(err.message); b.disabled = false; });
+    } else if (act === "reprocess") {
+      api("/api/v1/knowledge/reprocess", body).then(function () { toast("Reading the file again…"); load(); })
+        .catch(function (err) { toast(err.message); b.disabled = false; });
+    }
+  });
+
+  function preview(id) {
+    var f = state.files.find(function (x) { return x.file_id === id; }) || {};
+    $("previewTitle").textContent = f.name || "File";
+    $("previewMeta").textContent = "Loading…";
+    $("previewText").textContent = "";
+    $("previewModal").classList.add("show");
+    $("previewClose").focus();
+    api("/api/v1/knowledge/text?file_id=" + encodeURIComponent(id) + q("&")).then(function (j) {
+      $("previewMeta").textContent = "The text agents search · " + j.file.chars.toLocaleString() + " characters · " + j.passages + " passage" + (j.passages === 1 ? "" : "s");
+      $("previewText").textContent = j.text || "(no text)";
+    }).catch(function (err) { $("previewMeta").textContent = err.message; });
+  }
+  function closePreview() { $("previewModal").classList.remove("show"); }
+  $("previewClose").addEventListener("click", closePreview);
+  $("previewModal").addEventListener("click", function (e) { if (e.target === this) closePreview(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closePreview(); });
+
+  // ── Try a question ──
+  $("askForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var question = $("askInput").value.trim();
+    if (!question) { $("askInput").focus(); return; }
+    $("btnAsk").disabled = true;
+    api("/api/v1/knowledge/search?q=" + encodeURIComponent(question) + q("&")).then(function (j) {
+      var hits = (j.results || []).filter(function (h) { return h.relevance >= 0.35; }).slice(0, 3);
+      if (!hits.length) {
+        $("hits").innerHTML = '<div class="hint">Nothing in the files answers this. On a call, the agent would say it doesn\'t have that information and offer a call back.</div>';
+        return;
+      }
+      $("hits").innerHTML = hits.map(function (h, i) {
+        return '<div class="hit"><div class="src"><span><b>' + esc(h.file_name) + "</b>" + (h.page ? " · page " + h.page : "") + "</span><span>" +
+          (i === 0 ? "Best match" : "Match " + Math.round(h.relevance * 100) + "%") + "</span></div><p>" + esc(h.text) + "</p></div>";
+      }).join("") + '<div class="hint">On a call, the agent is given these passages and answers from them in its own words.</div>';
+    }).catch(function (err) { $("hits").innerHTML = '<div class="hint">' + esc(err.message) + "</div>"; })
+      .then(function () { $("btnAsk").disabled = false; });
+  });
+
+  FirmPicker.mount($("topActions"), function () { state.confirming = null; state.queue = []; renderQueue(); $("hits").innerHTML = ""; load(); });
+  load();
+})();
+</script>
+<script src="/profile.js?v=6"></script>
+</body>
+</html>
