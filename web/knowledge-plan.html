@@ -89,7 +89,7 @@
 
 <header>
   <h1>Knowledge Base Plan</h1>
-  <p class="lead">Each firm gets one knowledge library. Admins upload files, documents and images; every agent in that firm answers callers from them. Nothing is built yet: this page is the plan, and the bars move as tasks land.</p>
+  <p class="lead">Each firm gets one knowledge library. Admins upload files, documents and images; every agent in that firm answers callers from them. The bars move as tasks land.</p>
   <div class="nav"><a href="/task-plan">Task plan</a><a href="/flow-testing">Flows &amp; Testing</a><a href="/admin-guide">Admin guide</a></div>
 </header>
 
@@ -139,19 +139,19 @@
 var UPDATED = "2026-10-05";
 var PHASES = [
   { id: 1, name: "Store and read files", sub: "Upload, keep, and turn every file into searchable text", tasks: [
-    { id: "1.1", status: "todo", name: "Knowledge store",
+    { id: "1.1", status: "done", name: "Knowledge store",
       desc: "Per-firm file records (name, type, size, status, uploaded by, date) and the original bytes in PostgreSQL, JSON fallback for local runs.",
       done: "Files survive a restart and one firm cannot list or read another's." },
-    { id: "1.2", status: "todo", name: "Upload, list, download, delete API",
+    { id: "1.2", status: "done", name: "Upload, list, download, delete API",
       desc: "POST /api/v1/knowledge and friends. Product Admins for their firm, Super Admins for any firm. Type checked from contents; size limits enforced.",
       done: "Wrong type, oversize and cross-firm requests are refused with a plain message." },
-    { id: "1.3", status: "todo", name: "Read documents and spreadsheets",
+    { id: "1.3", status: "done", name: "Read documents and spreadsheets",
       desc: "PDF, Word, text, Markdown, Excel and CSV to text. Each file shows Ready or Failed with the reason.",
       done: "A sample of each format produces the right text." },
-    { id: "1.4", status: "todo", name: "Read images",
+    { id: "1.4", status: "done", name: "Read images",
       desc: "Images and text-less PDF pages are read by Gemini (text plus a short description). Without a Gemini key the file is marked Failed, never silently empty.",
       done: "A photographed fee schedule becomes searchable text." },
-    { id: "1.5", status: "todo", name: "Split and search",
+    { id: "1.5", status: "done", name: "Split and search",
       desc: "Text cut into short passages with overlap; keyword ranking over the firm's passages, with the file name kept for each match.",
       done: "Questions return the right passages from the right file." }
   ]},

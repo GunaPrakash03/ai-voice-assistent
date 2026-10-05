@@ -14,6 +14,7 @@ Features:
 - Extraction result serialization to dict/JSON for CRM payload dispatch
 """
 
+import base64
 import json
 import logging
 import re
@@ -182,8 +183,11 @@ def _gemini_key() -> str:
     return (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
 
 
-def gemini_json(system_text: str, user_text: str, max_tokens: int = 1200, timeout: float = 25.0) -> Any:
-    """One Gemini call that must answer with JSON. Raises RuntimeError on any failure."""
+def gemini_json(system_text: str, user_text: str, max_tokens: int = 1200, timeout: float = 25.0,
+                attachments: Optional[List[Tuple[str, bytes]]] = None) -> Any:
+    """One Gemini call that must answer with JSON. Raises RuntimeError on any failure.
+
+    attachments: (mime type, bytes) pairs sent with the prompt, e.g. an image to read."""
     key = _gemini_key()
     if not key:
         raise RuntimeError("GEMINI_API_KEY not configured")
@@ -193,7 +197,9 @@ def gemini_json(system_text: str, user_text: str, max_tokens: int = 1200, timeou
     cfg["responseMimeType"] = "application/json"
     payload = {
         "system_instruction": {"parts": [{"text": system_text}]},
-        "contents": [{"role": "user", "parts": [{"text": user_text}]}],
+        "contents": [{"role": "user", "parts": [{"text": user_text}] + [
+            {"inline_data": {"mime_type": mime, "data": base64.b64encode(blob).decode("ascii")}}
+            for mime, blob in (attachments or [])]}],
         "generationConfig": cfg,
     }
     req = urllib.request.Request(

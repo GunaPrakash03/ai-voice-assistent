@@ -19,3 +19,4 @@ config/system_branding.json
 *.db
 webhook_receiver/
 .clio_tokens.json
+config/knowledge/

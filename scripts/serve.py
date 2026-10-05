@@ -64,6 +64,7 @@ from agent.call_history import call_history
 from agent.auth_manager import auth_manager, ApiScope, UserRole, PendingVerification
 from agent import onboarding
 from agent.case_manager import case_manager, STATUSES as CASE_STATUSES
+from agent.knowledge_manager import knowledge_manager, KnowledgeError, MAX_FILE_BYTES as KNOWLEDGE_MAX_FILE
 amd_manager = AMDManager()
 
 
@@ -519,7 +520,8 @@ class Handler(SimpleHTTPRequestHandler):
     ADMIN_GET_PREFIXES = ("/api/v1/users", "/api/v1/workspaces", "/api/v1/team", "/api/v1/firm")
     ADMIN_POST_PREFIXES = ("/api/v1/users", "/api/v1/workspaces",
                            "/api/v1/auth/users", "/api/agents", "/api/telephony", "/api/webhooks",
-                           "/api/v1/calls/dispatch", "/api/v1/cases", "/api/v1/team", "/api/v1/firm")
+                           "/api/v1/calls/dispatch", "/api/v1/cases", "/api/v1/team", "/api/v1/firm",
+                           "/api/v1/knowledge")
     ADMIN_PAGES = ("/admin-guide", "/flow-testing", "/knowledge-plan", "/cost-comparison", "/agent-builder", "/webhooks",
                    "/competitor-analysis", "/user-guide", "/agents", "/sip-trunks", "/phone-numbers",
                    "/call-desk/agents", "/call-desk/sip-trunks", "/call-desk/phone-numbers", "/team")
@@ -581,6 +583,65 @@ class Handler(SimpleHTTPRequestHandler):
             return False
 
         return True
+
+    # ── Knowledge base ───────────────────────────────────────────────────────
+    # One library per firm. Everyone works in their own firm; a Super Admin may pass ?workspace_id= to
+    # manage another. Reads are open to the firm's members; writes are admin-only (ADMIN_POST_PREFIXES).
+    def _knowledge_ws(self, requested: str = "") -> Optional[str]:
+        """The firm this request acts on, or None after sending 403/404."""
+        v = self._viewer()
+        u = v["user"]
+        own = u.workspace_id if u else (auth_manager.get_profile().get("workspace_id") or "ws-default")
+        requested = (requested or "").strip()
+        if not requested or requested == own:
+            return own
+        if not v["is_super_admin"]:
+            self._send_json({"status": "error", "error": "You can only use your own firm's knowledge base"}, 403)
+            return None
+        if not auth_manager.get_workspace(requested):
+            self._send_json({"status": "error", "error": f"Firm '{requested}' not found"}, 404)
+            return None
+        return requested
+
+    def _knowledge_file_for(self, file_id: str, ws: str):
+        kf = knowledge_manager.get(file_id or "")
+        if not kf or kf.workspace_id != ws:
+            self._send_json({"status": "error", "error": "File not found"}, 404)
+            return None
+        return kf
+
+    def _knowledge_upload(self, parsed) -> None:
+        """POST /api/v1/knowledge/upload?name=<file name>[&workspace_id=] with the file's bytes as the body."""
+        if not self._require_session(parsed) or not self._enforce_role(parsed, "POST"):
+            return
+        q = parse_qs(parsed.query)
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length > KNOWLEDGE_MAX_FILE:
+            # Read (and drop) a moderately oversized body so the browser sees the answer, not a reset.
+            if length <= 3 * KNOWLEDGE_MAX_FILE:
+                left = length
+                while left > 0:
+                    chunk = self.rfile.read(min(left, 1 << 20))
+                    if not chunk:
+                        break
+                    left -= len(chunk)
+            else:
+                self.close_connection = True
+            self._send_json({"status": "error", "error": f"The file is {length / 1048576:.1f} MB; the limit is {KNOWLEDGE_MAX_FILE // 1048576} MB per file."}, 413)
+            return
+        data = self.rfile.read(length) if length > 0 else b""
+        ws = self._knowledge_ws((q.get("workspace_id") or [""])[0])
+        if ws is None:
+            return
+        name = (q.get("name") or [""])[0] or urllib.parse.unquote(self.headers.get("X-File-Name", ""))
+        v = self._viewer()
+        by = (v["user"].email if v["user"] else "local admin")
+        try:
+            kf = knowledge_manager.upload(ws, name, data, uploaded_by=by, wait=(q.get("wait") or [""])[0] == "1")
+        except KnowledgeError as e:
+            self._send_json({"status": "error", "error": str(e)}, e.status)
+            return
+        self._send_json({"status": "ok", "file": kf.public()}, 201)
 
     # ── Cases ────────────────────────────────────────────────────────────────
     # Everyone works inside their own workspace; a Super Admin may pass ?workspace_id= to look at
@@ -1624,6 +1685,53 @@ class Handler(SimpleHTTPRequestHandler):
                              "members": members, "can_add_roles": roles,
                              "clio_connected": bool(clio_connector.manage_token or os.getenv("CLIO_MANAGE_ACCESS_TOKEN"))})
             return
+        elif parsed.path in ("/api/v1/knowledge", "/api/v1/knowledge/text", "/api/v1/knowledge/download", "/api/v1/knowledge/search"):
+            q = parse_qs(parsed.query)
+            arg = lambda k: (q.get(k) or [""])[0]
+            ws = self._knowledge_ws(arg("workspace_id"))
+            if ws is None:
+                return
+            if parsed.path == "/api/v1/knowledge":
+                workspace = auth_manager.get_workspace(ws)
+                self._send_json({"status": "ok", "workspace_id": ws, "workspace": workspace.name if workspace else "",
+                                 "can_edit": bool(self._viewer()["is_admin"]), "usage": knowledge_manager.usage(ws),
+                                 "files": [k.public() for k in knowledge_manager.list_files(ws)]})
+                return
+            if parsed.path == "/api/v1/knowledge/search":
+                query = arg("q").strip()
+                if not query:
+                    self._send_json({"status": "error", "error": "Missing 'q' (the question to search for)"}, 400)
+                    return
+                try:
+                    limit = max(1, min(10, int(arg("limit") or 4)))
+                except ValueError:
+                    limit = 4
+                self._send_json({"status": "ok", "query": query, "results": knowledge_manager.search(ws, query, limit)})
+                return
+            kf = self._knowledge_file_for(arg("file_id"), ws)
+            if kf is None:
+                return
+            if parsed.path == "/api/v1/knowledge/text":
+                self._send_json({"status": "ok", "file": kf.public(), "text": knowledge_manager.text(kf.file_id),
+                                 "passages": len(knowledge_manager.passages(kf.file_id))})
+                return
+            content = knowledge_manager.load_blob(kf.file_id)
+            if content is None:
+                self._send_json({"status": "error", "error": "The original file is missing"}, 404)
+                return
+            safe = re.sub(r'[^A-Za-z0-9._ -]', "_", kf.name) or "file"
+            self.send_response(200)
+            self.send_header("Content-Type", kf.mime or "application/octet-stream")
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Content-Disposition", f'attachment; filename="{safe}"; filename*=UTF-8\'\'{urllib.parse.quote(kf.name)}')
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            try:
+                self.wfile.write(content)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
         elif parsed.path == "/api/v1/cases":
             v, ws = self._case_viewer()
             q = parse_qs(parsed.query)
@@ -1708,6 +1816,9 @@ class Handler(SimpleHTTPRequestHandler):
         # Twilio's voice webhook (public, form-encoded body read inside the handler) must be caught
         # before we read the body as JSON below.
         if self._maybe_twiml_webhook(parsed):
+            return
+        if parsed.path == "/api/v1/knowledge/upload":
+            self._knowledge_upload(parsed)
             return
         content_len = int(self.headers.get("Content-Length", 0))
         post_data = self.rfile.read(content_len) if content_len > 0 else b"{}"
@@ -2200,6 +2311,23 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": str(e)}, 400)
                 return
 
+        if parsed.path in ("/api/v1/knowledge/delete", "/api/v1/knowledge/reprocess"):
+            ws = self._knowledge_ws(str(payload.get("workspace_id") or ""))
+            if ws is None:
+                return
+            kf = self._knowledge_file_for(str(payload.get("file_id") or ""), ws)
+            if kf is None:
+                return
+            try:
+                if parsed.path.endswith("/delete"):
+                    knowledge_manager.delete(kf.file_id)
+                    self._send_json({"status": "ok", "deleted": True, "file_id": kf.file_id})
+                else:
+                    kf = knowledge_manager.reprocess(kf.file_id, wait=bool(payload.get("wait")))
+                    self._send_json({"status": "ok", "file": kf.public()})
+            except KnowledgeError as e:
+                self._send_json({"status": "error", "error": str(e)}, e.status)
+            return
         if parsed.path == "/api/v1/team/clio":
             # Link a member to their Clio user, then retry the Clio update on cases they lead that failed.
             v, ws = self._case_viewer()
@@ -3591,6 +3719,7 @@ except Exception:
 try:
     webhook_dispatcher.attach_to_pipeline(pipeline_worker)
     onboarding.attach_lead_notifier(pipeline_worker)
+    knowledge_manager.resume_unfinished()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     while True:
         try:
