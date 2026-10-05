@@ -143,6 +143,7 @@
   .doc-list .empty{padding:18px;grid-column:1/-1}
   .docreq{display:block;width:fit-content;margin-top:5px;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;background:var(--info-soft,#EFF4FF);color:var(--info,#2563EB);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .docreq.bad{background:var(--neg-soft);color:var(--neg)}
+  .docreq.new{background:var(--accent);color:#fff}
   .tag-caller{display:inline-block;padding:0 6px;border-radius:999px;font-size:11px;font-weight:600;background:var(--accent-soft);color:var(--accent);margin-left:4px}
   .drop{border:2px dashed var(--line);border-radius:8px;padding:16px;text-align:center;cursor:pointer;font-size:13px;color:var(--ink-soft)}
   .drop.over{border-color:var(--accent);background:var(--accent-soft)}
@@ -453,6 +454,7 @@
   function docRequest(c) {
     var r = c.documents_request || {};
     if (!r.status) return "";
+    if (r.new_files) return '<span class="docreq new">New documents · ' + r.new_files + " from the caller</span>";
     var label = { requested: "Documents requested", link_sent: "Upload link sent", not_sent: "Upload link not sent", received: "Documents received" }[r.status] || "Documents requested";
     var to = r.status === "received" ? (r.files || 0) + " file" + (r.files === 1 ? "" : "s") : (r.to || r.email || r.phone || "no contact given");
     return '<span class="docreq' + (r.status === "not_sent" ? " bad" : "") + '" title="' + esc(r.error || "") + '">' + label + " · " + esc(to) + "</span>";
@@ -592,6 +594,9 @@
     $("docList").innerHTML = '<li><span class="empty">Loading…</span></li>';
     openModal("mDocs");
     loadDocs();
+    if ((c.documents_request || {}).new_files) {
+      api("/api/v1/case-documents/seen", { case_id: caseId }).then(function (j) { replaceCase(j.case); render(); }).catch(function () {});
+    }
   }
   function loadDocs() {
     var caseId = docState.caseId;

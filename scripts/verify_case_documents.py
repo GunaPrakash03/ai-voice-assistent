@@ -26,6 +26,9 @@
    without signing in, the case shows the files as the caller's; old links are refused after a resend,
    wrong tokens are rate-limited, and only the case's staff can send links; in the browser, the caller's
    page at phone size and the Cases page's request box.
+7. Telling the firm (Phase 4): the case counts new caller files until someone opens them; the first upload
+   in a burst emails the case's staff and the firm's lead emails (once per 10 minutes, without the files);
+   opening the Documents window clears the count.
 Never touches the real config, .env, database, a real mailbox or a real phone.
 """
 
@@ -373,6 +376,30 @@ def links_offline():
             mailer.configured, mailer.send_email, sms.send_sms = orig_mail
             ul.upload_links, cmm.case_manager = orig
             os.environ.pop("PUBLIC_BASE_URL", None)
+        subj, body = ul.notify_body("Bottini Law", "Rosa Diaz", 2, "https://desk.example.com/cases")
+        check("firm email: who, how many, where to look, no files", subj == "Rosa Diaz sent 2 new documents · Bottini Law"
+              and "https://desk.example.com/cases" in body and "not attached" in body)
+        import agent.agent_builder as ab
+        agents_file = os.path.join(tmp, "agents.json")
+        json.dump({"agents": [{"agent_id": "a1", "workspace_id": "ws-a", "lead_emails": ["intake@firm-a.test", "boss@firm-a.test"]},
+                              {"agent_id": "a2", "workspace_id": "ws-b", "lead_emails": ["intake@firm-b.test"]},
+                              {"agent_id": "a3", "workspace_id": "", "lead_emails": ["desk@default.test"]}]}, open(agents_file, "w"))
+        orig_state = ab.STATE_FILE
+        ab.STATE_FILE = agents_file
+        try:
+            check("lead emails: only the firm's agents", ul.lead_emails_for_workspace("ws-a") == ["intake@firm-a.test", "boss@firm-a.test"])
+            check("lead emails: server-wide agents count for the default firm", ul.lead_emails_for_workspace("ws-default") == ["desk@default.test"])
+        finally:
+            ab.STATE_FILE = orig_state
+        orig_cfg = mailer.configured
+        mailer.configured = lambda: {"ready": False}
+        try:
+            fake_case = type("C", (), {"workspace_id": "ws-a", "client_name": "Rosa"})()
+            r = ul.notify_new_documents(fake_case, ["a@b.co"], "https://x", 1)
+            check("no email set up: nothing sent, reason kept", not r["ok"] and "isn't set up" in r["error"])
+            check("no valid recipients: nothing sent", ul.notify_new_documents(fake_case, ["not-an-email", ""], "https://x", 1)["error"] == "no recipients")
+        finally:
+            mailer.configured = orig_cfg
         src = open(os.path.join(ROOT_DIR, "agent", "pipeline_worker.py")).read()
         check("pipeline sends the link right after registering a case that asked for it",
               src.index("case_manager.register_from_call(job.call_id") < src.index("sent = send_link(case)"))
@@ -420,8 +447,23 @@ def links_http(base, info, smtp):
     check("staff see the file, marked as the caller's", d["source"] == "caller" and d["uploaded_by"] == "Rosa Diaz" and d["name"] == "accident photo.png")
     check("case shows documents received", body["documents_request"]["status"] == "received" and body["documents_request"]["files"] == 1)
     check("link state shown to staff", body["link"]["state"] == "active" and body["link"]["files_used"] == 1 and body["link"]["channel"] == "email")
+    check("case counts 1 new caller file", body["documents_request"]["new_files"] == 1)
+    q2 = urllib.parse.urlencode({"token": token, "name": "medical bill.pdf"})
+    code, raw, _ = caller.raw("POST", "/api/v1/upload-link/upload?" + q2, pdf("Bill 1"), {"Content-Type": "application/octet-stream"})
+    time.sleep(2.0)
+    firm_mail = [m for m in smtp.messages if "staff@a.test" in m["to"]]
+    check("firm emailed once for the burst, to the assigned staff", len(firm_mail) == 1, [m["to"] for m in smtp.messages])
+    fm = email_lib.message_from_string(firm_mail[0]["data"]) if firm_mail else None
+    subj = str(email_lib.header.make_header(email_lib.header.decode_header(fm["Subject"]))) if fm else ""
+    check("firm email names the caller and the count", subj.startswith("Rosa Diaz sent 2 new documents"), subj)
+    code, body = A.call("GET", "/api/v1/case-documents?case_id=" + cid)
+    check("result recorded on the case", body["documents_request"]["new_files"] == 2 and body["documents_request"]["notify"]["sent_to"] == ["staff@a.test"], body["documents_request"])
+    code, _ = OT.call("POST", "/api/v1/case-documents/seen", {"case_id": cid})
+    check("unassigned staff can't clear it (404)", code == 404)
+    code, body = ST.call("POST", "/api/v1/case-documents/seen", {"case_id": cid})
+    check("assigned staff open it: count cleared", code == 200 and body["case"]["documents_request"]["new_files"] == 0 and body["case"]["documents_request"]["status"] == "received")
     code, body = caller.call("GET", "/api/v1/upload-link/info?token=" + token)
-    check("caller sees only what they sent", body["uploaded"] == ["accident photo.png"])
+    check("caller sees only what they sent", body["uploaded"] == ["accident photo.png", "medical bill.pdf"])
 
     code, body = ST.call("POST", "/api/v1/case-documents/link", {"case_id": cid, "channel": "sms"})
     check("assigned staff resend by text (dry run)", code == 200 and body.get("channel") == "sms" and body.get("to") == "+19515550177", (code, body))
@@ -485,9 +527,10 @@ def links_browser(base, cid, token):
         a = ctx.new_page()
         a.goto(base + "/cases", wait_until="load")
         a.wait_for_timeout(1000)
-        check("Cases row: Documents received · 3 files", "Documents received · 3 files" in a.inner_text("tr:has-text('Rosa Diaz')"), a.inner_text("tr:has-text('Rosa Diaz')"))
+        check("Cases row: New documents · 2 from the caller", "New documents · 2 from the caller" in a.inner_text("tr:has-text('Rosa Diaz')"), a.inner_text("tr:has-text('Rosa Diaz')"))
         a.click("tr:has-text('Rosa Diaz') [data-docs]")
         a.wait_for_timeout(900)
+        check("opening the documents clears the badge", "Documents received · 4 files" in a.inner_text("tr:has-text('Rosa Diaz')"), a.inner_text("tr:has-text('Rosa Diaz')"))
         check("Documents window: caller's files tagged Caller", a.locator("#docList li:has-text('police.pdf') .tag-caller").count() == 1)
         check("request box: link state and contact prefilled", "files received" in a.inner_text("#reqState") and a.input_value("#reqEmail") == "rosa@example.com")
         a.click("[data-send=copy]")
@@ -773,7 +816,7 @@ def main():
     from verify_email_settings import FakeSMTP
     smtp = FakeSMTP()
     tmp, proc, base, info = start_copy({"SMTP_HOST": "127.0.0.1", "SMTP_PORT": str(smtp.port), "SMTP_TLS": "auto",
-                                        "MAIL_FROM": "Firm A <desk@firm-a.test>", "SMS_DRY_RUN": "1"})
+                                        "MAIL_FROM": "Firm A <desk@firm-a.test>", "SMS_DRY_RUN": "1", "DOCS_NOTIFY_DELAY": "1"})
     try:
         http_suite(base, info)
         cid, token = links_http(base, info, smtp)

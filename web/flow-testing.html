@@ -111,6 +111,7 @@
     <li><a href="#flow-livekit">4. A browser or SIP call (LiveKit)</a></li>
     <li><a href="#flow-postcall">5. After the call</a></li>
     <li><a href="#flow-knowledge">6. Knowledge base</a></li>
+    <li><a href="#flow-documents">7. Case documents</a></li>
     <li><a href="#safety">Testing: what is safe to run</a></li>
     <li><a href="#suites">Testing: the suites</a></li>
     <li><a href="#manual">Testing: by hand</a></li>
@@ -251,6 +252,25 @@ Scripts that edit users or organizations directly (for example <code>scripts/enf
 </div>
 </section>
 
+<section id="flow-documents">
+<h2>7. Case documents</h2>
+<p>Files on cases from staff, and from callers through a private link offered at the end of the call.</p>
+<div class="card">
+<ol class="flow">
+  <li><b>Ask.</b> The global rules have the agent ask about documents before its closing line, spell the email back and ask "Is that right?" on its own turn (a goodbye hangs up).
+    <span class="where">agent/firm_context.py GLOBAL_INSTRUCTIONS</span></li>
+  <li><b>Read the answer.</b> After the call the transcript is read (Gemini, or rules on failure): asked, wanted, the confirmed email or phone. The case is registered with <code>documents_request.status = requested</code>.
+    <span class="where">agent/documents_request.py detect → pipeline_worker → case_manager.register_from_call</span></li>
+  <li><b>Send the link.</b> A 43-character token (stored only as its SHA-256), one case, 7 days, 20 files; email when there's an address and mail is set up, else SMS. No public address means not sent, with the reason on the case.
+    <span class="where">agent/upload_links.py send_link · POST /api/v1/case-documents/link (staff resend / copy)</span></li>
+  <li><b>Caller uploads</b> on <code>/upload/&lt;token&gt;</code> without signing in; per-IP limits stop guessing. Files are checked by their bytes and saved to the case as the caller's.
+    <span class="where">web/upload.html · GET /api/v1/upload-link/info · POST /api/v1/upload-link/upload → agent/case_documents.py</span></li>
+  <li><b>Tell the firm.</b> The case counts new files (badge on Cases) until opened; one email per case per 10 minutes goes to the assigned staff and the firm's lead emails.
+    <span class="where">notify_new_documents · POST /api/v1/case-documents/seen</span></li>
+</ol>
+</div>
+</section>
+
 <section id="safety">
 <h2>Testing: what is safe to run</h2>
 <div class="callout bad"><b>These touch real systems.</b> Run them only when that is the point.
@@ -293,6 +313,7 @@ Scripts that edit users or organizations directly (for example <code>scripts/enf
   <tr><td><code>verify_end_call.py</code></td><td>Sign-off detection; Twilio stream closes after a full goodbye only</td><td><span class="badge ok">isolated</span></td></tr>
   <tr><td><code>verify_trunk_validation.py</code></td><td>Trunk create validation, trunk delete, marketplace chip counts</td><td><span class="badge ok">isolated</span></td></tr>
   <tr><td><code>verify_knowledge.py</code></td><td>Knowledge base: file types, reading every format, passages, search, limits, firm isolation, the API by role, restart; FIRM KNOWLEDGE on every call path and the knowledge tool. <code>VERIFY_PG_URL</code> adds a throwaway-PostgreSQL section; <code>VERIFY_LIVE_LLM=1</code> adds two real Gemini answers.</td><td><span class="badge ok">isolated</span></td></tr>
+  <tr><td><code>verify_case_documents.py</code></td><td>Case documents: store, API by role, the closing question and reading the answer, upload links (local mail server, SMS dry run), the caller's page, firm emails, browser checks. <code>VERIFY_PG_URL</code> and <code>VERIFY_LIVE_LLM=1</code> add a throwaway-PostgreSQL section and real Gemini answers.</td><td><span class="badge ok">isolated</span></td></tr>
   <tr><td><code>test_playwright_knowledge.py</code></td><td>The Knowledge base page in headless Chromium: upload, statuses, preview, Try a question, download, delete, Read again, Member Admin view, phone width. Uses the Gemini key from <code>.env</code> for the image (<code>--no-gemini</code> to skip).</td><td><span class="badge ok">isolated</span></td></tr>
   <tr><td><code>test_twilio_stream.py</code></td><td>Voice webhook TwiML, media-stream handshake, greeting audio</td><td><span class="badge info">server</span></td></tr>
   <tr><td><code>test_playwright_voices.py</code></td><td>Agent Builder voice picker and Test Call in headless Chromium. The Test Call is a live LiveKit call to the Docker worker, which saves each one to the real Call History and recordings.</td><td><span class="badge warn">worker</span> <span class="badge bad">live</span></td></tr>
@@ -351,6 +372,7 @@ python3 scripts/audit_all_pages.py</code></pre>
   <tr><td>Intake names</td><td><span class="badge warn">open</span> The regex extractor can take the agent's greeting as the client name; Cases filters it, but Clio can still receive it.</td></tr>
   <tr><td>Carriers</td><td><span class="badge info">by design</span> Number purchase and outbound dialling are simulated.</td></tr>
   <tr><td>Booking tools</td><td><span class="badge warn">open</span> <code>check_availability</code>, <code>book_appointment</code> and <code>lookup_order</code> are simulated; saved copies in <code>config/custom_tools.json</code> make them echo instead. Turn them off for agents until a real calendar is connected.</td></tr>
+  <tr><td>Caller upload links</td><td><span class="badge warn">setup</span> Sent only with <code>PUBLIC_BASE_URL</code> set; email needs Email delivery; SMS on a Twilio trial reaches verified numbers only.</td></tr>
   <tr><td>Knowledge search</td><td><span class="badge info">by design</span> Word matching, not meaning: a question sharing no words (or synonyms) with a file won't find it.</td></tr>
 </table></div>
 </section>

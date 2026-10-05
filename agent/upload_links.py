@@ -341,3 +341,49 @@ def _record(case_manager, case, result: Dict[str, Any], link: Optional[UploadLin
         case_manager.update_documents_request(case.case_id, changes)
     except Exception as e:
         log.warning("Could not record the upload link on case %s: %s", case.case_id, e)
+
+
+# ── Telling the firm (Phase 4) ───────────────────────────────────────────────────────────────────────
+NOTIFY_EVERY = 600      # one email per case per 10 minutes: a caller usually sends several files in a row
+
+
+def lead_emails_for_workspace(workspace_id: str) -> List[str]:
+    """The lead-email addresses of the firm's agents (server-wide agents count for the default firm)."""
+    try:
+        from agent.agent_builder import STATE_FILE
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            agents = json.load(f).get("agents", [])
+    except Exception:
+        return []
+    out: List[str] = []
+    for a in agents:
+        ws = a.get("workspace_id") or "ws-default"
+        if ws == (workspace_id or "ws-default"):
+            out += [e for e in (a.get("lead_emails") or []) if e not in out]
+    return out
+
+
+def notify_body(firm: str, client: str, count: int, url: str) -> Tuple[str, str]:
+    who = client or "A caller"
+    files = f"{count} new document{'s' if count != 1 else ''}"
+    subject = f"{who} sent {files}" + (f" · {firm}" if firm else "")
+    text = (f"{who} sent {files} for their case through the upload link.\n\n"
+            f"Open the case to see them: {url}\n\n"
+            "The files themselves are not attached to this email; they are only on the case.\n")
+    return subject, text
+
+
+def notify_new_documents(case, recipients: List[str], base: str, count: int) -> Dict[str, Any]:
+    """Emails the firm that a caller added files. Never raises; returns {"ok", "sent_to", "error"}."""
+    from agent import mailer
+    recipients = [r for r in dict.fromkeys(recipients) if EMAIL_RE.match(r or "")]
+    if not recipients:
+        return {"ok": False, "sent_to": [], "error": "no recipients"}
+    if not mailer.configured().get("ready"):
+        return {"ok": False, "sent_to": [], "error": "email isn't set up"}
+    subject, text = notify_body(_firm(case.workspace_id), case.client_name, count, f"{base.rstrip('/')}/cases")
+    sent_to, errors = [], []
+    for r in recipients:
+        res = mailer.send_email(r, subject, text)
+        (sent_to if res.get("ok") else errors).append(r if res.get("ok") else f"{r}: {res.get('error')}")
+    return {"ok": bool(sent_to), "sent_to": sent_to, "error": "; ".join(errors)}

@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import logging
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -66,7 +67,7 @@ from agent import onboarding
 from agent.case_manager import case_manager, STATUSES as CASE_STATUSES
 from agent.knowledge_manager import knowledge_manager, KnowledgeError, MAX_FILE_BYTES as KNOWLEDGE_MAX_FILE
 from agent.case_documents import case_documents, DocumentError, MAX_FILE_BYTES as CASE_DOC_MAX_FILE
-from agent.upload_links import upload_links, send_link as send_upload_link
+from agent.upload_links import upload_links, send_link as send_upload_link, notify_new_documents, lead_emails_for_workspace, NOTIFY_EVERY
 amd_manager = AMDManager()
 
 
@@ -517,6 +518,7 @@ class Handler(SimpleHTTPRequestHandler):
     # Softphone WebRTC dialer and API Keys & Provider Secrets are strictly Super Admin only.
     WEBSITE_DRAFT_LIMITER = None   # set below the class (needs auth_manager's limiter type)
     UPLOAD_LINK_LIMITER = None
+    NOTIFY_DELAY = float(os.getenv("DOCS_NOTIFY_DELAY", "20"))   # seconds to gather a burst of caller uploads
     UPLOAD_LINK_MISS_LIMITER = None
     SUPER_ADMIN_PAGES = ("/organizations", "/users", "/softphone", "/api-keys", "/branding", "/email-settings")
     SUPER_ADMIN_PREFIXES = ("/api/v1/system/", "/api/v1/api-keys", "/api/providers")
@@ -697,8 +699,15 @@ class Handler(SimpleHTTPRequestHandler):
                 doc = case_documents.add(case.case_id, case.workspace_id, name, data, source="caller",
                                          uploaded_by=case.client_name or "Caller")
                 link = upload_links.record_upload(link.link_id, doc.name)
-                case_manager.update_documents_request(case.case_id, {"status": "received", "received_at": time.time(),
-                                                                     "files": int((case.documents_request or {}).get("files", 0)) + 1})
+                req = case.documents_request or {}
+                changes = {"status": "received", "received_at": time.time(),
+                           "files": int(req.get("files", 0)) + 1, "new_files": int(req.get("new_files", 0)) + 1}
+                notify = time.time() - float(req.get("notified_at") or 0) >= NOTIFY_EVERY
+                if notify:
+                    changes["notified_at"] = time.time()
+                case = case_manager.update_documents_request(case.case_id, changes)
+                if notify:
+                    self._notify_new_documents(case)
             except DocumentError as e:
                 self._send_json({"status": "error", "error": str(e)}, e.status)
                 return
@@ -713,6 +722,24 @@ class Handler(SimpleHTTPRequestHandler):
         self._send_json({"status": "ok", "firm": firm_name(link.workspace_id) or "", "first_name": "" if first.lower() in ("unknown", "") else first,
                          "expires_at": link.expires_at, "files_left": max(0, link.max_files - link.files_used),
                          "max_file_bytes": CASE_DOC_MAX_FILE, "uploaded": list(link.uploaded)})
+
+    def _notify_new_documents(self, case) -> None:
+        """Background email to the case's staff and the firm's lead emails (never delays the caller)."""
+        recipients = [u.email for u in (auth_manager.get_user(uid) for uid in case.assigned_staff) if u and u.active and u.email]
+        recipients += lead_emails_for_workspace(case.workspace_id)
+        from agent.telephony_manager import public_base_url
+        base = public_base_url() or self._public_base_url()
+
+        def run(case=case, recipients=recipients, base=base):
+            # Wait a little so a burst of files becomes one email with the right count.
+            time.sleep(self.NOTIFY_DELAY)
+            fresh = case_manager.get(case.case_id) or case
+            res = notify_new_documents(fresh, recipients, base, int((fresh.documents_request or {}).get("new_files", 1)) or 1)
+            try:
+                case_manager.update_documents_request(case.case_id, {"notify": {k: res.get(k) for k in ("ok", "sent_to", "error")}})
+            except Exception as e:
+                log.warning("Could not record the new-documents email on %s: %s", case.case_id, e)
+        threading.Thread(target=run, daemon=True, name=f"notify-{case.case_id}").start()
 
     def _knowledge_upload(self, parsed) -> None:
         """POST /api/v1/knowledge/upload?name=<file name>[&workspace_id=] with the file's bytes as the body."""
@@ -2561,6 +2588,14 @@ class Handler(SimpleHTTPRequestHandler):
             case = case_manager.get(case.case_id)
             self._send_json(dict(result, status="ok" if result["ok"] else "error", case=self._case_out(case)),
                             200 if result["ok"] else 400)
+            return
+        if parsed.path == "/api/v1/case-documents/seen":
+            case = self._case_for_viewer(str(payload.get("case_id") or ""))
+            if not case:
+                return
+            if (case.documents_request or {}).get("new_files"):
+                case = case_manager.update_documents_request(case.case_id, {"new_files": 0, "seen_at": time.time()})
+            self._send_json({"status": "ok", "case": self._case_out(case)})
             return
         if parsed.path == "/api/v1/case-documents/delete":
             case = self._case_for_viewer(str(payload.get("case_id") or ""))

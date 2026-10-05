@@ -89,7 +89,7 @@
 
 <header>
   <h1>Case Documents Plan</h1>
-  <p class="lead">Cases get documents. Staff can attach files to a case, and at the end of every intake call the agent asks whether the caller has documents about their case. If they do, the caller gets a private upload link by email (or by text message when there's no usable email) and the files land on their case. The bars move as tasks land.</p>
+  <p class="lead">Cases get documents. Staff can attach files to a case, and at the end of every intake call the agent asks whether the caller has documents about their case. If they do, the caller gets a private upload link by email (or by text message when there's no usable email) and the files land on their case. All four phases are built and tested.</p>
   <div class="nav"><a href="/task-plan">Task plan</a><a href="/knowledge-plan">Knowledge Base Plan</a><a href="/flow-testing">Flows &amp; Testing</a></div>
 </header>
 
@@ -178,10 +178,10 @@ var PHASES = [
       done: "Uploads from a phone-sized browser land on the case." }
   ]},
   { id: 4, name: "Follow-up, tests and docs", sub: "Staff know when files arrive; everything is proven", tasks: [
-    { id: "4.1", status: "todo", name: "New documents alert",
+    { id: "4.1", status: "done", name: "New documents alert",
       desc: "The case shows New documents until opened; the firm's lead emails get a short note when a caller uploads.",
       done: "Uploading through a link flags the case and sends the note." },
-    { id: "4.2", status: "todo", name: "Tests and guides",
+    { id: "4.2", status: "done", name: "Tests and guides",
       desc: "Isolated suite (store, API by role, links, sending with a local mail server, upload page) and a browser test; Admin guide and Flows & Testing updated.",
       done: "Suites pass without touching the real database, mail or carriers." }
   ]}

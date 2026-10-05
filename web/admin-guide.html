@@ -43,13 +43,14 @@
           <a href="#team">4. Team &amp; roles</a>
           <a href="#agents">5. Agents overview</a>
           <a href="#knowledge">6. Knowledge base</a>
-          <a href="#numbers">7. Numbers &amp; SIP trunks</a>
-          <a href="#webhooks">8. Webhook endpoints</a>
+          <a href="#documents">7. Case documents</a>
+          <a href="#numbers">8. Numbers &amp; SIP trunks</a>
+          <a href="#webhooks">9. Webhook endpoints</a>
           <div class="h">Platform</div>
-          <a href="#storage">9. Storage &amp; backups</a>
-          <a href="#security">10. Sign-in &amp; security</a>
-          <a href="#ops">11. Running the stack</a>
-          <a href="#limits">12. Known limits</a>
+          <a href="#storage">10. Storage &amp; backups</a>
+          <a href="#security">11. Sign-in &amp; security</a>
+          <a href="#ops">12. Running the stack</a>
+          <a href="#limits">13. Known limits</a>
         </aside>
 
         <div>
@@ -120,8 +121,21 @@
             <p>Product Admins manage their own firm's library and Member Admins can view and search it. Super Admins can work on any firm's library with the firm picker. Search matches words, with stemming and common caller phrasings (cost/fee/price, hours/open, where/address), not meaning, so give files plain wording that callers would use.</p>
           </section>
 
+          <section class="card" id="documents">
+            <h2>7. Case documents</h2>
+            <p>Every case can hold documents. Staff add them on <b>Cases</b>: the <span class="btnlike">+ Add documents</span> / <span class="btnlike">📎 N documents</span> button on a case opens its Documents window (download by name, View for photos, Delete with a confirm), and <b>New case</b> takes files too. PDF, Word, Excel, CSV, text and photos (including iPhone HEIC), up to 20 MB a file and 100 files a case. Product Admins handle every case of the firm; staff only the cases assigned to them, and they can only delete what they added.</p>
+            <ol class="steps">
+              <li><b>On the call</b>: before saying goodbye on an intake call, the agent asks whether the caller has documents. On a yes it spells their email back and asks "Is that right?", or confirms a mobile number, and says a link is coming.</li>
+              <li><b>After the call</b>: the case is created marked <i>Documents requested</i>, and a private upload link goes out at once: by email, or by text message when there's no usable email or email isn't set up.</li>
+              <li><b>The caller</b> opens the link (no account), picks files or takes photos, and sees a thank-you. The link works for 7 days and 20 files, only adds files to that one case, and is replaced when a newer one is sent.</li>
+              <li><b>The firm</b>: the case shows <i>New documents</i> until someone opens them, and the case's staff plus the agents' lead emails get one short email per burst of uploads (no files attached).</li>
+            </ol>
+            <p>From the Documents window, <b>Request documents from the caller</b> shows the link's state (sent to whom, until when, files received, or why it wasn't sent) and can <span class="btnlike">Send by email</span>, <span class="btnlike">Send by text</span> or <span class="btnlike">Copy link</span>.</p>
+            <div class="note"><b>Needed for real callers:</b> a public web address in <code>PUBLIC_BASE_URL</code> (links are never sent pointing at localhost) and <b>Email delivery</b> set up; text messages need a Twilio number with SMS (a trial account only reaches verified numbers).</div>
+          </section>
+
           <section class="card" id="numbers">
-            <h2>7. Numbers &amp; SIP trunks</h2>
+            <h2>8. Numbers &amp; SIP trunks</h2>
             <ol class="steps">
               <li><b>Buy Phone Numbers</b>: Telnyx and Twilio inventory in separate tabs; buying records the carrier, assigns a trunk and an agent.</li>
               <li><b>SIP Trunks &amp; DIDs</b>: owned numbers with an agent dropdown each (per-number routing), inbound and outbound trunks, and dispatch rules. Edit or remove numbers and trunks here.</li>
@@ -131,14 +145,14 @@
           </section>
 
           <section class="card" id="webhooks">
-            <h2>8. Webhook endpoints</h2>
+            <h2>9. Webhook endpoints</h2>
             <p>On <b>Webhooks &amp; Data</b> add an endpoint URL, choose events, and optionally set the signing secret (one is generated otherwise). Press <span class="btnlike">Test</span>: a signed test event is posted and the result shows the HTTP code and round trip. The health pill reflects the last delivery. Recent deliveries list status, attempts and errors, with <span class="btnlike">Replay</span>.</p>
             <p>Endpoints are workspace-wide; whether a call posts anything is decided per agent by its <b>Webhook &amp; data extraction</b> toggle. The payload carries <code>call</code>, <code>extracted</code> (the agent's fields, filled by Gemini), <code>summary</code>, <code>sentiment</code> and <code>transcript</code>, signed with <code>X-Signature-256</code> (HMAC-SHA256 of the body). Failed deliveries retry with back-off, then land in the dead-letter list.</p>
           </section>
 
           <section class="card" id="storage">
-            <h2>9. Storage &amp; backups</h2>
-            <p>Everything is written through to <b>PostgreSQL</b> (container <code>voice-postgres</code>, host port 5433, volume <code>voice_pgdata</code>): agents and revisions, phone numbers, trunks and rules, users, sessions and API keys, post-call jobs, every recording as bytes, and the knowledge base (file records and passages in <code>app_documents</code>, original files in <code>knowledge_blobs</code>). The JSON files under <code>config/</code> and the WAVs under <code>recordings/</code> remain the working copy; at start-up anything missing or older on disk is restored from the database.</p>
+            <h2>10. Storage &amp; backups</h2>
+            <p>Everything is written through to <b>PostgreSQL</b> (container <code>voice-postgres</code>, host port 5433, volume <code>voice_pgdata</code>): agents and revisions, phone numbers, trunks and rules, users, sessions and API keys, post-call jobs, every recording as bytes, the knowledge base (records and passages in <code>app_documents</code>, files in <code>knowledge_blobs</code>), and case documents (records and upload links in <code>app_documents</code>, files in <code>case_document_blobs</code>). The JSON files under <code>config/</code> and the WAVs under <code>recordings/</code> remain the working copy; at start-up anything missing or older on disk is restored from the database.</p>
             <ul>
               <li>Connection: <code>DATABASE_URL</code> in <code>.env</code> (empty = files only).</li>
               <li>Status: <b>My Profile → Data &amp; storage</b>, or <code>GET /api/storage/status</code>.</li>
@@ -149,7 +163,7 @@
           </section>
 
           <section class="card" id="security">
-            <h2>10. Sign-in &amp; security</h2>
+            <h2>11. Sign-in &amp; security</h2>
             <ul>
               <li>Passwords are stored as PBKDF2-SHA256 hashes. Sessions are HttpOnly cookies (12 h, or 30 days with "keep me signed in") and are stored hashed.</li>
               <li>The SMS step is on for any account with a phone on its profile. Codes last 5 minutes, 5 attempts, resend after 30 s. Sender: the workspace's SMS-capable Twilio number (<code>TWILIO_SMS_FROM</code> overrides).</li>
@@ -159,7 +173,7 @@
           </section>
 
           <section class="card" id="ops">
-            <h2>11. Running the stack</h2>
+            <h2>12. Running the stack</h2>
 <pre>docker compose up -d redis livekit postgres agent   # media server, cache, database, AI worker
 python3 scripts/serve.py                            # dashboard + API on http://localhost:8091
 docker compose up -d agent                          # restart the worker after key changes
@@ -172,7 +186,7 @@ python3 scripts/run_all_tests.py                    # 20 verification suites</pr
           </section>
 
           <section class="card" id="limits">
-            <h2>12. Known limits</h2>
+            <h2>13. Known limits</h2>
             <table>
               <thead><tr><th>Area</th><th>Today</th><th>To lift it</th></tr></thead>
               <tbody>
@@ -180,6 +194,7 @@ python3 scripts/run_all_tests.py                    # 20 verification suites</pr
                 <tr><td>SMS sign-in codes</td><td>Twilio trial: verified numbers only</td><td>Verify numbers in Twilio, or upgrade</td></tr>
                 <tr><td>ElevenLabs voices</td><td>Free plan: premade only</td><td>Starter plan or higher for Voice Library / professional voices</td></tr>
                 <tr><td>Gemini</td><td>Free tier rate limits</td><td>Paid tier for 3.6 Flash on busy lines</td></tr>
+                <tr><td>Caller upload links</td><td>Not sent without <code>PUBLIC_BASE_URL</code>; email needs Email delivery; SMS needs a non-trial Twilio number</td><td>Set the public address and mail; upgrade Twilio for texts to any number</td></tr>
                 <tr><td>Knowledge base search</td><td>Word matching with stemming and caller synonyms</td><td>Add Gemini embeddings if callers' questions miss files that share no words with them</td></tr>
                 <tr><td>Recording archive</td><td>Local folder, placeholder URL</td><td>Choose cloud storage and wire the archive step</td></tr>
               </tbody>
