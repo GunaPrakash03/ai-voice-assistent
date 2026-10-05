@@ -11,3 +11,10 @@ livekit-plugins-elevenlabs~=1.0
 psycopg[binary]~=3.1
 edge-tts~=7.0  # Backs the "Studio Pro" / "Natural" voice tiers (no vendor key needed)
 
+
+# Knowledge base and case documents (agent/knowledge_manager.py, agent/case_documents.py): files are
+# read on the dashboard when they are uploaded. Without these, PDF / Word / Excel uploads fail.
+PyMuPDF~=1.28
+python-docx~=1.2
+openpyxl~=3.1
+Pillow>=10.2

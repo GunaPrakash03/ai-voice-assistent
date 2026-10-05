@@ -130,6 +130,9 @@ def fake_reader(mime, data):
 # ── 1. Offline ───────────────────────────────────────────────────────────────────────────────────────
 def offline():
     print("\n1. Offline: types, reading, passages, search, limits")
+    reqs = open(os.path.join(ROOT_DIR, "requirements.txt")).read().lower()
+    for pkg in ("pymupdf", "python-docx", "openpyxl", "pillow"):
+        check(f"requirements.txt installs {pkg} (deploys read files with it)", pkg in reqs)
     os.environ["DATABASE_URL"] = ""
     sys.path.insert(0, ROOT_DIR)
     import agent.knowledge_manager as km
