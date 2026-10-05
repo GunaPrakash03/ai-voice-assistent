@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case Documents Plan</title>
+<style>
+  :root {
+    --ground: #0d1117;
+    --panel: #161b22;
+    --panel-border: #30363d;
+    --rule: #21262d;
+    --ink: #c9d1d9;
+    --ink-white: #f0f6fc;
+    --soft: #8b949e;
+    --accent: #58a6ff;
+    --accent-bg: rgba(88, 166, 255, 0.12);
+    --ok: #3fb950;
+    --ok-bg: rgba(63, 185, 80, 0.12);
+    --warn: #d29922;
+    --warn-bg: rgba(210, 153, 34, 0.12);
+    --bad: #f85149;
+    --bad-bg: rgba(248, 81, 73, 0.12);
+    --todo: #484f58;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 30px 16px 80px; background: var(--ground); color: var(--ink); line-height: 1.55;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .container { max-width: 980px; margin: 0 auto; }
+  header { border-bottom: 1px solid var(--panel-border); padding-bottom: 20px; margin-bottom: 24px; }
+  h1 { font-size: 27px; margin: 0 0 8px; color: var(--ink-white); }
+  h2 { font-size: 18px; margin: 0; color: var(--ink-white); }
+  .lead { color: var(--soft); margin: 0 0 10px; font-size: 15px; }
+  .nav a { color: var(--accent); margin-right: 14px; font-size: 14px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: rgba(110,118,129,.2); padding: 1px 5px; border-radius: 4px; color: #ff7b72; overflow-wrap: anywhere; }
+
+  /* Overall progress */
+  .overall { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 18px 20px; margin-bottom: 26px; }
+  .overall-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .overall-head strong { color: var(--ink-white); font-size: 15px; }
+  .pct { font: 700 26px ui-monospace, Menlo, monospace; color: var(--ink-white); }
+  .track { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--todo); }
+  .track span { display: block; height: 100%; transition: width .4s; }
+  .seg-done { background: var(--ok); }
+  .seg-doing { background: var(--warn); }
+  .seg-blocked { background: var(--bad); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; color: var(--soft); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+  /* Phases */
+  .phase { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; margin-bottom: 18px; overflow: hidden; }
+  .phase-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+  .phase-head .sub { color: var(--soft); font-size: 13px; margin-top: 2px; }
+  .phase-meter { display: flex; align-items: center; gap: 10px; min-width: 180px; }
+  .phase-meter .track { flex: 1; height: 8px; }
+  .phase-meter b { font: 600 13px ui-monospace, Menlo, monospace; color: var(--ink-white); min-width: 42px; text-align: right; }
+  .task { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; padding: 13px 20px; border-bottom: 1px solid var(--rule); }
+  .task:last-child { border-bottom: none; }
+  .task-id { font: 600 13px ui-monospace, Menlo, monospace; color: var(--accent); padding-top: 1px; }
+  .task-name { color: var(--ink-white); font-weight: 600; font-size: 14.5px; }
+  .task-desc { color: var(--ink); font-size: 13.5px; margin-top: 3px; }
+  .task-done-when { color: var(--soft); font-size: 12.5px; margin-top: 5px; }
+  .badge { font: 600 11.5px ui-monospace, Menlo, monospace; padding: 3px 8px; border-radius: 4px; white-space: nowrap; height: fit-content; border: 1px solid; }
+  .b-todo { color: var(--soft); border-color: var(--todo); }
+  .b-doing { color: var(--warn); background: var(--warn-bg); border-color: var(--warn); }
+  .b-done { color: var(--ok); background: var(--ok-bg); border-color: var(--ok); }
+  .b-blocked { color: var(--bad); background: var(--bad-bg); border-color: var(--bad); }
+
+  .card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 16px 20px; margin-bottom: 18px; }
+  .card h2 { margin-bottom: 10px; }
+  .card ul { margin: 0; padding-left: 20px; }
+  .card li { margin-bottom: 6px; font-size: 14px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--ink-white); background: rgba(255,255,255,.03); }
+  footer { color: var(--soft); font-size: 12.5px; margin-top: 30px; }
+  @media (max-width: 640px) {
+    h1 { font-size: 22px; }
+    .task { grid-template-columns: 1fr; gap: 6px; }
+    .phase-meter { min-width: 0; width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>Case Documents Plan</h1>
+  <p class="lead">Cases get documents. Staff can attach files to a case, and at the end of every intake call the agent asks whether the caller has documents about their case. If they do, the caller gets a private upload link by email (or by text message when there's no usable email) and the files land on their case. Nothing is built yet: this page is the plan, and the bars move as tasks land.</p>
+  <div class="nav"><a href="/task-plan">Task plan</a><a href="/knowledge-plan">Knowledge Base Plan</a><a href="/flow-testing">Flows &amp; Testing</a></div>
+</header>
+
+<section class="overall" aria-label="Overall progress">
+  <div class="overall-head">
+    <div><strong>Overall progress</strong><div class="lead" id="overallCount" style="margin:2px 0 0;font-size:13px"></div></div>
+    <div class="pct" id="overallPct">0%</div>
+  </div>
+  <div class="track" id="overallTrack" role="progressbar" aria-valuemin="0" aria-valuemax="100"></div>
+  <div class="legend">
+    <span><i style="background:var(--ok)"></i>Done</span>
+    <span><i style="background:var(--warn)"></i>In progress</span>
+    <span><i style="background:var(--bad)"></i>Blocked</span>
+    <span><i style="background:var(--todo)"></i>To do</span>
+  </div>
+</section>
+
+<div class="card">
+  <h2>How it works for a caller</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Step</th><th>What happens</th></tr>
+    <tr><td>1. End of the call</td><td>Before saying goodbye the agent asks: "Do you have any documents about your case, like photos, a police report or medical bills?"</td></tr>
+    <tr><td>2. Caller says yes</td><td>The agent confirms where to send the link: their email, spelled back to them, or their mobile number.</td></tr>
+    <tr><td>3. After the call</td><td>The case is created and marked <b>Documents requested</b>. The caller gets a private link by email; by text message when no usable email was given.</td></tr>
+    <tr><td>4. Caller uploads</td><td>The link opens a simple page (no account, phone-friendly) for that one case. PDF, Word, photos; valid 7 days.</td></tr>
+    <tr><td>5. Staff see them</td><td>Files appear on the case with who sent them and when; the case shows <b>New documents</b> until someone opens them.</td></tr>
+  </table></div>
+</div>
+
+<div id="phases"></div>
+
+<div class="card">
+  <h2>Decided</h2>
+  <ul>
+    <li><b>Link by email, text message as backup</b> when the caller gave no usable email. Staff can resend either from the case.</li>
+    <li><b>Links last 7 days</b> and only ever add files to one case. They can't list, open or delete anything already there.</li>
+    <li><b>Accepted files:</b> PDF, Word (.docx), images (PNG, JPG, WebP, HEIC from iPhones), text. Up to 20 MB a file and 20 files a link. Type checked from the file's contents.</li>
+    <li><b>Storage</b> in PostgreSQL next to the case, scoped to the firm, the same way as the knowledge base.</li>
+    <li><b>Who sees documents:</b> the firm's Product Admins, Super Admins, and the staff assigned to the case.</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2>Before it can go live</h2>
+  <ul>
+    <li><b>Email isn't set up on this server.</b> Fill in <a href="/email-settings" style="color:var(--accent)">Email delivery</a> (SMTP or Resend) so links can be sent. Until then the build is tested against a local test mail server.</li>
+    <li><b>Twilio is a trial account:</b> text messages only reach verified numbers until it's upgraded.</li>
+  </ul>
+</div>
+
+<footer id="updated"></footer>
+</div>
+
+<script>
+// Status per task: "todo" | "doing" | "done" | "blocked". Update here as work lands; every bar is computed.
+var UPDATED = "2026-10-05";
+var PHASES = [
+  { id: 1, name: "Documents on cases", sub: "Staff can attach, see and download files on any case", tasks: [
+    { id: "1.1", status: "todo", name: "Case document store",
+      desc: "Per-case file records (name, type, size, sent by, date, source: staff or caller) and the original bytes in PostgreSQL; JSON and files for local runs. Type checked from the bytes.",
+      done: "Files survive a restart and one firm can never reach another's." },
+    { id: "1.2", status: "todo", name: "Documents API",
+      desc: "Upload, list, download, delete per case. Product Admins and Super Admins for the firm's cases; assigned staff for their own cases.",
+      done: "Unassigned staff and other firms are refused." },
+    { id: "1.3", status: "todo", name: "Documents on the Cases page",
+      desc: "A Documents panel on each case (list, download, delete, upload) and file attachment in the New case form.",
+      done: "A case created with files shows them right away." }
+  ]},
+  { id: 2, name: "Ask on the call", sub: "The agent offers to collect documents before saying goodbye", tasks: [
+    { id: "2.1", status: "todo", name: "Closing question",
+      desc: "Global rule: before the goodbye on an intake call, ask whether the caller has documents about their case; if yes, confirm the email (spelled back) or the mobile number for the link.",
+      done: "A test call asks the question once, at the end, and confirms where to send." },
+    { id: "2.2", status: "todo", name: "Capture the answer",
+      desc: "Intake extraction gets 'has documents' and the confirmed email/phone; the case created from the call is marked Documents requested.",
+      done: "A transcript with a yes produces a case marked Documents requested with the contact." }
+  ]},
+  { id: 3, name: "Upload link", sub: "A private, expiring link that adds files to one case", tasks: [
+    { id: "3.1", status: "todo", name: "Secure links",
+      desc: "Random link stored only as a hash, tied to one case, valid 7 days, 20 files max, rate-limited; can only add files.",
+      done: "Expired, used-up, guessed or tampered links are refused." },
+    { id: "3.2", status: "todo", name: "Send it",
+      desc: "After the call: email with the link (firm name, what to send, expiry); text message when there's no usable email. Resend by email or text from the case.",
+      done: "Mail arrives at a test mail server; text goes out through Twilio (dry run in tests)." },
+    { id: "3.3", status: "todo", name: "Upload page for callers",
+      desc: "/upload/<link>: no login, phone-friendly, firm name and case owner's first name, drag or pick files (camera on phones), progress, a clear thank-you.",
+      done: "Uploads from a phone-sized browser land on the case." }
+  ]},
+  { id: 4, name: "Follow-up, tests and docs", sub: "Staff know when files arrive; everything is proven", tasks: [
+    { id: "4.1", status: "todo", name: "New documents alert",
+      desc: "The case shows New documents until opened; the firm's lead emails get a short note when a caller uploads.",
+      done: "Uploading through a link flags the case and sends the note." },
+    { id: "4.2", status: "todo", name: "Tests and guides",
+      desc: "Isolated suite (store, API by role, links, sending with a local mail server, upload page) and a browser test; Admin guide and Flows & Testing updated.",
+      done: "Suites pass without touching the real database, mail or carriers." }
+  ]}
+];
+
+(function render() {
+  var LABEL = { todo: "To do", doing: "In progress", done: "Done", blocked: "Blocked" };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function counts(tasks) {
+    var c = { todo: 0, doing: 0, done: 0, blocked: 0 };
+    tasks.forEach(function (t) { c[t.status] = (c[t.status] || 0) + 1; });
+    return c;
+  }
+  // Done counts in full, in progress as half, so the bar moves when work starts.
+  function pct(c, n) { return n ? Math.round((c.done + c.doing * 0.5) / n * 100) : 0; }
+  function bar(el, c, n) {
+    el.innerHTML = ["done", "doing", "blocked"].map(function (k) {
+      return c[k] ? '<span class="seg-' + k + '" style="width:' + (c[k] / n * 100) + '%"></span>' : "";
+    }).join("");
+  }
+  var all = [];
+  var html = PHASES.map(function (p) {
+    all = all.concat(p.tasks);
+    var c = counts(p.tasks), n = p.tasks.length;
+    return '<section class="phase"><div class="phase-head"><div><h2>Phase ' + p.id + ": " + esc(p.name) + '</h2><div class="sub">' + esc(p.sub) + "</div></div>" +
+      '<div class="phase-meter"><div class="track" data-phase="' + p.id + '"></div><b>' + c.done + "/" + n + "</b></div></div>" +
+      p.tasks.map(function (t) {
+        return '<div class="task"><div class="task-id">' + esc(t.id) + "</div><div>" +
+          '<div class="task-name">' + esc(t.name) + '</div><div class="task-desc">' + esc(t.desc) + "</div>" +
+          '<div class="task-done-when">Done when: ' + esc(t.done) + "</div></div>" +
+          '<span class="badge b-' + t.status + '">' + LABEL[t.status] + "</span></div>";
+      }).join("") + "</section>";
+  }).join("");
+  document.getElementById("phases").innerHTML = html;
+  PHASES.forEach(function (p) { bar(document.querySelector('[data-phase="' + p.id + '"]'), counts(p.tasks), p.tasks.length); });
+  var c = counts(all), n = all.length, track = document.getElementById("overallTrack");
+  bar(track, c, n);
+  track.setAttribute("aria-valuenow", pct(c, n));
+  document.getElementById("overallPct").textContent = pct(c, n) + "%";
+  document.getElementById("overallCount").textContent = c.done + " of " + n + " tasks done" + (c.doing ? ", " + c.doing + " in progress" : "") + (c.blocked ? ", " + c.blocked + " blocked" : "");
+  document.getElementById("updated").textContent = "Last updated " + UPDATED + ".";
+})();
+</script>
+</body>
+</html>
