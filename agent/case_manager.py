@@ -341,10 +341,15 @@ class CaseManager:
         rx_fields = (md.get("crm_payloads") or {}).get("legal_intake") or {}
         pick = lambda d, *keys: next((d[k] for k in keys if d.get(k) not in (None, "", [])), None)
 
-        name = _text(pick(ai_fields, "full_name", "client_name", "caller_name", "name"), 120)
+        # The caller's basics read with the documents question (agent/documents_request.py): better than the
+        # regex fallback when the agent has no extraction fields of its own.
+        docs = md.get("documents_request") if isinstance(md.get("documents_request"), dict) else {}
+        basics = docs.get("caller") if isinstance(docs.get("caller"), dict) else {}
+        name = _text(pick(ai_fields, "full_name", "client_name", "caller_name", "name") or basics.get("client_name"), 120)
         if not name:
             name = _person_name(pick(rx_fields, "client_name"), agent_name)
-        phone = _text(pick(ai_fields, "callback_phone", "contact_phone", "phone") or pick(rx_fields, "contact_phone"), 40)
+        phone = _text(pick(ai_fields, "callback_phone", "contact_phone", "phone") or basics.get("callback_phone")
+                      or pick(rx_fields, "contact_phone"), 40)
         if not (name or phone):
             return None
         summary = md.get("summary") if isinstance(md.get("summary"), dict) else {}
@@ -353,9 +358,11 @@ class CaseManager:
         return self.create(workspace_id, {
             "client_name": name or "Unknown caller",
             "phone": phone or md.get("from_number"),
-            "email": pick(ai_fields, "email_address", "email", "contact_email") or pick(rx_fields, "contact_email"),
-            "case_type": pick(ai_fields, "case_type", "practice_area", "matter_type") or _case_type(pick(rx_fields, "case_type")),
-            "summary": pick(ai_fields, "matter_summary", "situation_summary", "case_summary")
+            "email": pick(ai_fields, "email_address", "email", "contact_email") or (docs.get("email") if docs.get("wanted") else "")
+                     or pick(rx_fields, "contact_email"),
+            "case_type": pick(ai_fields, "case_type", "practice_area", "matter_type") or basics.get("case_type")
+                         or _case_type(pick(rx_fields, "case_type")),
+            "summary": pick(ai_fields, "matter_summary", "situation_summary", "case_summary") or basics.get("summary")
                        or pick(rx_fields, "case_summary") or summary.get("executive_summary") or "",
             "call_id": call_id,
             "documents_request": md.get("documents_request"),

@@ -621,7 +621,7 @@
     else if (l && l.state === "used_up") { txt = "The last link has been used for all " + l.max_files + " files. Send a new one for more."; }
     else if (r.status === "requested") { txt = "The caller said on the call that they have documents."; }
     else { txt = "Send the caller a private link to add files to this case. It works for 7 days."; }
-    if (r.status === "received" && r.files) txt += (txt ? " · " : "") + "Caller has sent " + r.files + " file" + (r.files === 1 ? "" : "s") + ".";
+    if (r.status === "received" && r.files && !(l && l.state === "active")) txt += (txt ? " · " : "") + "Caller has sent " + r.files + " file" + (r.files === 1 ? "" : "s") + ".";
     el.textContent = txt; el.className = "req-state" + (cls ? " " + cls : "");
     if (!$("reqEmail").value) $("reqEmail").value = r.email || c.email || "";
     if (!$("reqPhone").value) $("reqPhone").value = r.phone || c.phone || "";

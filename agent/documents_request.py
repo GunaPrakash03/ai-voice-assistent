@@ -5,7 +5,11 @@ The global instructions (agent/firm_context.py) have every agent ask, before its
 call, whether the caller has documents about their case, and if so confirm an email address (spelled back)
 or a mobile number for a private upload link. ``detect`` reads the transcript afterwards and returns:
 
-    {"asked": bool, "wanted": bool, "email": str, "phone": str, "engine": "gemini" | "rules"}
+    {"asked": bool, "wanted": bool, "email": str, "phone": str, "engine": "gemini" | "rules",
+     "caller": {"client_name", "callback_phone", "case_type", "summary"}}
+
+The same Gemini call also reads the caller's basics ("caller"), which the case uses when the agent has no
+extraction fields of its own (the regex fallback often misses the name). Rules leave "caller" empty.
 
 Gemini reads it when a key is set (it copes with spelled-out and corrected addresses); otherwise, or when
 Gemini fails, plain rules do: find the agent's documents question, take the caller's next answer as yes/no,
@@ -30,8 +34,11 @@ SYSTEM = (
     "Return JSON: {\"asked\": did the receptionist ask about documents, \"wanted\": did the caller say they have "
     "documents and want the upload link, \"email\": the email address the caller confirmed for the link in normal "
     "form (e.g. maria.lopez@gmail.com) or \"\", \"phone\": the mobile number the caller confirmed for a text instead, "
-    "digits with country code if given, or \"\"}. Use the caller's final corrected version. Never invent an address "
-    "or number that wasn't said."
+    "digits with country code if given, or \"\", \"caller\": {\"client_name\": the caller's own full name as they "
+    "gave it, \"callback_phone\": their callback number, \"case_type\": a short label for their matter (e.g. Personal "
+    "Injury, Car Accident, Divorce, Estate Planning) or \"\", \"summary\": one or two plain sentences on what happened "
+    "to them}}. Use the caller's final corrected version. Never invent a name, address or number that wasn't said; "
+    "use \"\" when it wasn't."
 )
 
 
@@ -74,7 +81,7 @@ def _phone(text: str) -> str:
 
 
 def _by_rules(turns: List[Dict[str, str]]) -> Dict[str, Any]:
-    out = {"asked": False, "wanted": False, "email": "", "phone": "", "engine": "rules"}
+    out = {"asked": False, "wanted": False, "email": "", "phone": "", "engine": "rules", "caller": {}}
     # The first documents question is the yes/no one; later mentions ("...the link for those documents?")
     # are follow-ups about where to send it.
     q = next((i for i, t in enumerate(turns) if t["who"] == "agent" and DOC_WORDS.search(t["text"]) and "?" in t["text"]), None)
@@ -107,18 +114,24 @@ def _by_gemini(turns: List[Dict[str, str]]) -> Optional[Dict[str, Any]]:
     if not isinstance(data, dict):
         return None
     email = spoken_email(str(data.get("email") or ""))
+    raw = data.get("caller") if isinstance(data.get("caller"), dict) else {}
+    caller = {"client_name": str(raw.get("client_name") or "").strip()[:120],
+              "callback_phone": _phone(str(raw.get("callback_phone") or "")),
+              "case_type": str(raw.get("case_type") or "").strip()[:80],
+              "summary": str(raw.get("summary") or "").strip()[:600]}
     return {"asked": bool(data.get("asked")), "wanted": bool(data.get("wanted")),
-            "email": email, "phone": _phone(str(data.get("phone") or "")), "engine": "gemini"}
+            "email": email, "phone": _phone(str(data.get("phone") or "")), "engine": "gemini",
+            "caller": {k: v for k, v in caller.items() if v}}
 
 
 def detect(transcript: List[Dict[str, Any]]) -> Dict[str, Any]:
     turns = _turns(transcript)
     try:
-        if any(t["who"] == "agent" and DOC_WORDS.search(t["text"]) for t in turns):
+        if any(t["who"] == "caller" for t in turns):
             got = _by_gemini(turns)
             if got is not None:
                 return got
         return _by_rules(turns)
     except Exception as e:
         log.warning("Documents question not read: %s", e)
-        return {"asked": False, "wanted": False, "email": "", "phone": "", "engine": "error"}
+        return {"asked": False, "wanted": False, "email": "", "phone": "", "engine": "error", "caller": {}}

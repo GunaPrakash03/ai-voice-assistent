@@ -226,8 +226,12 @@ def call_suite():
         se.gemini_json = lambda *a, **kw: {"asked": True, "wanted": True, "email": "not an email", "phone": "12"}
         r = dr.detect(T(*cases[0][1]))
         check("Gemini's bad email/phone dropped, never invented", r["email"] == "" and r["phone"] == "", r)
-        se.gemini_json = lambda *a, **kw: {"asked": False}
-        check("no documents talk: Gemini not even asked", dr.detect(T(*cases[7][1]))["engine"] == "rules")
+        se.gemini_json = lambda *a, **kw: {"asked": False, "wanted": False, "caller": {"client_name": "Maria Lopez", "callback_phone": "951-555-0142",
+                                                                                     "case_type": "Car Accident", "summary": "Rear-ended on the I-5."}}
+        r = dr.detect(T(*cases[7][1]))
+        check("caller's basics read in the same call", r["caller"] == {"client_name": "Maria Lopez", "callback_phone": "+19515550142",
+                                                                         "case_type": "Car Accident", "summary": "Rear-ended on the I-5."}, r)
+        check("no caller turns: Gemini not asked", dr.detect([{"speaker": "agent", "text": "Hello?"}])["engine"] == "rules")
     finally:
         se._gemini_key, se.gemini_json = orig_key, orig_json
 
@@ -239,6 +243,14 @@ def call_suite():
               "documents_request": {"asked": True, "wanted": True, "email": "maria.lopez@gmail.com", "phone": "", "engine": "rules"}}
         c = cm.register_from_call("call-1", md)
         check("case from the call marked Documents requested", c.documents_request.get("status") == "requested" and c.documents_request["email"] == "maria.lopez@gmail.com", c.documents_request)
+        md3 = {"crm_payloads": {"legal_intake": {"client_name": "Thanks For Calling"}},
+               "documents_request": {"wanted": True, "email": "jordan@example.com",
+                                     "caller": {"client_name": "Jordan Reyes", "callback_phone": "+19515550188", "case_type": "Slip and Fall",
+                                                "summary": "Slipped on a wet floor and hurt a wrist."}}}
+        c3 = cm.register_from_call("call-3", md3)
+        check("no agent fields: case uses the caller's basics (name, phone, type, summary, email)",
+              (c3.client_name, c3.phone, c3.case_type, c3.email) == ("Jordan Reyes", "+19515550188", "Slip and Fall", "jordan@example.com")
+              and c3.summary.startswith("Slipped"), (c3.client_name, c3.phone, c3.case_type, c3.email, c3.summary))
         md2 = dict(md, documents_request={"asked": True, "wanted": False})
         check("no documents -> nothing marked", cm.register_from_call("call-2", md2).documents_request == {})
         check("kept after reload", cmmCheck(cmm, tmp, c.case_id))
