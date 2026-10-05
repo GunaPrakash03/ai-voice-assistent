@@ -1560,12 +1560,14 @@ class AgentBuilder:
         self._revisions.clear()
 
 
-# Module-level singleton used by the worker, REST API and acceptance tests.
-agent_builder = AgentBuilder()
-
 from agent.firm_context import call_instructions  # noqa: E402  (after AgentBuilder: firm_context imports onboarding lazily)
 
 
 def _without_firm_block(prompt: str) -> str:
     from agent.onboarding import strip_firm_block
     return strip_firm_block(prompt)
+
+
+# Module-level singleton used by the worker, REST API and acceptance tests. Created last: with no saved
+# agents it seeds a default one, which needs _without_firm_block above.
+agent_builder = AgentBuilder()
