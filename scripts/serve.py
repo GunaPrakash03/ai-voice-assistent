@@ -520,7 +520,7 @@ class Handler(SimpleHTTPRequestHandler):
     ADMIN_POST_PREFIXES = ("/api/v1/users", "/api/v1/workspaces",
                            "/api/v1/auth/users", "/api/agents", "/api/telephony", "/api/webhooks",
                            "/api/v1/calls/dispatch", "/api/v1/cases", "/api/v1/team", "/api/v1/firm")
-    ADMIN_PAGES = ("/admin-guide", "/flow-testing", "/cost-comparison", "/agent-builder", "/webhooks",
+    ADMIN_PAGES = ("/admin-guide", "/flow-testing", "/knowledge-plan", "/cost-comparison", "/agent-builder", "/webhooks",
                    "/competitor-analysis", "/user-guide", "/agents", "/sip-trunks", "/phone-numbers",
                    "/call-desk/agents", "/call-desk/sip-trunks", "/call-desk/phone-numbers", "/team")
 
