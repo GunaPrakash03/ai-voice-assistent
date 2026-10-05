@@ -126,6 +126,28 @@
   .fg label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;font-weight:500}
   .fg input,.fg textarea{width:100%;padding:8px 11px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:13px var(--f-ui)}
   .fg textarea{min-height:80px;resize:vertical;font-family:var(--f-ui)}
+  .fg input[type=file]{padding:6px 8px;font-size:12.5px}
+  .fg .hint{font-size:11.5px;color:var(--ink-faint);margin-top:4px}
+  .docs-btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:12px;font-weight:600;color:var(--accent)}
+  .docs-btn:hover{text-decoration:underline}
+  .docs-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .modal.wide{max-width:640px}
+  .doc-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .doc-list li{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .doc-list li:last-child{border-bottom:none}
+  .doc-list .ic{width:34px;height:34px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font:600 10px var(--f-mono);background:var(--sunk);color:var(--ink-soft)}
+  .doc-list .nm{font-weight:600;color:var(--ink);text-decoration:none;word-break:break-word}
+  .doc-list .nm:hover{color:var(--accent);text-decoration:underline}
+  .doc-list .meta{display:block;font-size:12px;color:var(--ink-faint)}
+  .doc-list .acts{display:flex;gap:6px;flex-wrap:nowrap}
+  .doc-list .empty{padding:18px;grid-column:1/-1}
+  .tag-caller{display:inline-block;padding:0 6px;border-radius:999px;font-size:11px;font-weight:600;background:var(--accent-soft);color:var(--accent);margin-left:4px}
+  .drop{border:2px dashed var(--line);border-radius:8px;padding:16px;text-align:center;cursor:pointer;font-size:13px;color:var(--ink-soft)}
+  .drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .drop b{display:block;color:var(--ink)}
+  .upq{display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+  .upq .bad{color:var(--neg)}
   .pick{display:flex;flex-direction:column;gap:2px}
   .pick label{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer}
   .pick label:hover{background:var(--sunk)}
@@ -237,10 +259,26 @@
         <div class="fg"><label for="nEmail">Email</label><input id="nEmail" type="email" maxlength="160"></div>
         <div class="fg"><label for="nType">Case type</label><input id="nType" maxlength="80" placeholder="e.g. Personal Injury"></div>
         <div class="fg"><label for="nSummary">Summary</label><textarea id="nSummary" maxlength="2000"></textarea></div>
+        <div class="fg"><label for="nFiles">Documents</label><input id="nFiles" type="file" multiple accept=".pdf,.docx,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.webp,.heic,.heif,application/pdf,image/*,text/plain,text/csv">
+          <div class="hint">Optional. PDF, Word, Excel, CSV, text or photos, up to 20 MB each. You can add more later.</div></div>
         <div class="err" id="newErr"></div>
       </div>
       <div class="modal-f"><button type="button" class="btn ghost" data-close>Cancel</button><button class="btn" type="submit">Create case</button></div>
     </form>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="mDocs" role="dialog" aria-modal="true" aria-labelledby="mDocsTitle">
+  <div class="modal wide">
+    <div class="modal-h"><div><h3 id="mDocsTitle">Documents</h3><span class="sub" id="mDocsFor"></span></div><button class="icon-btn" data-close aria-label="Close" title="Close">✕</button></div>
+    <div class="modal-b">
+      <ul class="doc-list" id="docList"><li><span class="empty">Loading…</span></li></ul>
+      <div class="drop" id="docDrop" tabindex="0" role="button" aria-label="Add documents: drop files here or press Enter to choose">
+        <b>Drop files here, or click to choose</b>PDF, Word, Excel, CSV, text or photos · up to 20 MB each
+      </div>
+      <input type="file" id="docInput" multiple hidden accept=".pdf,.docx,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.webp,.heic,.heif,application/pdf,image/*,text/plain,text/csv">
+      <div class="upq" id="docQueue" aria-live="polite"></div>
+    </div>
   </div>
 </div>
 
@@ -378,7 +416,8 @@
       '<td class="num">' + esc(d.day) + '<span class="sub">' + esc(d.time) + "</span></td>" +
       '<td class="client"><b>' + esc(c.client_name) + "</b>" +
         (c.phone ? '<span class="sub num">' + esc(c.phone) + "</span>" : "") +
-        (c.summary ? '<span class="summary" title="' + esc(c.summary) + '">' + esc(c.summary) + "</span>" : "") + "</td>" +
+        (c.summary ? '<span class="summary" title="' + esc(c.summary) + '">' + esc(c.summary) + "</span>" : "") +
+        '<button class="docs-btn" data-docs="' + esc(c.case_id) + '">' + (c.documents ? "📎 " + c.documents + " document" + (c.documents === 1 ? "" : "s") : "+ Add documents") + "</button></td>" +
       "<td>" + (c.case_type ? esc(c.case_type) : '<span class="sub">Not set</span>') + "</td>" +
       "<td>" + status + "</td>" +
       '<td><div class="staff">' + chips + assign + "</div></td>" +
@@ -421,6 +460,8 @@
   $("tbody").addEventListener("click", function (e) {
     var b = e.target.closest("[data-assign]");
     if (b) openAssign(b.getAttribute("data-assign"));
+    var d = e.target.closest("[data-docs]");
+    if (d) openDocs(d.getAttribute("data-docs"));
   });
 
   function openModal(id) { $(id).classList.add("show"); var f = $(id).querySelector("input,button:not([data-close])"); if (f) f.focus(); }
@@ -463,9 +504,129 @@
     api("/api/v1/cases", { client_name: $("nName").value, phone: $("nPhone").value, email: $("nEmail").value,
                            case_type: $("nType").value, summary: $("nSummary").value,
                            workspace_id: FirmPicker.id() || undefined }).then(function (j) {
-      state.cases.unshift(j.case); closeModals(); render(); toast("Case created for " + j.case.client_name);
+      var files = Array.prototype.slice.call($("nFiles").files || []);
+      state.cases.unshift(j.case); closeModals(); render();
+      if (!files.length) { toast("Case created for " + j.case.client_name); return; }
+      toast("Case created for " + j.case.client_name + " · uploading " + files.length + " document" + (files.length === 1 ? "" : "s") + "…");
+      var failed = [];
+      return files.reduce(function (p, f) {
+        return p.then(function () { return uploadDoc(j.case.case_id, f).catch(function (err) { failed.push(f.name + ": " + err.message); }); });
+      }, Promise.resolve()).then(function () {
+        bumpDocCount(j.case.case_id, files.length - failed.length);
+        toast(failed.length ? "Case created; " + failed.length + " document" + (failed.length === 1 ? "" : "s") + " not added (" + failed[0] + ")"
+                            : "Case created for " + j.case.client_name + " with " + files.length + " document" + (files.length === 1 ? "" : "s"));
+      });
     }).catch(function (err) { $("newErr").textContent = err.message; }).then(function () { btn.disabled = false; });
   });
+
+  // ── Documents ─────────────────────────────────────────────────────────
+  var DOC_TAG = { pdf: "PDF", docx: "DOC", xlsx: "XLS", csv: "CSV", markdown: "MD", text: "TXT", image: "IMG" };
+  var DOC_OK = /\.(pdf|docx|xlsx|csv|txt|md|markdown|png|jpe?g|webp|heic|heif)$/i;
+  var docState = { caseId: null, confirming: null, maxBytes: 20 * 1048576 };
+  function size(b) { return b < 1024 ? b + " B" : b < 1048576 ? Math.round(b / 1024) + " KB" : (b / 1048576).toFixed(1) + " MB"; }
+  function docUrl(d, inline) {
+    return "/api/v1/case-documents/download?case_id=" + encodeURIComponent(docState.caseId) + "&doc_id=" + encodeURIComponent(d.doc_id) + (inline ? "&inline=1" : "");
+  }
+  function bumpDocCount(caseId, by) {
+    state.cases.forEach(function (c) { if (c.case_id === caseId) c.documents = Math.max(0, (c.documents || 0) + by); });
+    render();
+  }
+  function uploadDoc(caseId, file, onProgress) {
+    return new Promise(function (resolve, reject) {
+      if (!DOC_OK.test(file.name)) return reject(new Error("this file type isn't supported"));
+      if (file.size > docState.maxBytes) return reject(new Error(size(file.size) + " is over the " + Math.round(docState.maxBytes / 1048576) + " MB limit"));
+      if (!file.size) return reject(new Error("the file is empty"));
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/v1/case-documents/upload?case_id=" + encodeURIComponent(caseId) + "&name=" + encodeURIComponent(file.name));
+      xhr.setRequestHeader("Content-Type", "application/octet-stream");
+      if (onProgress) xhr.upload.onprogress = function (e) { if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
+      xhr.onload = function () {
+        var j = {};
+        try { j = JSON.parse(xhr.responseText || "{}"); } catch (e) {}
+        if (xhr.status === 201) resolve(j.document); else reject(new Error(j.error || "upload failed (" + xhr.status + ")"));
+      };
+      xhr.onerror = function () { reject(new Error("the upload was interrupted")); };
+      xhr.send(file);
+    });
+  }
+  function openDocs(caseId) {
+    var c = state.cases.filter(function (x) { return x.case_id === caseId; })[0];
+    if (!c) return;
+    docState.caseId = caseId; docState.confirming = null;
+    $("mDocsFor").textContent = c.client_name + (c.case_type ? " · " + c.case_type : "");
+    $("docQueue").innerHTML = "";
+    $("docList").innerHTML = '<li><span class="empty">Loading…</span></li>';
+    openModal("mDocs");
+    loadDocs();
+  }
+  function loadDocs() {
+    var caseId = docState.caseId;
+    return api("/api/v1/case-documents?case_id=" + encodeURIComponent(caseId)).then(function (j) {
+      if (caseId !== docState.caseId) return;
+      docState.docs = j.documents || [];
+      docState.maxBytes = j.max_file_bytes || docState.maxBytes;
+      state.cases.forEach(function (c) { if (c.case_id === caseId) c.documents = docState.docs.length; });
+      render();
+      renderDocs();
+    }).catch(function (err) { $("docList").innerHTML = '<li><span class="empty">' + esc(err.message) + "</span></li>"; });
+  }
+  function renderDocs() {
+    var docs = docState.docs || [];
+    if (!docs.length) { $("docList").innerHTML = '<li><span class="empty">No documents on this case yet.</span></li>'; return; }
+    $("docList").innerHTML = docs.map(function (d) {
+      var when = fmtDate(d.created_at);
+      var who = d.source === "caller" ? 'Sent by the caller<span class="tag-caller">Caller</span>' : "Added by " + esc(d.uploaded_by || "staff");
+      var acts = [];
+      if (d.kind === "image" && d.mime !== "image/heic") acts.push('<a class="btn ghost sm" href="' + docUrl(d, true) + '" target="_blank" rel="noopener">View</a>');
+      if (d.can_delete) {
+        if (docState.confirming === d.doc_id) {
+          acts.push('<button class="btn danger sm" data-doc-del="' + esc(d.doc_id) + '">Delete for good</button>');
+          acts.push('<button class="btn ghost sm" data-doc-keep>Keep</button>');
+        } else {
+          acts.push('<button class="btn ghost sm" data-doc-confirm="' + esc(d.doc_id) + '">Delete</button>');
+        }
+      }
+      return '<li><span class="ic">' + (DOC_TAG[d.kind] || "FILE") + '</span><div><a class="nm" href="' + docUrl(d) + '" title="Download">' + esc(d.name) + "</a>" +
+        '<span class="meta">' + esc(d.kind_label) + " · " + size(d.size_bytes) + " · " + esc(when.day) + " " + esc(when.time) + " · " + who + "</span></div>" +
+        '<div class="acts">' + acts.join("") + "</div></li>";
+    }).join("");
+  }
+  $("docList").addEventListener("click", function (e) {
+    var t = e.target;
+    if (t.closest("[data-doc-confirm]")) { docState.confirming = t.closest("[data-doc-confirm]").getAttribute("data-doc-confirm"); renderDocs(); return; }
+    if (t.closest("[data-doc-keep]")) { docState.confirming = null; renderDocs(); return; }
+    var del = t.closest("[data-doc-del]");
+    if (del) {
+      del.disabled = true;
+      api("/api/v1/case-documents/delete", { case_id: docState.caseId, doc_id: del.getAttribute("data-doc-del") })
+        .then(function () { docState.confirming = null; toast("Document deleted"); return loadDocs(); })
+        .catch(function (err) { toast(err.message); del.disabled = false; });
+    }
+  });
+  function addDocs(fileList) {
+    var caseId = docState.caseId, files = Array.prototype.slice.call(fileList);
+    var lines = files.map(function (f) { return { name: f.name, msg: "Waiting", bad: false }; });
+    function show() { $("docQueue").innerHTML = lines.map(function (l) { return '<div class="' + (l.bad ? "bad" : "") + '">' + esc(l.name) + " — " + esc(l.msg) + "</div>"; }).join(""); }
+    show();
+    files.reduce(function (p, f, i) {
+      return p.then(function () {
+        lines[i].msg = "Uploading"; show();
+        return uploadDoc(caseId, f, function (pct) { lines[i].msg = "Uploading " + pct + "%"; show(); })
+          .then(function () { lines[i].msg = "Added"; show(); })
+          .catch(function (err) { lines[i].msg = err.message; lines[i].bad = true; show(); });
+      });
+    }, Promise.resolve()).then(function () {
+      if (caseId === docState.caseId) loadDocs();
+      setTimeout(function () { lines = lines.filter(function (l) { return l.bad; }); show(); }, 4000);
+    });
+  }
+  var drop = $("docDrop");
+  drop.addEventListener("click", function () { $("docInput").click(); });
+  drop.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("docInput").click(); } });
+  ["dragenter", "dragover"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("over"); }); });
+  ["dragleave", "drop"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("over"); }); });
+  drop.addEventListener("drop", function (e) { if (e.dataTransfer && e.dataTransfer.files.length) addDocs(e.dataTransfer.files); });
+  $("docInput").addEventListener("change", function () { if (this.files.length) addDocs(this.files); this.value = ""; });
 
   ["q"].forEach(function (id) { $(id).addEventListener("input", render); });
   ["fStatus", "fStaff"].forEach(function (id) { $(id).addEventListener("change", render); });

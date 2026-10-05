@@ -20,3 +20,4 @@ config/system_branding.json
 webhook_receiver/
 .clio_tokens.json
 config/knowledge/
+config/case_documents/

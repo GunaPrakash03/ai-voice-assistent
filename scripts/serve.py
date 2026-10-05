@@ -65,6 +65,7 @@ from agent.auth_manager import auth_manager, ApiScope, UserRole, PendingVerifica
 from agent import onboarding
 from agent.case_manager import case_manager, STATUSES as CASE_STATUSES
 from agent.knowledge_manager import knowledge_manager, KnowledgeError, MAX_FILE_BYTES as KNOWLEDGE_MAX_FILE
+from agent.case_documents import case_documents, DocumentError, MAX_FILE_BYTES as CASE_DOC_MAX_FILE
 amd_manager = AMDManager()
 
 
@@ -610,6 +611,46 @@ class Handler(SimpleHTTPRequestHandler):
             return None
         return kf
 
+    def _read_capped_body(self, limit: int) -> Optional[bytes]:
+        """The request body, or None after answering 413 when it is over ``limit``."""
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length > limit:
+            if length <= 3 * limit:      # drain a moderately oversized body so the browser sees the answer
+                left = length
+                while left > 0:
+                    chunk = self.rfile.read(min(left, 1 << 20))
+                    if not chunk:
+                        break
+                    left -= len(chunk)
+            else:
+                self.close_connection = True
+            self._send_json({"status": "error", "error": f"The file is {length / 1048576:.1f} MB; the limit is {limit // 1048576} MB per file."}, 413)
+            return None
+        return self.rfile.read(length) if length > 0 else b""
+
+    def _case_document_upload(self, parsed) -> None:
+        """POST /api/v1/case-documents/upload?case_id=&name= with the file's bytes as the body. Admins, or
+        staff assigned to the case."""
+        if not self._require_session(parsed) or not self._enforce_role(parsed, "POST"):
+            return
+        data = self._read_capped_body(CASE_DOC_MAX_FILE)
+        if data is None:
+            return
+        q = parse_qs(parsed.query)
+        case = self._case_for_viewer((q.get("case_id") or [""])[0])
+        if not case:
+            return
+        v = self._viewer()
+        u = v["user"]
+        name = (q.get("name") or [""])[0] or urllib.parse.unquote(self.headers.get("X-File-Name", ""))
+        try:
+            doc = case_documents.add(case.case_id, case.workspace_id, name, data, source="staff",
+                                     uploaded_by=(u.name or u.email) if u else "local admin", uploaded_by_id=u.user_id if u else "")
+        except DocumentError as e:
+            self._send_json({"status": "error", "error": str(e)}, e.status)
+            return
+        self._send_json({"status": "ok", "document": doc.public()}, 201)
+
     def _knowledge_upload(self, parsed) -> None:
         """POST /api/v1/knowledge/upload?name=<file name>[&workspace_id=] with the file's bytes as the body."""
         if not self._require_session(parsed) or not self._enforce_role(parsed, "POST"):
@@ -676,6 +717,7 @@ class Handler(SimpleHTTPRequestHandler):
             u = auth_manager.get_user(uid)
             staff.append(self._staff_card(u) if u and u.active else {"user_id": uid, "name": "Removed user", "email": "", "role": ""})
         d["staff"] = staff
+        d["documents"] = len(case_documents.list_for_case(case.case_id))
         return d
 
     def _sync_clio_attorney(self, case):
@@ -1765,6 +1807,45 @@ class Handler(SimpleHTTPRequestHandler):
                 body["staff"] = [dict(self._staff_card(u), open_cases=workload.get(u.user_id, 0)) for u in members if u]
             self._send_json(body)
             return
+        elif parsed.path in ("/api/v1/case-documents", "/api/v1/case-documents/download"):
+            q = parse_qs(parsed.query)
+            case = self._case_for_viewer((q.get("case_id") or [""])[0])
+            if not case:
+                return
+            if parsed.path == "/api/v1/case-documents":
+                v = self._viewer()
+                me = v["user"].user_id if v["user"] else ""
+                docs = []
+                for d in case_documents.list_for_case(case.case_id):
+                    item = d.public()
+                    item["can_delete"] = bool(v["is_admin"] or (me and d.uploaded_by_id == me))
+                    docs.append(item)
+                self._send_json({"status": "ok", "case_id": case.case_id, "documents": docs,
+                                 "max_file_bytes": CASE_DOC_MAX_FILE, "can_upload": True})
+                return
+            doc = case_documents.get((q.get("doc_id") or [""])[0])
+            if not doc or doc.case_id != case.case_id:
+                self._send_json({"status": "error", "error": "Document not found"}, 404)
+                return
+            content = case_documents.load_blob(doc.doc_id)
+            if content is None:
+                self._send_json({"status": "error", "error": "The file is missing"}, 404)
+                return
+            inline = (q.get("inline") or [""])[0] == "1" and doc.mime in ("image/png", "image/jpeg", "image/webp")
+            safe = re.sub(r'[^A-Za-z0-9._ -]', "_", doc.name) or "file"
+            self.send_response(200)
+            self.send_header("Content-Type", doc.mime or "application/octet-stream")
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Content-Disposition", f'{"inline" if inline else "attachment"}; filename="{safe}"; filename*=UTF-8\'\'{urllib.parse.quote(doc.name)}')
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            try:
+                self.wfile.write(content)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
         elif parsed.path.startswith("/api/v1/cases/"):
             case = self._case_for_viewer(parsed.path[len("/api/v1/cases/"):])
             if case:
@@ -1819,6 +1900,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/v1/knowledge/upload":
             self._knowledge_upload(parsed)
+            return
+        if parsed.path == "/api/v1/case-documents/upload":
+            self._case_document_upload(parsed)
             return
         content_len = int(self.headers.get("Content-Length", 0))
         post_data = self.rfile.read(content_len) if content_len > 0 else b"{}"
@@ -2364,6 +2448,25 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "error", "error": str(e)}, 503)
                 return
             self._send_json({"status": "ok", "case": self._case_out(case)}, 201)
+            return
+        if parsed.path == "/api/v1/case-documents/delete":
+            case = self._case_for_viewer(str(payload.get("case_id") or ""))
+            if not case:
+                return
+            doc = case_documents.get(str(payload.get("doc_id") or ""))
+            if not doc or doc.case_id != case.case_id:
+                self._send_json({"status": "error", "error": "Document not found"}, 404)
+                return
+            v = self._viewer()
+            if not (v["is_admin"] or (v["user"] and doc.uploaded_by_id == v["user"].user_id)):
+                self._send_json({"status": "error", "error": "Only admins or the person who added it can delete this document"}, 403)
+                return
+            try:
+                case_documents.delete(doc.doc_id)
+            except DocumentError as e:
+                self._send_json({"status": "error", "error": str(e)}, e.status)
+                return
+            self._send_json({"status": "ok", "deleted": True, "doc_id": doc.doc_id})
             return
         if parsed.path in ("/api/v1/cases/assign", "/api/v1/cases/status"):
             case = self._case_for_viewer(str(payload.get("case_id") or ""))

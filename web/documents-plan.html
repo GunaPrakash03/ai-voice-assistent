@@ -89,7 +89,7 @@
 
 <header>
   <h1>Case Documents Plan</h1>
-  <p class="lead">Cases get documents. Staff can attach files to a case, and at the end of every intake call the agent asks whether the caller has documents about their case. If they do, the caller gets a private upload link by email (or by text message when there's no usable email) and the files land on their case. Nothing is built yet: this page is the plan, and the bars move as tasks land.</p>
+  <p class="lead">Cases get documents. Staff can attach files to a case, and at the end of every intake call the agent asks whether the caller has documents about their case. If they do, the caller gets a private upload link by email (or by text message when there's no usable email) and the files land on their case. The bars move as tasks land.</p>
   <div class="nav"><a href="/task-plan">Task plan</a><a href="/knowledge-plan">Knowledge Base Plan</a><a href="/flow-testing">Flows &amp; Testing</a></div>
 </header>
 
@@ -148,13 +148,13 @@
 var UPDATED = "2026-10-05";
 var PHASES = [
   { id: 1, name: "Documents on cases", sub: "Staff can attach, see and download files on any case", tasks: [
-    { id: "1.1", status: "todo", name: "Case document store",
+    { id: "1.1", status: "done", name: "Case document store",
       desc: "Per-case file records (name, type, size, sent by, date, source: staff or caller) and the original bytes in PostgreSQL; JSON and files for local runs. Type checked from the bytes.",
       done: "Files survive a restart and one firm can never reach another's." },
-    { id: "1.2", status: "todo", name: "Documents API",
+    { id: "1.2", status: "done", name: "Documents API",
       desc: "Upload, list, download, delete per case. Product Admins and Super Admins for the firm's cases; assigned staff for their own cases.",
       done: "Unassigned staff and other firms are refused." },
-    { id: "1.3", status: "todo", name: "Documents on the Cases page",
+    { id: "1.3", status: "done", name: "Documents on the Cases page",
       desc: "A Documents panel on each case (list, download, delete, upload) and file attachment in the New case form.",
       done: "A case created with files shows them right away." }
   ]},

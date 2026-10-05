@@ -69,6 +69,17 @@ CREATE TABLE IF NOT EXISTS knowledge_blobs (
 );
 CREATE INDEX IF NOT EXISTS knowledge_blobs_ws_idx ON knowledge_blobs (workspace_id);
 
+-- Documents attached to cases (agent/case_documents.py), by staff or by callers through an upload link.
+CREATE TABLE IF NOT EXISTS case_document_blobs (
+    file_id      TEXT        PRIMARY KEY,
+    workspace_id TEXT        NOT NULL,
+    size_bytes   BIGINT      NOT NULL,
+    sha256       TEXT        NOT NULL,
+    content      BYTEA       NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS case_document_blobs_ws_idx ON case_document_blobs (workspace_id);
+
 CREATE TABLE IF NOT EXISTS collection_meta (
     collection  TEXT        PRIMARY KEY,
     updated_at  DOUBLE PRECISION NOT NULL
@@ -259,47 +270,56 @@ def delete_document(collection: str, doc_id: str) -> bool:
         return False
 
 
-def save_blob(file_id: str, workspace_id: str, content: bytes) -> bool:
-    """Stores a knowledge upload's original bytes. Returns False when the database is unavailable."""
+BLOB_TABLES = ("knowledge_blobs", "case_document_blobs")
+
+
+def _blob_table(table: str) -> str:
+    if table not in BLOB_TABLES:
+        raise ValueError(f"unknown blob table {table!r}")
+    return table
+
+
+def save_blob(file_id: str, workspace_id: str, content: bytes, table: str = "knowledge_blobs") -> bool:
+    """Stores an uploaded file's original bytes. Returns False when the database is unavailable."""
     if not available() and not available(recheck=True):
         return False
     try:
         with _connect() as conn, conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO knowledge_blobs (file_id, workspace_id, size_bytes, sha256, content) VALUES (%s, %s, %s, %s, %s) "
+                f"INSERT INTO {_blob_table(table)} (file_id, workspace_id, size_bytes, sha256, content) VALUES (%s, %s, %s, %s, %s) "
                 "ON CONFLICT (file_id) DO UPDATE SET content = EXCLUDED.content, size_bytes = EXCLUDED.size_bytes, sha256 = EXCLUDED.sha256",
                 (file_id, workspace_id, len(content), hashlib.sha256(content).hexdigest(), content),
             )
             conn.commit()
         return True
     except Exception as e:
-        log.warning("Saving knowledge file %s to PostgreSQL failed: %s", file_id, e)
+        log.warning("Saving file %s to %s failed: %s", file_id, table, e)
         return False
 
 
-def load_blob(file_id: str) -> Optional[bytes]:
+def load_blob(file_id: str, table: str = "knowledge_blobs") -> Optional[bytes]:
     if not available():
         return None
     try:
         with _connect() as conn, conn.cursor() as cur:
-            cur.execute("SELECT content FROM knowledge_blobs WHERE file_id = %s", (file_id,))
+            cur.execute(f"SELECT content FROM {_blob_table(table)} WHERE file_id = %s", (file_id,))
             row = cur.fetchone()
             return bytes(row[0]) if row else None
     except Exception as e:
-        log.warning("Loading knowledge file %s from PostgreSQL failed: %s", file_id, e)
+        log.warning("Loading file %s from %s failed: %s", file_id, table, e)
         return None
 
 
-def delete_blob(file_id: str) -> bool:
+def delete_blob(file_id: str, table: str = "knowledge_blobs") -> bool:
     if not available() and not available(recheck=True):
         return False
     try:
         with _connect() as conn, conn.cursor() as cur:
-            cur.execute("DELETE FROM knowledge_blobs WHERE file_id = %s", (file_id,))
+            cur.execute(f"DELETE FROM {_blob_table(table)} WHERE file_id = %s", (file_id,))
             conn.commit()
         return True
     except Exception as e:
-        log.warning("Deleting knowledge file %s from PostgreSQL failed: %s", file_id, e)
+        log.warning("Deleting file %s from %s failed: %s", file_id, table, e)
         return False
 
 
