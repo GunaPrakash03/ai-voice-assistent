@@ -45,7 +45,7 @@ WORDS_PER_MINUTE = 150
 class VoiceOption:
     voice_id: str
     name: str
-    provider: str           # cartesia | deepgram
+    provider: str           # cartesia | deepgram | neural | studio | openai | elevenlabs | gemini | inworld | minimax | fishaudio
     model: str
     style: str
     gender: str
@@ -219,6 +219,64 @@ VOICE_CATALOG: List[VoiceOption] = [
                 "Wise, mature, balanced executive", "male", 172, 0.180),
     VoiceOption("wBXNqKUATyqu0RtYt25i", "Adam (Workspace Cloned)", "elevenlabs", "turbo-v2.5",
                 "Custom workspace cloned voice", "male", 170, 0.180),
+
+    # Google Gemini TTS (prebuilt expressive voices · reuses GEMINI_API_KEY).
+    # voice_id suffix after "gemini-" IS the Gemini prebuiltVoiceConfig.voiceName (case-sensitive).
+    VoiceOption("gemini-Zephyr", "Zephyr (Gemini)", "gemini", "gemini-2.5-flash-preview-tts",
+                "Bright, upbeat conversational", "female", 420, 0.010),
+    VoiceOption("gemini-Puck", "Puck (Gemini)", "gemini", "gemini-2.5-flash-preview-tts",
+                "Upbeat, lively presenter", "male", 420, 0.010),
+    VoiceOption("gemini-Charon", "Charon (Gemini)", "gemini", "gemini-2.5-flash-preview-tts",
+                "Informative, steady narrator", "male", 420, 0.010),
+    VoiceOption("gemini-Kore", "Kore (Gemini)", "gemini", "gemini-2.5-flash-preview-tts",
+                "Firm, confident professional", "female", 420, 0.010),
+    VoiceOption("gemini-Fenrir", "Fenrir (Gemini)", "gemini", "gemini-2.5-flash-preview-tts",
+                "Excitable, energetic", "male", 420, 0.010),
+    VoiceOption("gemini-Leda", "Leda (Gemini)", "gemini", "gemini-2.5-flash-preview-tts",
+                "Youthful, warm assistant", "female", 420, 0.010),
+    VoiceOption("gemini-Orus", "Orus (Gemini)", "gemini", "gemini-2.5-flash-preview-tts",
+                "Firm, authoritative advisor", "male", 420, 0.010),
+    VoiceOption("gemini-Aoede", "Aoede (Gemini)", "gemini", "gemini-2.5-flash-preview-tts",
+                "Breezy, friendly receptionist", "female", 420, 0.010),
+    VoiceOption("gemini-Callirrhoe", "Callirrhoe (Gemini)", "gemini", "gemini-2.5-flash-preview-tts",
+                "Easy-going, relaxed", "female", 420, 0.010),
+    VoiceOption("gemini-Achernar", "Achernar (Gemini)", "gemini", "gemini-2.5-flash-preview-tts",
+                "Soft, gentle, soothing", "female", 420, 0.010),
+
+    # Inworld TTS (needs INWORLD_API_KEY). voice_id suffix after "inworld-" IS the Inworld voiceId.
+    VoiceOption("inworld-Ashley", "Ashley (Inworld)", "inworld", "inworld-tts-2",
+                "Warm, natural US conversational", "female", 300, 0.005),
+    VoiceOption("inworld-Olivia", "Olivia (Inworld)", "inworld", "inworld-tts-2",
+                "Bright, friendly US support", "female", 300, 0.005),
+    VoiceOption("inworld-Deborah", "Deborah (Inworld)", "inworld", "inworld-tts-2",
+                "Gentle, elegant US narrator", "female", 300, 0.005),
+    VoiceOption("inworld-Sarah", "Sarah (Inworld)", "inworld", "inworld-tts-2",
+                "Clear, approachable US female", "female", 300, 0.005),
+    VoiceOption("inworld-Mark", "Mark (Inworld)", "inworld", "inworld-tts-2",
+                "Confident, modern US male", "male", 300, 0.005),
+    VoiceOption("inworld-Edward", "Edward (Inworld)", "inworld", "inworld-tts-2",
+                "Steady, trustworthy US advisor", "male", 300, 0.005),
+    VoiceOption("inworld-Theodore", "Theodore (Inworld)", "inworld", "inworld-tts-2",
+                "Calm, articulate narrator", "male", 300, 0.005),
+    VoiceOption("inworld-Hades", "Hades (Inworld)", "inworld", "inworld-tts-2",
+                "Commanding, deep narrator", "male", 300, 0.005),
+
+    # MiniMax T2A (needs MINIMAX_API_KEY + MINIMAX_GROUP_ID). Suffix after "minimax-" IS the MiniMax voice_id.
+    VoiceOption("minimax-English_captivating_female1", "Captivating Female (MiniMax)", "minimax", "speech-02-turbo",
+                "Captivating, expressive", "female", 500, 0.010),
+    VoiceOption("minimax-English_Graceful_Lady", "Graceful Lady (MiniMax)", "minimax", "speech-02-turbo",
+                "Graceful, poised", "female", 500, 0.010),
+    VoiceOption("minimax-English_CalmWoman", "Calm Woman (MiniMax)", "minimax", "speech-02-turbo",
+                "Calm, reassuring support", "female", 500, 0.010),
+    VoiceOption("minimax-English_Trustworth_Man", "Trustworthy Man (MiniMax)", "minimax", "speech-02-turbo",
+                "Trustworthy, steady male", "male", 500, 0.010),
+    VoiceOption("minimax-English_Gentle-voiced_man", "Gentle-voiced Man (MiniMax)", "minimax", "speech-02-turbo",
+                "Gentle, warm male advisor", "male", 500, 0.010),
+
+    # Fish Audio (needs FISH_AUDIO_API_KEY). "fishaudio-default" uses the model's default voice;
+    # add more by pasting a reference_id (voice_id "fishaudio-<reference_id>") or via account sync later.
+    VoiceOption("fishaudio-default", "Fish Audio (Default)", "fishaudio", "s1",
+                "Default Fish Audio model voice", "female", 450, 0.015),
 ]
 
 # Retired Gemini ids saved in older agent configs, mapped to a live equivalent.
@@ -567,9 +625,126 @@ class AgentBuilder:
             if v.voice_id not in known:
                 voices.append(v.to_dict())
                 known.add(v.voice_id)
+        # The full Inworld voice catalog (hundreds of voices) is pulled from their ListVoices API;
+        # the static inworld-* entries above are deduped against it.
+        for v in self._inworld_catalog_voices(refresh):
+            if v.voice_id not in known:
+                voices.append(v.to_dict())
+                known.add(v.voice_id)
+        # Fish Audio's public voice library is pulled from its /model API.
+        for v in self._fishaudio_catalog_voices(refresh):
+            if v.voice_id not in known:
+                voices.append(v.to_dict())
+                known.add(v.voice_id)
         return voices
 
     _xi_cache: Dict[str, Any] = {"at": 0.0, "voices": []}
+    _inworld_cache: Dict[str, Any] = {"at": 0.0, "voices": []}
+
+    def _inworld_catalog_voices(self, refresh: bool = False) -> List[VoiceOption]:
+        """Every voice Inworld exposes via ListVoices (all languages), cached for 10 minutes.
+
+        No key -> empty (the static inworld-* catalog still shows, flagged "needs key"). Whether a
+        voice can synthesize is decided separately (voice_engine_readiness checks INWORLD_API_KEY).
+        """
+        import time as _time
+        key = (os.getenv("INWORLD_API_KEY") or "").strip()
+        if not key:
+            return []
+        cache = self.__class__._inworld_cache
+        if not refresh and (_time.time() - cache["at"] < 600) and cache["voices"]:
+            return cache["voices"]
+        model = os.getenv("INWORLD_TTS_MODEL") or "inworld-tts-2"
+        out: List[VoiceOption] = []
+        try:
+            import urllib.request
+            auth = key if key.lower().startswith("basic ") else f"Basic {key}"
+            req = urllib.request.Request(
+                "https://api.inworld.ai/tts/v1/voices",
+                headers={"Authorization": auth, "User-Agent": "VoiceAgentService/1.0"})
+            with urllib.request.urlopen(req, timeout=8.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            for v in data.get("voices", data if isinstance(data, list) else []):
+                vid = v.get("voiceId") or v.get("name") or v.get("id")
+                if not vid:
+                    continue
+                desc = (v.get("description") or "").strip()
+                langs = v.get("languages") or v.get("languageCodes") or []
+                if isinstance(langs, str):
+                    langs = [langs]
+                lang = (langs[0] if langs else "").split("-")[0].lower()
+                blob = (desc + " " + str(v.get("gender") or "")).lower()
+                if any(w in blob for w in ("female", "woman", "girl")):
+                    gender = "female"
+                elif any(w in blob for w in ("male", "man", "boy")):
+                    gender = "male"
+                else:
+                    gender = "unisex"
+                style = desc or "Inworld voice"
+                if lang and lang != "en":
+                    style = f"[{lang}] {style}"
+                out.append(VoiceOption(
+                    voice_id=f"inworld-{vid}", name=f"{vid} (Inworld)", provider="inworld",
+                    model=model, style=style[:160], gender=gender,
+                    first_audio_ms=300, cost_per_1k_chars=0.005,
+                ))
+            cache.update(at=_time.time(), voices=out)
+        except Exception as ex:
+            log.warning("Inworld voice list unavailable: %s", ex)
+            cache["at"] = _time.time() - 540  # retry in ~60s, not every request
+        return out or cache["voices"]
+
+    _fish_cache: Dict[str, Any] = {"at": 0.0, "voices": []}
+
+    def _fishaudio_catalog_voices(self, refresh: bool = False, limit: int = 60) -> List[VoiceOption]:
+        """Top voices from Fish Audio's public library (GET /model), cached 10 min.
+
+        No key -> empty. voice_id is fishaudio-<reference_id>; _fetch_fishaudio_tts strips the prefix
+        back to the reference_id. Listing works even when the account has no synth credit.
+        """
+        import time as _time
+        key = (os.getenv("FISH_AUDIO_API_KEY") or "").strip()
+        if not key:
+            return []
+        cache = self.__class__._fish_cache
+        if not refresh and (_time.time() - cache["at"] < 600) and cache["voices"]:
+            return cache["voices"]
+        model = os.getenv("FISH_TTS_MODEL") or "s1"
+        out: List[VoiceOption] = []
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                f"https://api.fish.audio/model?page_size={int(limit)}&page_number=1",
+                headers={"Authorization": f"Bearer {key}", "User-Agent": "VoiceAgentService/1.0"})
+            with urllib.request.urlopen(req, timeout=8.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            for v in data.get("items", []):
+                rid = v.get("_id") or v.get("id")
+                if not rid or v.get("type") not in (None, "tts"):
+                    continue
+                title = (v.get("title") or "Fish voice").strip()
+                desc = (v.get("description") or "").strip()
+                langs = v.get("languages") or []
+                blob = (title + " " + desc).lower()
+                if any(w in blob for w in ("female", "woman", "girl", "lady")):
+                    gender = "female"
+                elif any(w in blob for w in ("male", "man", "boy", "gentleman")):
+                    gender = "male"
+                else:
+                    gender = "unisex"
+                style = desc or "Fish Audio voice"
+                if langs and isinstance(langs, list) and langs[0] and langs[0].split("-")[0].lower() != "en":
+                    style = f"[{langs[0].split('-')[0].lower()}] {style}"
+                out.append(VoiceOption(
+                    voice_id=f"fishaudio-{rid}", name=f"{title} (Fish)"[:60], provider="fishaudio",
+                    model=model, style=style[:160], gender=gender,
+                    first_audio_ms=450, cost_per_1k_chars=0.015,
+                ))
+            cache.update(at=_time.time(), voices=out)
+        except Exception as ex:
+            log.warning("Fish Audio voice list unavailable: %s", ex)
+            cache["at"] = _time.time() - 540
+        return out or cache["voices"]
 
     def _elevenlabs_account_voices(self, refresh: bool = False) -> List[VoiceOption]:
         """Every voice in the ElevenLabs account (premade + added/cloned), cached for 10 minutes.

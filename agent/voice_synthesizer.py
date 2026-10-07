@@ -181,6 +181,18 @@ def voice_engine_readiness(voice_id: str, provider: str, gender: str = "female")
     if provider == "cartesia":
         ok = bool(os.getenv("CARTESIA_API_KEY"))
         return {"ready": ok, "engine": "Cartesia Sonic" if ok else fallback_label, "note": "" if ok else "CARTESIA_API_KEY not configured"}
+    if provider == "gemini":
+        ok = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+        return {"ready": ok, "engine": "Gemini TTS" if ok else fallback_label, "note": "" if ok else "GEMINI_API_KEY not configured"}
+    if provider == "inworld":
+        ok = bool(os.getenv("INWORLD_API_KEY"))
+        return {"ready": ok, "engine": "Inworld TTS" if ok else fallback_label, "note": "" if ok else "INWORLD_API_KEY not configured"}
+    if provider == "minimax":
+        ok = bool(os.getenv("MINIMAX_API_KEY"))
+        return {"ready": ok, "engine": "MiniMax T2A" if ok else fallback_label, "note": "" if ok else "MINIMAX_API_KEY not configured"}
+    if provider == "fishaudio":
+        ok = bool(os.getenv("FISH_AUDIO_API_KEY"))
+        return {"ready": ok, "engine": "Fish Audio" if ok else fallback_label, "note": "" if ok else "FISH_AUDIO_API_KEY not configured"}
     return {"ready": False, "engine": fallback_label, "note": f"No engine for provider '{provider}'"}
 _ELEVEN_PREVIEW_MAP: Dict[str, str] = {}
 
@@ -485,6 +497,124 @@ def _fetch_cartesia_tts(voice_id: str, text: str, api_key: str) -> Optional[byte
         return None
 
 
+def _pcm_to_wav(pcm: bytes, sample_rate: int = 24000) -> bytes:
+    """Wrap raw 16-bit mono PCM in a WAV header (Gemini returns bare PCM)."""
+    import wave
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm)
+    return buf.getvalue()
+
+
+def _fetch_gemini_tts(voice_name: str, text: str, api_key: str, model: str = "") -> Optional[bytes]:
+    """Google Gemini TTS. Returns WAV bytes (wraps the base64 PCM Gemini hands back)."""
+    import base64
+    model = model or os.getenv("GEMINI_TTS_MODEL") or "gemini-2.5-flash-preview-tts"
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        payload = json.dumps({
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice_name}}},
+            },
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=payload,
+            headers={"Content-Type": "application/json", "User-Agent": "VoiceAgentService/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=12.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        part = data["candidates"][0]["content"]["parts"][0]["inlineData"]
+        pcm = base64.b64decode(part["data"])
+        rate = 24000
+        m = re.search(r"rate=(\d+)", part.get("mimeType", "") or "")
+        if m:
+            rate = int(m.group(1))
+        return _pcm_to_wav(pcm, rate)
+    except Exception as ex:
+        log.warning("Gemini TTS API call failed for voice %s: %s", voice_name, ex)
+        return None
+
+
+def _fetch_inworld_tts(voice_id: str, text: str, api_key: str, model: str = "") -> Optional[bytes]:
+    """Inworld TTS (SyncSynthesizeSpeech). Basic auth; returns lossless WAV (LINEAR16) bytes.
+
+    WAV matches the Inworld playground's tone — MP3's lossy compression audibly dulls the voice.
+    serve.py sniffs the RIFF header and serves it as audio/wav; browsers play it directly.
+    """
+    import base64
+    model = model or os.getenv("INWORLD_TTS_MODEL") or "inworld-tts-2"
+    try:
+        payload = json.dumps({
+            "text": text,
+            "voiceId": voice_id,
+            "modelId": model,
+            "audioConfig": {"audioEncoding": "LINEAR16", "sampleRateHertz": 48000},
+        }).encode("utf-8")
+        # Inworld keys are issued as a ready-made Basic credential; accept either form.
+        auth = api_key if api_key.lower().startswith("basic ") else f"Basic {api_key}"
+        req = urllib.request.Request(
+            "https://api.inworld.ai/tts/v1/voice", data=payload,
+            headers={"Authorization": auth, "Content-Type": "application/json", "User-Agent": "VoiceAgentService/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=12.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        b64 = data.get("audioContent") or data.get("audio_content") or ""
+        return base64.b64decode(b64) if b64 else None
+    except Exception as ex:
+        log.warning("Inworld TTS API call failed for voice %s: %s", voice_id, ex)
+        return None
+
+
+def _fetch_minimax_tts(voice_id: str, text: str, api_key: str, group_id: str = "", model: str = "") -> Optional[bytes]:
+    """MiniMax T2A v2. Bearer auth + GroupId query param; returns MP3 bytes (hex-decoded)."""
+    group_id = group_id or os.getenv("MINIMAX_GROUP_ID") or ""
+    model = model or os.getenv("MINIMAX_TTS_MODEL") or "speech-02-turbo"
+    try:
+        url = f"https://api.minimax.io/v1/t2a_v2?GroupId={group_id}"
+        payload = json.dumps({
+            "model": model,
+            "text": text,
+            "stream": False,
+            "voice_setting": {"voice_id": voice_id, "speed": 1.0, "vol": 1.0, "pitch": 0},
+            "audio_setting": {"sample_rate": 32000, "bitrate": 128000, "format": "mp3", "channel": 1},
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=payload,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=12.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        audio_hex = (data.get("data") or {}).get("audio") or ""
+        return bytes.fromhex(audio_hex) if audio_hex else None
+    except Exception as ex:
+        log.warning("MiniMax TTS API call failed for voice %s: %s", voice_id, ex)
+        return None
+
+
+def _fetch_fishaudio_tts(reference_id: str, text: str, api_key: str, model: str = "") -> Optional[bytes]:
+    """Fish Audio TTS. reference_id optional ('default'/empty -> model default voice). Returns MP3 bytes."""
+    model = model or os.getenv("FISH_TTS_MODEL") or "s1"
+    try:
+        body = {"text": text, "format": "mp3"}
+        if reference_id and reference_id != "default":
+            body["reference_id"] = reference_id
+        req = urllib.request.Request(
+            "https://api.fish.audio/v1/tts",
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "model": model},
+        )
+        with urllib.request.urlopen(req, timeout=12.0) as resp:
+            return resp.read()
+    except Exception as ex:
+        log.warning("Fish Audio TTS API call failed for reference %s: %s", reference_id, ex)
+        return None
+
+
 _ELEVEN_LIBRARY_BY_NAME: Dict[str, str] = {}
 
 
@@ -686,6 +816,14 @@ def _sync_generate_speech_audio_bytes(
             provider = "openai"
         elif voice_id.startswith("cartesia-"):
             provider = "cartesia"
+        elif voice_id.startswith("gemini-"):
+            provider = "gemini"
+        elif voice_id.startswith("inworld-"):
+            provider = "inworld"
+        elif voice_id.startswith("minimax-"):
+            provider = "minimax"
+        elif voice_id.startswith("fishaudio-"):
+            provider = "fishaudio"
     except Exception:
         pass
 
@@ -795,6 +933,61 @@ def _sync_generate_speech_audio_bytes(
                 return cart_audio
         else:
             fallback_reason = "Cartesia API key not configured"
+
+    # 4a. Google Gemini TTS (reuses GEMINI_API_KEY)
+    if provider == "gemini" or voice_id.startswith("gemini-"):
+        gm_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if gm_key:
+            voice_name = voice_id[len("gemini-"):] if voice_id.startswith("gemini-") else voice_id
+            gm_audio = _fetch_gemini_tts(voice_name, phrase, gm_key)
+            if gm_audio:
+                _cache_put(cache_key, gm_audio)
+                _note_engine(requested_voice_id, "gemini")
+                return gm_audio
+        else:
+            fallback_reason = "Gemini API key not configured"
+
+    # 4b. Inworld TTS (INWORLD_API_KEY)
+    if provider == "inworld" or voice_id.startswith("inworld-"):
+        iw_key = os.getenv("INWORLD_API_KEY")
+        if iw_key:
+            iw_voice = voice_id[len("inworld-"):] if voice_id.startswith("inworld-") else voice_id
+            iw_audio = _fetch_inworld_tts(iw_voice, phrase, iw_key)
+            if iw_audio:
+                _cache_put(cache_key, iw_audio)
+                _note_engine(requested_voice_id, "inworld")
+                return iw_audio
+        else:
+            fallback_reason = "Inworld API key not configured"
+
+    # 4c. MiniMax T2A (MINIMAX_API_KEY; MINIMAX_GROUP_ID optional — newer sk-api keys bind the
+    # group to the token, and an empty GroupId resolves to it. A wrong GroupId (e.g. the UID)
+    # fails with "token not match group", so leave it blank unless you have a real group id.)
+    if provider == "minimax" or voice_id.startswith("minimax-"):
+        mm_key = os.getenv("MINIMAX_API_KEY")
+        if mm_key:
+            mm_group = os.getenv("MINIMAX_GROUP_ID") or ""
+            mm_voice = voice_id[len("minimax-"):] if voice_id.startswith("minimax-") else voice_id
+            mm_audio = _fetch_minimax_tts(mm_voice, phrase, mm_key, mm_group)
+            if mm_audio:
+                _cache_put(cache_key, mm_audio)
+                _note_engine(requested_voice_id, "minimax")
+                return mm_audio
+        else:
+            fallback_reason = "MiniMax API key not configured"
+
+    # 4d. Fish Audio (FISH_AUDIO_API_KEY)
+    if provider == "fishaudio" or voice_id.startswith("fishaudio-"):
+        fish_key = os.getenv("FISH_AUDIO_API_KEY")
+        if fish_key:
+            fish_ref = voice_id[len("fishaudio-"):] if voice_id.startswith("fishaudio-") else voice_id
+            fish_audio = _fetch_fishaudio_tts(fish_ref, phrase, fish_key)
+            if fish_audio:
+                _cache_put(cache_key, fish_audio)
+                _note_engine(requested_voice_id, "fishaudio")
+                return fish_audio
+        else:
+            fallback_reason = "Fish Audio API key not configured"
 
     # 5. High-Definition Neural TTS with Human Emotion & Expressive Tone
     cfg = NEURAL_VOICE_MAP.get(voice_id)

@@ -42,6 +42,27 @@ KNOWN_PROVIDERS = {
         "docs_url": "https://play.cartesia.ai",
         "description": "Sub-100ms ultra-low latency voice synthesis engine designed for conversational agents.",
     },
+    "inworld": {
+        "name": "Inworld TTS",
+        "category": "voice",
+        "env_keys": ["INWORLD_API_KEY"],
+        "docs_url": "https://platform.inworld.ai",
+        "description": "Expressive multi-language TTS voices (Ashley, Deborah, Hades, and more).",
+    },
+    "minimax": {
+        "name": "MiniMax T2A",
+        "category": "voice",
+        "env_keys": ["MINIMAX_API_KEY", "MINIMAX_GROUP_ID"],
+        "docs_url": "https://platform.minimax.io",
+        "description": "MiniMax (Hailuo) text-to-audio voices. Needs both an API key and your Group ID.",
+    },
+    "fishaudio": {
+        "name": "Fish Audio",
+        "category": "voice",
+        "env_keys": ["FISH_AUDIO_API_KEY"],
+        "docs_url": "https://fish.audio/go-api/",
+        "description": "Fish Audio S-series TTS. Paste a reference_id for a cloned/library voice.",
+    },
     "deepgram": {
         "name": "Deepgram (Aura TTS & Nova STT)",
         "category": "multimodal",
@@ -106,6 +127,7 @@ ALLOWED_CONFIG_KEYS = {
     # Voice / TTS & STT
     "ELEVEN_API_KEY", "ELEVENLABS_API_KEY", "XI_API_KEY",
     "CARTESIA_API_KEY", "DEEPGRAM_API_KEY",
+    "INWORLD_API_KEY", "MINIMAX_API_KEY", "MINIMAX_GROUP_ID", "FISH_AUDIO_API_KEY",
     # LLM
     "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY", "COPILOT_API_KEY",
@@ -654,6 +676,53 @@ class ProviderManager:
                     "connected": False,
                     "error": f"Failed to connect to Azure: {str(ex)}",
                 }
+
+        # 10. Inworld TTS
+        elif provider_id == "inworld":
+            try:
+                from agent.voice_synthesizer import _fetch_inworld_tts
+                audio = _fetch_inworld_tts("Ashley", "Hello.", key)
+                elapsed_ms = int((time.perf_counter() - start) * 1000)
+                if audio:
+                    return {"status": "ok", "provider": "inworld", "connected": True, "latency_ms": elapsed_ms,
+                            "details": f"Authenticated successfully with Inworld TTS ({len(audio)} bytes synthesized)."}
+                return {"status": "error", "provider": "inworld", "connected": False,
+                        "error": "Inworld returned no audio — check the key and that it is a valid Basic credential."}
+            except Exception as ex:
+                return {"status": "error", "provider": "inworld", "connected": False,
+                        "error": f"Failed to connect to Inworld: {str(ex)}"}
+
+        # 11. MiniMax T2A (API key required; Group ID optional — newer sk-api keys bind the group
+        # to the token and work with an empty GroupId. A wrong GroupId fails "token not match group".)
+        elif provider_id == "minimax":
+            group = (account_sid or "").strip() or os.getenv("MINIMAX_GROUP_ID", "").strip()
+            try:
+                from agent.voice_synthesizer import _fetch_minimax_tts
+                audio = _fetch_minimax_tts("English_captivating_female1", "Hello.", key, group)
+                elapsed_ms = int((time.perf_counter() - start) * 1000)
+                if audio:
+                    return {"status": "ok", "provider": "minimax", "connected": True, "latency_ms": elapsed_ms,
+                            "details": f"Authenticated successfully with MiniMax T2A ({len(audio)} bytes synthesized)."}
+                return {"status": "error", "provider": "minimax", "connected": False,
+                        "error": "MiniMax returned no audio — check the API key and Group ID."}
+            except Exception as ex:
+                return {"status": "error", "provider": "minimax", "connected": False,
+                        "error": f"Failed to connect to MiniMax: {str(ex)}"}
+
+        # 12. Fish Audio
+        elif provider_id == "fishaudio":
+            try:
+                from agent.voice_synthesizer import _fetch_fishaudio_tts
+                audio = _fetch_fishaudio_tts("default", "Hello.", key)
+                elapsed_ms = int((time.perf_counter() - start) * 1000)
+                if audio:
+                    return {"status": "ok", "provider": "fishaudio", "connected": True, "latency_ms": elapsed_ms,
+                            "details": f"Authenticated successfully with Fish Audio ({len(audio)} bytes synthesized)."}
+                return {"status": "error", "provider": "fishaudio", "connected": False,
+                        "error": "Fish Audio returned no audio — check the API key."}
+            except Exception as ex:
+                return {"status": "error", "provider": "fishaudio", "connected": False,
+                        "error": f"Failed to connect to Fish Audio: {str(ex)}"}
 
         return {
             "status": "error",

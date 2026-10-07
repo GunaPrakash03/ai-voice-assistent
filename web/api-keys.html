@@ -255,6 +255,93 @@
             <span style="font-size:11.5px;color:var(--ink-faint)">7 Aura voices</span>
           </div>
         </div>
+
+        <!-- Inworld TTS Card -->
+        <div class="pcard" id="card-inworld">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#7C3AED;color:#fff">IW</div>
+              <div>
+                <div class="pcard-name">Inworld TTS</div>
+                <div class="pcard-meta"><code>INWORLD_API_KEY</code> · Expressive multi-language voices</div>
+              </div>
+            </div>
+            <span class="status-pill sp-off" id="pill-inworld">UNCONFIGURED</span>
+          </div>
+          <div class="pcard-desc">Natural, expressive TTS voices (Ashley, Deborah, Hades and more) across 16 languages.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-INWORLD_API_KEY" placeholder="Paste Inworld API key (Basic credential)..." data-provider="inworld">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
+            </div>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="inworld">Test Key</button>
+          </div>
+          <div class="diag-box" id="diag-inworld"></div>
+          <div class="pcard-actions">
+            <a href="https://platform.inworld.ai" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Inworld Portal</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">10 voices configured</span>
+          </div>
+        </div>
+
+        <!-- MiniMax T2A Card -->
+        <div class="pcard" id="card-minimax">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#E11D48;color:#fff">MM</div>
+              <div>
+                <div class="pcard-name">MiniMax T2A</div>
+                <div class="pcard-meta"><code>MINIMAX_API_KEY</code> · Hailuo voices (Group ID optional)</div>
+              </div>
+            </div>
+            <span class="status-pill sp-off" id="pill-minimax">UNCONFIGURED</span>
+          </div>
+          <div class="pcard-desc">MiniMax (Hailuo) text-to-audio voices. Newer sk-api keys work on their own — leave Group ID blank unless you have a real one (do not paste your UID).</div>
+          <div class="key-input-row" style="margin-bottom:8px">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-MINIMAX_API_KEY" placeholder="MiniMax API key..." data-provider="minimax">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
+            </div>
+          </div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-MINIMAX_GROUP_ID" placeholder="MiniMax Group ID (optional — leave blank for sk-api keys)..." data-provider="minimax">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
+            </div>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="minimax">Test Key</button>
+          </div>
+          <div class="diag-box" id="diag-minimax"></div>
+          <div class="pcard-actions">
+            <a href="https://platform.minimax.io" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">MiniMax Platform</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">6 voices configured</span>
+          </div>
+        </div>
+
+        <!-- Fish Audio Card -->
+        <div class="pcard" id="card-fishaudio">
+          <div class="pcard-h">
+            <div class="pcard-title">
+              <div class="pcard-icon" style="background:#0EA5E9;color:#fff">FA</div>
+              <div>
+                <div class="pcard-name">Fish Audio</div>
+                <div class="pcard-meta"><code>FISH_AUDIO_API_KEY</code> · S-series TTS</div>
+              </div>
+            </div>
+            <span class="status-pill sp-off" id="pill-fishaudio">UNCONFIGURED</span>
+          </div>
+          <div class="pcard-desc">Fish Audio S-series voices. Use the default voice, or paste a reference_id for a cloned/library voice.</div>
+          <div class="key-input-row">
+            <div class="key-input-wrapper">
+              <input type="password" class="key-input" id="key-FISH_AUDIO_API_KEY" placeholder="Paste Fish Audio API key..." data-provider="fishaudio">
+              <button class="btn-toggle-mask" type="button" title="Toggle visibility">Show</button>
+            </div>
+            <button class="btn btn-outline btn-sm btn-test" data-provider="fishaudio">Test Key</button>
+          </div>
+          <div class="diag-box" id="diag-fishaudio"></div>
+          <div class="pcard-actions">
+            <a href="https://fish.audio/go-api/" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">Fish Audio API</a>
+            <span style="font-size:11.5px;color:var(--ink-faint)">Default voice ready</span>
+          </div>
+        </div>
       </div>
 
       <!-- SECTION 2: LLM & Intelligence Models -->
@@ -269,7 +356,7 @@
               <div class="pcard-icon" style="background:#4285F4;color:#fff">G</div>
               <div>
                 <div class="pcard-name">Google Gemini (Recommended)</div>
-                <div class="pcard-meta"><code>GEMINI_API_KEY</code> · Gemini 2.0 Flash &amp; Nano</div>
+                <div class="pcard-meta"><code>GEMINI_API_KEY</code> · Gemini LLM + Gemini TTS voices</div>
               </div>
             </div>
             <span class="status-pill sp-off" id="pill-google">UNCONFIGURED</span>
@@ -572,6 +659,17 @@
         var sidInput = $("#key-TWILIO_ACCOUNT_SID");
         if (sidInput && sidInput.value.trim()) {
           testPayload.account_sid = sidInput.value.trim();
+        }
+      }
+      if (providerId === "minimax") {
+        // The backend reads the MiniMax Group ID from the account_sid field.
+        var gidInput = $("#key-MINIMAX_GROUP_ID");
+        if (gidInput && gidInput.value.trim()) {
+          testPayload.account_sid = gidInput.value.trim();
+        }
+        var mmKeyInput = $("#key-MINIMAX_API_KEY");
+        if (mmKeyInput && mmKeyInput.value.trim()) {
+          testPayload.api_key = mmKeyInput.value.trim();
         }
       }
 

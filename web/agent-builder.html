@@ -603,6 +603,10 @@
         <button class="ptab" data-prov="cartesia">Cartesia Sonic (Sub-100ms)</button>
         <button class="ptab" data-prov="deepgram">Deepgram Aura</button>
         <button class="ptab" data-prov="openai">OpenAI TTS</button>
+        <button class="ptab" data-prov="gemini">Gemini TTS</button>
+        <button class="ptab" data-prov="inworld">Inworld</button>
+        <button class="ptab" data-prov="minimax">MiniMax</button>
+        <button class="ptab" data-prov="fishaudio">Fish Audio</button>
       </div>
 
       <!-- Voice Cards Grid -->
@@ -836,7 +840,11 @@
     cartesia: "#C2560F",
     deepgram: "#13B58C",
     openai: "#10A37F",
-    elevenlabs: "#6366F1"
+    elevenlabs: "#6366F1",
+    gemini: "#1A73E8",
+    inworld: "#7C3AED",
+    minimax: "#E11D48",
+    fishaudio: "#0EA5E9"
   };
 
   var PROVIDER_NAMES = {
@@ -845,7 +853,11 @@
     cartesia: "Cartesia Sonic",
     deepgram: "Deepgram Aura",
     openai: "OpenAI TTS",
-    elevenlabs: "ElevenLabs Turbo"
+    elevenlabs: "ElevenLabs Turbo",
+    gemini: "Gemini TTS",
+    inworld: "Inworld",
+    minimax: "MiniMax",
+    fishaudio: "Fish Audio"
   };
 
   // ── Engine truthfulness ────────────────────────────────────────────────────
@@ -1053,7 +1065,7 @@
   }
 
   function updateProviderTabCounts() {
-    var counts = { all: allVoicesList.length, studio: 0, neural: 0, cartesia: 0, deepgram: 0, openai: 0, elevenlabs: 0 };
+    var counts = { all: allVoicesList.length, studio: 0, neural: 0, cartesia: 0, deepgram: 0, openai: 0, elevenlabs: 0, gemini: 0, inworld: 0, minimax: 0, fishaudio: 0 };
     allVoicesList.forEach(function (v) {
       if (counts[v.provider] !== undefined) {
         counts[v.provider]++;
@@ -1077,6 +1089,14 @@
         tab.textContent = "Deepgram Aura (" + counts.deepgram + ")";
       } else if (p === "openai") {
         tab.textContent = "OpenAI TTS (" + counts.openai + ")";
+      } else if (p === "gemini") {
+        tab.textContent = "Gemini TTS (" + counts.gemini + ")";
+      } else if (p === "inworld") {
+        tab.textContent = "Inworld (" + counts.inworld + ")";
+      } else if (p === "minimax") {
+        tab.textContent = "MiniMax (" + counts.minimax + ")";
+      } else if (p === "fishaudio") {
+        tab.textContent = "Fish Audio (" + counts.fishaudio + ")";
       }
     });
   }
