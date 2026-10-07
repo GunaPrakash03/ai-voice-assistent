@@ -549,12 +549,18 @@ def _fetch_inworld_tts(voice_id: str, text: str, api_key: str, model: str = "") 
     import base64
     model = model or os.getenv("INWORLD_TTS_MODEL") or "inworld-tts-2"
     try:
-        payload = json.dumps({
+        body = {
             "text": text,
             "voiceId": voice_id,
             "modelId": model,
             "audioConfig": {"audioEncoding": "LINEAR16", "sampleRateHertz": 48000},
-        }).encode("utf-8")
+        }
+        # Steadier, more consistent read (closer to the portal; less render-to-render variance).
+        # delivery_mode is only valid on tts-2 / tts-1.5 models.
+        dm = os.getenv("INWORLD_DELIVERY_MODE", "STABLE").strip()
+        if dm and ("tts-2" in model or "1.5" in model):
+            body["delivery_mode"] = dm
+        payload = json.dumps(body).encode("utf-8")
         # Inworld keys are issued as a ready-made Basic credential; accept either form.
         auth = api_key if api_key.lower().startswith("basic ") else f"Basic {api_key}"
         req = urllib.request.Request(

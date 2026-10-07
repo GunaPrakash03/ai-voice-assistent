@@ -402,7 +402,11 @@ class StreamingTTSManager:
                     from livekit.plugins import inworld as _inworld
                     voice_iw = voice_id[len("inworld-"):] if voice_id.startswith("inworld-") else (voice_name or "Ashley")
                     model_iw = os.getenv("INWORLD_TTS_MODEL") or "inworld-tts-2"
-                    new_tts = _inworld.TTS(model=model_iw, voice=voice_iw)
+                    iw_kwargs = {}
+                    dm = os.getenv("INWORLD_DELIVERY_MODE", "STABLE").strip()
+                    if dm and ("tts-2" in model_iw or "1.5" in model_iw):  # steadier, matches preview/portal
+                        iw_kwargs["delivery_mode"] = dm
+                    new_tts = _inworld.TTS(model=model_iw, voice=voice_iw, **iw_kwargs)
                     info.update(engine="inworld", model=model_iw)
                 except Exception as e:
                     info["fallback_reason"] = f"livekit-plugins-inworld unavailable: {e}"
