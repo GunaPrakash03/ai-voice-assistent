@@ -8,6 +8,11 @@ livekit-plugins-silero~=1.0
 livekit-plugins-openai~=1.0
 livekit-plugins-cartesia~=1.0
 livekit-plugins-elevenlabs~=1.0
+# Phase 2 — live-call TTS for the new voice providers (apply_voice in agent/tts_manager.py).
+livekit-plugins-google~=1.0       # Gemini TTS: google.beta.GeminiTTS
+livekit-plugins-inworld~=1.0      # inworld.TTS
+livekit-plugins-minimax-ai~=1.0   # import livekit.plugins.minimax
+livekit-plugins-fishaudio~=1.0    # fishaudio.TTS
 psycopg[binary]~=3.1
 edge-tts~=7.0  # Backs the "Studio Pro" / "Natural" voice tiers (no vendor key needed)
 

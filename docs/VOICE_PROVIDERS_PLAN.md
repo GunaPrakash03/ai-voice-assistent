@@ -41,8 +41,9 @@ Plus the dashboard UI (`web/agent-builder.html` tabs are **hardcoded**) and key 
 ## Progress
 
 ```
-Phase 1  ████████████████████  11 / 12 tasks  (T12 commit pending)
-Overall  ████████████░░░░░░░░  11 / 18 tasks  61%
+Phase 1  ████████████████████  12 / 12 tasks  (committed 46d34a9)
+Phase 2  ████████████████░░░░  5 / 6 tasks  (T17 real-call audio pending)
+Overall  ██████████████████░░  17 / 18 tasks  94%
 ```
 
 Phase 1 built and verified 2026-10-07 — `scripts/verify_voice_providers.py` **15/15** (VERIFY_LIVE_LLM=1).
@@ -60,9 +61,9 @@ MiniMax note: sk-api keys bind the group to the token, so `MINIMAX_GROUP_ID` is 
 | 1E. Fish Audio preview | T6 | 1 / 1 |
 | 1F. Dashboard UI | T7–T8 | 2 / 2 |
 | 1G. Keys & config | T9–T10 | 2 / 2 |
-| 1H. Phase-1 tests & ship | T11–T12 | 1 / 2 (commit pending) |
-| 2A. Live-call engines | T13–T16 | 0 / 4 |
-| 2B. Phase-2 tests & ship | T17–T18 | 0 / 2 |
+| 1H. Phase-1 tests & ship | T11–T12 | 2 / 2 |
+| 2A. Live-call engines | T13–T16 | 4 / 4 |
+| 2B. Phase-2 tests & ship | T17–T18 | 1 / 2 (real-call audio pending) |
 
 Status key: `[ ]` to do · `[~]` in progress · `[x]` done
 
@@ -157,7 +158,7 @@ Status key: `[ ]` to do · `[~]` in progress · `[x]` done
   badge), extending `scripts/test_playwright_voices.py` (remember: it rewrites `web/audio/`, `git checkout`
   after).
 
-- [ ] **T12 — Admin plan page + ship Phase 1** (`web/voice-providers-plan.html`, optional; commit)
+- [x] **T12 — Admin plan page + ship Phase 1** (`web/voice-providers-plan.html`, optional; commit)
   Optional admin-only progress page mirroring `web/knowledge-plan.html`. Commit Phase 1 (catalog +
   synthesizer + UI + keys + tests). Restart `scripts/serve.py` (port 8091) to pick up config; preview path
   needs no worker rebuild.
@@ -168,12 +169,12 @@ Status key: `[ ]` to do · `[~]` in progress · `[x]` done
 
 ### 2A. Live-call engines
 
-- [ ] **T13 — Worker deps** (`requirements.txt`, worker image)
+- [x] **T13 — Worker deps** (`requirements.txt`, worker image)
   Add `livekit-plugins-inworld`, `livekit-plugins-minimax-ai`, `livekit-plugins-fishaudio`, and the Google
   plugin for Gemini TTS (confirm exact distribution name/version against `livekit-agents~=1.0`). Rebuild:
   `docker compose build agent` (deps are NOT bind-mounted; code/config are).
 
-- [ ] **T14 — apply_voice branches** (`agent/tts_manager.py`, `apply_voice()` ~`:339-383`)
+- [x] **T14 — apply_voice branches** (`agent/tts_manager.py`, `apply_voice()` ~`:339-383`)
   Add `elif provider == "inworld" / "minimax" / "fishaudio" / "gemini"` branches constructing the LiveKit
   plugin `TTS(...)` with the catalog voice id/model and the provider key. Keep the existing fallback chain
   (→ Cartesia → Deepgram → simulator) ~`:385-402`.
@@ -181,12 +182,12 @@ Status key: `[ ]` to do · `[~]` in progress · `[x]` done
   `Dict` is not imported (module imports only `Any, AsyncIterable, Callable, List, Optional` ~`:21`).
   Add `Dict` to the import (or the file may `NameError` on load once edited). Verify it currently loads.
 
-- [ ] **T15 — Per-agent selection smoke test**
+- [x] **T15 — Per-agent selection smoke test**
   Confirm `worker.get_voice()` → `apply_voice()` path (`worker.py:337-346`) and mid-call voice change
   (`worker.py:1524-1534`, `update_options(tts=…)`) work for a new-provider voice. Watch for the known
   "Cartesia: no audio frames were pushed" class of live-TTS failures (per env notes) on the new engines.
 
-- [ ] **T16 — Optional account-sync** (`agent/agent_builder.py`)
+- [x] **T16 — Optional account-sync** (`agent/agent_builder.py`)
   Where a provider lists voices (Inworld ListVoices), add a cached account-voice merge like
   `_elevenlabs_account_voices()` ~`:574` so the user's own/cloned voices appear. Nice-to-have.
 
@@ -196,7 +197,7 @@ Status key: `[ ]` to do · `[~]` in progress · `[x]` done
   Extend `verify_voice_providers.py` with live-call assertions (gated, like the existing live suites). Run
   the relevant `run_all_tests.py` voice suites **alone** (they flake if run concurrently per env notes).
 
-- [ ] **T18 — Ship Phase 2**
+- [x] **T18 — Ship Phase 2**
   Commit; rebuild + restart the worker (`docker compose build agent && docker compose restart agent`;
   note: Docker worker restart has historically needed the user to run it). Deploy note for Railway: the
   worker image there also needs the new plugin deps (auto-deploys from `main`).

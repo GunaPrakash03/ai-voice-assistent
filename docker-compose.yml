@@ -80,6 +80,15 @@ services:
       TTS_MODEL: ${TTS_MODEL:-sonic-3}
       # Live calls speak the Agent Builder's voice; ElevenLabs voices need the key inside the worker too.
       ELEVEN_API_KEY: ${ELEVEN_API_KEY:-}
+      # Phase 2 — new TTS providers for live calls (keys from the API Keys page / .env).
+      INWORLD_API_KEY: ${INWORLD_API_KEY:-}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      MINIMAX_GROUP_ID: ${MINIMAX_GROUP_ID:-}
+      FISH_AUDIO_API_KEY: ${FISH_AUDIO_API_KEY:-}
+      GEMINI_TTS_MODEL: ${GEMINI_TTS_MODEL:-}
+      INWORLD_TTS_MODEL: ${INWORLD_TTS_MODEL:-}
+      MINIMAX_TTS_MODEL: ${MINIMAX_TTS_MODEL:-}
+      FISH_TTS_MODEL: ${FISH_TTS_MODEL:-}
     volumes:
       - ./agent:/app/agent:ro
       - ./samples:/app/samples:ro

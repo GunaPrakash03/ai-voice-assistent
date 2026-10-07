@@ -795,6 +795,15 @@ class AgentBuilder:
         synced = next((v for v in self._elevenlabs_account_voices() if v.voice_id == voice_id), None)
         if synced:
             return synced
+        # Dynamically-synced Inworld / Fish Audio voices (live calls resolve provider/gender/name here).
+        if voice_id.startswith("inworld-"):
+            hit = next((v for v in self._inworld_catalog_voices() if v.voice_id == voice_id), None)
+            if hit:
+                return hit
+        if voice_id.startswith("fishaudio-"):
+            hit = next((v for v in self._fishaudio_catalog_voices() if v.voice_id == voice_id), None)
+            if hit:
+                return hit
         norm = str(voice_id).lower().replace("eleven-", "").replace("aura-", "").replace("openai-", "")
         return next((v for v in VOICE_CATALOG if norm in v.name.lower() or norm in v.voice_id.lower()), None)
 

@@ -18,7 +18,7 @@ import math
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterable, Callable, List, Optional
+from typing import Any, AsyncIterable, Callable, Dict, List, Optional
 
 try:
     from livekit import rtc
@@ -378,6 +378,65 @@ class StreamingTTSManager:
                 info.update(engine="cartesia", model=self.model)
             else:
                 info["fallback_reason"] = "CARTESIA_API_KEY is not set for the worker"
+
+        elif provider == "gemini" or voice_id.startswith("gemini-"):
+            gm_key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
+            if not gm_key:
+                info["fallback_reason"] = "GEMINI_API_KEY is not set for the worker"
+            else:
+                try:
+                    from livekit.plugins import google as _google
+                    voice_g = voice_id[len("gemini-"):] if voice_id.startswith("gemini-") else (voice_name or "Kore")
+                    model_g = os.getenv("GEMINI_TTS_MODEL") or "gemini-2.5-flash-preview-tts"
+                    new_tts = _google.beta.GeminiTTS(model=model_g, voice_name=voice_g, api_key=gm_key)
+                    info.update(engine="gemini", model=model_g)
+                except Exception as e:
+                    info["fallback_reason"] = f"livekit-plugins-google (GeminiTTS) unavailable: {e}"
+
+        elif provider == "inworld" or voice_id.startswith("inworld-"):
+            iw_key = os.getenv("INWORLD_API_KEY", "").strip()
+            if not iw_key:
+                info["fallback_reason"] = "INWORLD_API_KEY is not set for the worker"
+            else:
+                try:
+                    from livekit.plugins import inworld as _inworld
+                    voice_iw = voice_id[len("inworld-"):] if voice_id.startswith("inworld-") else (voice_name or "Ashley")
+                    model_iw = os.getenv("INWORLD_TTS_MODEL") or "inworld-tts-2"
+                    new_tts = _inworld.TTS(model=model_iw, voice=voice_iw)
+                    info.update(engine="inworld", model=model_iw)
+                except Exception as e:
+                    info["fallback_reason"] = f"livekit-plugins-inworld unavailable: {e}"
+
+        elif provider == "minimax" or voice_id.startswith("minimax-"):
+            mm_key = os.getenv("MINIMAX_API_KEY", "").strip()
+            if not mm_key:
+                info["fallback_reason"] = "MINIMAX_API_KEY is not set for the worker"
+            else:
+                try:
+                    from livekit.plugins import minimax as _minimax
+                    voice_mm = voice_id[len("minimax-"):] if voice_id.startswith("minimax-") else voice_id
+                    model_mm = os.getenv("MINIMAX_TTS_MODEL") or "speech-02-turbo"
+                    new_tts = _minimax.TTS(model=model_mm, voice=voice_mm)
+                    info.update(engine="minimax", model=model_mm)
+                except Exception as e:
+                    info["fallback_reason"] = f"livekit-plugins-minimax-ai unavailable: {e}"
+
+        elif provider == "fishaudio" or voice_id.startswith("fishaudio-"):
+            fish_key = os.getenv("FISH_AUDIO_API_KEY", "").strip()
+            if not fish_key:
+                info["fallback_reason"] = "FISH_AUDIO_API_KEY is not set for the worker"
+            else:
+                try:
+                    from livekit.plugins import fishaudio as _fishaudio
+                    model_f = os.getenv("FISH_TTS_MODEL") or "s2.1-pro"
+                    ref = voice_id[len("fishaudio-"):] if voice_id.startswith("fishaudio-") else ""
+                    if ref and ref != "default":
+                        new_tts = _fishaudio.TTS(model=model_f, voice_id=ref, api_key=fish_key)
+                    else:
+                        new_tts = _fishaudio.TTS(model=model_f, api_key=fish_key)
+                    info.update(engine="fishaudio", model=model_f)
+                except Exception as e:
+                    info["fallback_reason"] = f"livekit-plugins-fishaudio unavailable: {e}"
 
         else:
             info["fallback_reason"] = f"'{provider or 'sample'}' voices have no streaming engine for live calls"
